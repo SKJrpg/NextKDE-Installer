@@ -1,0 +1,139 @@
+"""Execute one step, stream its output, and keep a log.
+
+The wrapped commands are ordinary child processes; this module owns the parts
+the UI needs: line-by-line reading, banner detection, cancellation, and a log
+file that survives a crash.
+"""
+
+from __future__ import annotations
+
+import codecs
+import os
+import re
+import selectors
+import signal
+import subprocess
+import time
+from pathlib import Path
+
+from .plan import Step
+
+BANNER = re.compile(r"^===+\s*(.*?)\s*===+$")
+_LEVELS = (
+    ("err", "ERROR"),
+    ("✘", "ERROR"),
+    ("warn", "WARN"),
+    ("⚠", "WARN"),
+)
+
+
+def classify(line: str) -> str:
+    lowered = line.lower()
+    for needle, level in _LEVELS:
+        if needle in lowered:
+            return level
+    if "ok" in lowered:
+        return "OK"
+    return "INFO"
+
+
+class StepRunner:
+    def __init__(self, step: Step, root: Path, log_file) -> None:
+        self.step = step
+        self.root = Path(root)
+        self.log = log_file
+        self.phase = ""
+        self.proc: subprocess.Popen[bytes] | None = None
+        self._sel = selectors.DefaultSelector()
+        self._buffer = ""
+        self._decoder = codecs.getincrementaldecoder("utf-8")("replace")
+        self._fd = -1
+        self.started = time.monotonic()
+        self.finished = False
+        self.cancelled = False
+
+    # -- lifecycle -----------------------------------------------------
+    def start(self) -> None:
+        if not self.step.argv:
+            self.finished = True
+            return
+        env = dict(os.environ)
+        env.update(self.step.env)
+        env.setdefault("PYTHONUNBUFFERED", "1")
+        self.proc = subprocess.Popen(
+            self.step.argv,
+            cwd=str(self.root),
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            bufsize=0,
+            start_new_session=True,
+        )
+        assert self.proc.stdout is not None
+        self._fd = self.proc.stdout.fileno()
+        self._sel.register(self._fd, selectors.EVENT_READ)
+
+    def cancel(self) -> None:
+        if self.proc is None or self.proc.poll() is not None:
+            return
+        self.cancelled = True
+        try:
+            os.killpg(os.getpgid(self.proc.pid), signal.SIGTERM)
+        except (ProcessLookupError, PermissionError):
+            self.proc.terminate()
+
+    def readline(self, timeout: float = 0.1) -> str | None:
+        """Return one complete line, or None when nothing is ready."""
+        if self.proc is None or self.finished:
+            return None
+        events = self._sel.select(timeout)
+        for _key, _ in events:
+            # os.read returns what is available; TextIOWrapper.read(n) would
+            # block until n characters arrive and freeze the UI.
+            chunk = os.read(self._fd, 4096)
+            if not chunk:
+                self._sel.unregister(self._fd)
+                self._drain()
+                return None
+            self._buffer += self._decoder.decode(chunk)
+        if "\n" in self._buffer:
+            line, self._buffer = self._buffer.split("\n", 1)
+            return self._record(line)
+        return None
+
+    def poll(self) -> int | None:
+        if self.proc is None:
+            return 0
+        return self.proc.poll()
+
+    def close(self) -> int:
+        if self.proc is None:
+            self.finished = True
+            return 0
+        rc = self.proc.wait()
+        self._drain()
+        try:
+            self._sel.unregister(self._fd)
+        except (KeyError, ValueError):
+            pass
+        self._sel.close()
+        if self.proc.stdout is not None:
+            self.proc.stdout.close()
+        self.finished = True
+        return rc
+
+    # -- internals -----------------------------------------------------
+    def _drain(self) -> None:
+        rest, self._buffer = self._buffer, ""
+        if rest.strip():
+            self._record(rest)
+
+    def _record(self, line: str) -> str:
+        text = line.rstrip("\r")
+        self.log.write(text + "\n")
+        self.log.flush()
+        match = BANNER.match(text.strip())
+        if match:
+            self.phase = match.group(1)
+        return text
