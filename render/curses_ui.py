@@ -581,6 +581,11 @@ class UI:
                         if now - last > 0.1:
                             self._draw(stdscr)
                             last = now
+                        # Management actions can take minutes (a full
+                        # uninstall); q/Esc stops them the same way the
+                        # install loop does.
+                        if stdscr.getch() in (27, ord("q"), ord("Q")):
+                            runner.cancel()
                         if runner.poll() is not None:
                             break
                     if runner.close() != 0:
