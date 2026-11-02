@@ -277,7 +277,7 @@ class UI:
     def _menu_key(self, stdscr, ch) -> int | None:
         self.rows = self._menu_rows()
         self.sub = self._sub_rows()
-        if ch in (curses.KEY_PPAGE, curses.KEY_NPAGE) and self.rows \
+        if ch in (curses.KEY_PPAGE, curses.KEY_NPAGE) and 0 <= self.row < len(self.rows) \
                 and self.rows[self.row][0] == "system":
             self.deps_row = max(0, self.deps_row + (-10 if ch == curses.KEY_PPAGE else 10))
             return None
@@ -664,6 +664,9 @@ class UI:
         except curses.error:
             pass
 
+    def _clamp_row(self, count: int) -> None:
+        self.row = max(0, min(self.row, count - 1))
+
     @staticmethod
     def _columns(width: int) -> tuple[int, int, int] | None:
         """(left width, right x, right width) or None when the terminal is narrow."""
@@ -713,6 +716,16 @@ class UI:
         top, bottom = 2, h - 2
         x, width = 1, w - 2
         screen = self.screen
+        # Every screen shares self.row; coming back from a longer list (the
+        # manage menu, a unit list) must not index past this one.
+        if screen == self.MENU:
+            self._clamp_row(len(self._menu_rows()))
+        elif screen == self.MANAGE:
+            self._clamp_row(len(self._manage_rows()))
+        elif screen == self.UNITS:
+            self._clamp_row(len(self.units))
+        elif screen == self.SNAPSHOTS:
+            self._clamp_row(len(self.snapshots))
         if screen == self.WELCOME:
             self._welcome(stdscr, top, bottom, x, width)
         elif screen == self.VERSION:
