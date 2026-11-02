@@ -13,11 +13,11 @@ from pathlib import Path
 
 from . import VERSION
 from .detect import detect
-from .plan import Options, build_plan
+from .plan import ALL_APPS, Options, build_plan, unsupported
 from .render import curses_ui, plain
 from .strings import Strings, choose_language
 
-CONFIG_KEYS = ("source", "apps", "lockscreen", "start", "all", "proxy")
+CONFIG_KEYS = ("source", "apps", "lockscreen", "start", "all", "proxy", "spatial")
 
 
 def _load_config(path: str) -> dict:
@@ -33,23 +33,41 @@ def _load_config(path: str) -> dict:
     return data
 
 
+def _apply_apps(opts: Options, value) -> None:
+    """`apps` is true/false in older configs and a list in the documented one."""
+    if isinstance(value, list):
+        opts.apps = True
+        opts.app_set = {str(name) for name in value}
+    else:
+        opts.apps = bool(value)
+
+
 def _options(args, config: dict) -> Options:
     opts = Options()
     if "source" in config:
         opts.source = str(config["source"])
-    for name in ("apps", "lockscreen", "start", "proxy"):
+    if "apps" in config:
+        _apply_apps(opts, config["apps"])
+    for name in ("lockscreen", "start", "proxy", "spatial"):
         if name in config:
             setattr(opts, name, bool(config[name]))
-    if "all" in config:
-        opts.install_all = bool(config["all"])
+    if config.get("all"):
+        opts.apps = True
+        opts.lockscreen = True
     if args.source:
         opts.source = args.source
-    for name in ("apps", "lockscreen", "start", "all"):
-        if getattr(args, name):
-            if name == "all":
-                opts.install_all = True
-            else:
-                setattr(opts, name, True)
+    if args.apps:
+        if args.apps == "all":
+            opts.apps = True
+        else:
+            _apply_apps(opts, [name.strip() for name in args.apps.split(",") if name.strip()])
+    if args.lockscreen:
+        opts.lockscreen = True
+    if args.start:
+        opts.start = True
+    if args.all:
+        opts.apps = True
+        opts.lockscreen = True
     if args.no_proxy:
         opts.proxy = False
     return opts
@@ -65,8 +83,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--plain", action="store_true", help="force the plain renderer")
     parser.add_argument("--config", metavar="FILE", help="JSON options file")
     parser.add_argument("--lang", choices=("zh", "en"))
-    parser.add_argument("--source", choices=("stable", "main"), help="source release to install")
-    parser.add_argument("--apps", action="store_true", help="also install the standalone apps")
+    parser.add_argument("--source", choices=("stable", "main", "local"),
+                        help="source release to install; local keeps this checkout untouched")
+    parser.add_argument("--apps", nargs="?", const="all", metavar="LIST",
+                        help="also install the standalone apps; LIST narrows it (calendar,todo)")
     parser.add_argument("--lockscreen", action="store_true", help="also install the lock screen theme")
     parser.add_argument("--start", action="store_true", help="start services after install")
     parser.add_argument("--all", action="store_true", help="include apps and lock screen")
@@ -81,20 +101,35 @@ def main(argv: list[str] | None = None) -> int:
         print(strings("note_no_cjk"), file=sys.stderr)
     root = Path(__file__).resolve().parents[2]
     config = _load_config(args.config) if args.config else {}
-    if config.get("source") not in (None, "stable", "main"):
-        parser.error("config source must be 'stable' or 'main'")
+    if config.get("source") not in (None, "stable", "main", "local"):
+        parser.error("config source must be 'stable', 'main' or 'local'")
     opts = _options(args, config)
+    unknown = opts.app_set - set(ALL_APPS)
+    if unknown:
+        parser.error("unknown apps: " + ", ".join(sorted(unknown)))
 
     system = detect(root=root)
     steps = build_plan(system.family, opts, root)
+    blocked_options = unsupported(system.family, opts)
 
     if args.check:
         plain.print_report(system, steps, strings)
-        return 2 if system.blocked else 0
+        if blocked_options:
+            print(strings("unsupported_options") % ", ".join(blocked_options), file=sys.stderr)
+        return 2 if system.blocked or blocked_options else 0
+
+    if blocked_options:
+        print(strings("unsupported_options") % ", ".join(blocked_options), file=sys.stderr)
+        return 2
 
     if not steps:
         plain.print_report(system, steps, strings)
         return 0 if system.method == "report" else 2
+
+    if system.blocked:
+        plain.print_report(system, steps, strings)
+        print(strings("review_blocked"), file=sys.stderr)
+        return 2
 
     interactive = sys.stdout.isatty() and sys.stdin.isatty() and not args.plain and not args.yes
     if not interactive:

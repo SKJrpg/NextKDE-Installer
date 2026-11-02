@@ -23,7 +23,6 @@ class Options:
     apps: bool = False
     lockscreen: bool = False
     start: bool = False
-    install_all: bool = False
     proxy: bool = True
     spatial: bool = False  # ONNX + OpenCV depth engine, a wallpaper feature
     app_set: set[str] = field(default_factory=set)
@@ -150,49 +149,96 @@ def apps_missing(root: Path) -> list[str]:
     return parse_app_deps(result.stdout + result.stderr)
 
 
+def origin_url(root: Path) -> str:
+    """The checkout's origin, or "" when this is not a Git repository."""
+    try:
+        result = subprocess.run(["git", "-C", str(root), "remote", "get-url", "origin"],
+                                capture_output=True, text=True, timeout=10, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def selected_apps(opts: Options) -> list[str]:
+    """The apps to install, in canonical order; empty when none is wanted."""
+    chosen = opts.app_set or set(ALL_APPS)
+    return [name for name in ALL_APPS if name in chosen] if opts.apps else []
+
+
+def unsupported(family: str | None, opts: Options) -> list[str]:
+    """Selections the detected backend cannot honour, by option name."""
+    if family == "nixos":
+        # `kosctl nix install` builds the flake and nothing else: there is no
+        # app, lockscreen or spatial switch in that path.
+        return [name for name in ("apps", "lockscreen", "spatial")
+                if getattr(opts, name)]
+    return []
+
+
+def _component_steps(opts: Options, root: Path, env: dict[str, str]) -> list[Step]:
+    """App and lockscreen steps shared by every backend that runs kosctl."""
+    kosctl = str(root / "tools" / "kosctl")
+    steps: list[Step] = []
+    chosen = selected_apps(opts)
+    if chosen:
+        argv = [kosctl, "install", "apps"]
+        if len(chosen) != len(ALL_APPS):
+            argv += ["--only", ",".join(chosen)]
+        steps.append(Step("apps", "kosctl install apps", argv, env))
+    if opts.lockscreen:
+        steps.append(Step("lockscreen", "kosctl install lockscreen",
+                          [kosctl, "install", "lockscreen"], env))
+    return steps
+
+
 def build_plan(family: str | None, opts: Options, root: Path) -> list[Step]:
     root = Path(root)
     env = {**session_env(), **_proxy_env(opts.proxy),
            "KOS_BUILD_SPATIAL": "ON" if opts.spatial else "OFF"}
+    kosctl = str(root / "tools" / "kosctl")
 
     if family == "debian":
-        argv = ["bash", str(root / "tools/install-debian13.sh"), "--dir", str(root)]
-        if opts.source != "stable":
+        # The wrapper owns the Debian preflight and the core install; apps,
+        # lockscreen and start stay separate steps so activation runs last.
+        argv = ["bash", str(root / "tools" / "install-debian13.sh"), "--dir", str(root),
+                "--spatial", "on" if opts.spatial else "off"]
+        repo = origin_url(root)
+        if repo:
+            # The same repository on both sides: the wrapper's selector must not
+            # meet an origin mismatch, and a fork must stay a fork.
+            argv += ["--repo", repo]
+        if opts.source == "local":
+            argv += ["--local"]
+        elif opts.source != "stable":
             argv += ["--version", opts.source]
-        if opts.install_all:
-            argv += ["--all"]
-        if opts.start:
-            argv += ["--start"]
         if not opts.proxy:
             argv += ["--no-proxy"]
-        argv += ["--spatial", "on" if opts.spatial else "off"]
-        return [Step("debian", "tools/install-debian13.sh", argv, env)]
+        steps = [Step("debian", "tools/install-debian13.sh", argv, env)]
+        steps += _component_steps(opts, root, env)
+        if opts.start:
+            steps.append(Step("start", "kosctl start", [kosctl, "start"], env))
+        return steps
 
     if family == "nixos":
-        steps = [Step("nix", "kosctl nix install", [str(root / "tools/kosctl"), "nix", "install"], env)]
+        steps = [Step("nix", "kosctl nix install", [kosctl, "nix", "install"], env)]
         if opts.start:
-            steps.append(Step("start", "kosctl start", [str(root / "tools/kosctl"), "start"], env))
+            steps.append(Step("start", "kosctl start", [kosctl, "start"], env))
         return steps
 
     if family in ("ubuntu", "arch", "fedora"):
-        kosctl = str(root / "tools/kosctl")
-        branch, dirty = git_state(root)
         steps: list[Step] = []
-        if branch == "main" and not dirty:
+        branch, dirty = git_state(root)
+        if opts.source == "local":
+            steps.append(Step("source", "kosctl update (skipped)", [],
+                              env, note="skipped_local"))
+        elif branch == "main" and not dirty:
             steps.append(Step("source", f"kosctl update {opts.source}",
                               [kosctl, "update", opts.source], env))
         else:
             steps.append(Step("source", "kosctl update (skipped)", [],
                               env, note="skipped_source"))
         steps.append(Step("core", "kosctl install", [kosctl, "install"], env))
-        if opts.apps and opts.app_set:
-            argv = [kosctl, "install", "apps"]
-            if set(opts.app_set) != set(ALL_APPS):
-                argv += ["--only", ",".join(name for name in ALL_APPS if name in opts.app_set)]
-            steps.append(Step("apps", "kosctl install apps", argv, env))
-        if opts.lockscreen:
-            steps.append(Step("lockscreen", "kosctl install lockscreen",
-                              [kosctl, "install", "lockscreen"], env))
+        steps += _component_steps(opts, root, env)
         if opts.start:
             steps.append(Step("start", "kosctl start", [kosctl, "start"], env))
         return steps

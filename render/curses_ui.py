@@ -395,6 +395,8 @@ class UI:
                 self._load_deps()
             return None
         if ch in (10, 13, curses.KEY_ENTER):
+            if self.system.blocked:
+                return None
             self.screen = self.INSTALL
             self._install_loop(stdscr)
             self.screen = self.RESULT
@@ -520,16 +522,20 @@ class UI:
             self.confirm_action = "rollback"
         return None
 
-    def _confirm_then(self, question: str, action: str) -> None:
+    def _resolve_confirm(self, stdscr, yes: bool) -> None:
+        action, self.confirm, self.confirm_action = self.confirm_action, "", ""
+        if yes and action:
+            self._confirm_then(stdscr, action)
+
+    def _confirm_then(self, stdscr, action: str) -> None:
         if action == "uninstall":
-            self._run_action("kosctl uninstall", [manage.kosctl(self.root, "uninstall")],
-                             self.MANAGE)
+            self._run_action(stdscr, "kosctl uninstall",
+                             [manage.kosctl(self.root, "uninstall")], self.MANAGE)
         elif action == "rollback" and self.snapshots:
             snapshot_id = self.snapshots[self.row].id
             self._run_action(stdscr, f"kosctl rollback {snapshot_id}",
                              [manage.kosctl(self.root, "rollback", snapshot_id)],
                              self.SNAPSHOTS)
-        del question
 
     # -- action runner ---------------------------------------------------
     def _run_action(self, stdscr, title: str, steps: list[Step], return_screen: int) -> None:
@@ -981,6 +987,9 @@ class UI:
         if not self.steps:
             self._put(stdscr, y, x, self.s("review_none"), self._attr(_YELLOW), width)
             return
+        if self.system.blocked:
+            self._put(stdscr, y, x, self.s("review_blocked"), self._attr(_RED, True), width)
+            y += 1
         self._put(stdscr, y, x, self.s("review_warn"), 0, width)
         y += 1
         for index, step in enumerate(self.steps, 1):

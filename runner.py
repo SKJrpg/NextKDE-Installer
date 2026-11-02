@@ -52,6 +52,7 @@ class StepRunner:
         self.started = time.monotonic()
         self.finished = False
         self.cancelled = False
+        self._kill_deadline = 0.0
 
     # -- lifecycle -----------------------------------------------------
     def start(self) -> None:
@@ -76,13 +77,22 @@ class StepRunner:
         self._sel.register(self._fd, selectors.EVENT_READ)
 
     def cancel(self) -> None:
+        """Ask the whole child group to stop; SIGKILL follows if it ignores us."""
         if self.proc is None or self.proc.poll() is not None:
             return
         self.cancelled = True
+        self._kill_deadline = time.monotonic() + 5.0
+        self._signal(signal.SIGTERM)
+
+    def _signal(self, sig: int) -> None:
+        assert self.proc is not None
         try:
-            os.killpg(os.getpgid(self.proc.pid), signal.SIGTERM)
+            os.killpg(os.getpgid(self.proc.pid), sig)
         except (ProcessLookupError, PermissionError):
-            self.proc.terminate()
+            try:
+                self.proc.send_signal(sig)
+            except ProcessLookupError:
+                pass
 
     def readline(self, timeout: float = 0.1) -> str | None:
         """Return one complete line, or None when nothing is ready."""
@@ -106,7 +116,12 @@ class StepRunner:
     def poll(self) -> int | None:
         if self.proc is None:
             return 0
-        return self.proc.poll()
+        rc = self.proc.poll()
+        if rc is None and self.cancelled and self._kill_deadline \
+                and time.monotonic() > self._kill_deadline:
+            self._kill_deadline = 0.0
+            self._signal(signal.SIGKILL)
+        return rc
 
     def close(self) -> int:
         if self.proc is None:

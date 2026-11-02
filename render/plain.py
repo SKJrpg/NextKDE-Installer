@@ -55,18 +55,25 @@ def execute(system: System, steps: list[Step], root: Path, log_path: Path, strin
             print(f"  $ {' '.join(step.argv)}")
             runner = StepRunner(step, root, log)
             runner.start()
-            while True:
-                line = runner.readline(0.2)
-                if line is not None:
-                    if plain:
-                        print(line)
-                    else:
-                        level = classify(line)
-                        color = {"ERROR": "\033[31m", "WARN": "\033[33m", "OK": "\033[32m"}.get(level, "")
-                        print(f"  {color}{line}\033[0m" if color else f"  {line}")
-                if runner.poll() is not None:
-                    break
-                time.sleep(0.02)
+            try:
+                while True:
+                    line = runner.readline(0.2)
+                    if line is not None:
+                        if plain:
+                            print(line)
+                        else:
+                            level = classify(line)
+                            color = {"ERROR": "\033[31m", "WARN": "\033[33m", "OK": "\033[32m"}.get(level, "")
+                            print(f"  {color}{line}\033[0m" if color else f"  {line}")
+                    if runner.poll() is not None:
+                        break
+                    time.sleep(0.02)
+            except KeyboardInterrupt:
+                # The child runs in its own session, so Ctrl-C never reaches it.
+                print(f"\n  {strings('cancel_confirm')}", file=sys.stderr)
+                runner.cancel()
+                while runner.poll() is None:
+                    time.sleep(0.05)
             rc = runner.close()
             if runner.cancelled:
                 print(f"  {strings('cancelled')}")
