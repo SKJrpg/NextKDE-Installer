@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -144,12 +145,22 @@ def _major_minor(text: str) -> tuple[int, int] | None:
     return None
 
 
+def parse_missing_packages(text: str) -> list[str]:
+    """Pull the build packages kosctl doctor reports as missing."""
+    found = []
+    for line in text.splitlines():
+        match = re.match(r"\s*miss\s+pkg:(\S+)", line)
+        if match:
+            found.append(match.group(1))
+    return found
+
+
 def _probe(key: str, ok: bool, detail: str, remedy: str = "", warn: bool = False) -> Probe:
     status = "PASS" if ok else ("WARN" if warn else "FAIL")
     return Probe(key=key, status=status, detail=detail, remedy="" if ok else remedy)
 
 
-def detect(fixed_os_release: str | None = None) -> System:
+def detect(fixed_os_release: str | None = None, root: Path | None = None) -> System:
     text = fixed_os_release
     if text is None:
         try:
@@ -169,12 +180,18 @@ def detect(fixed_os_release: str | None = None) -> System:
     session = os.environ.get("XDG_SESSION_TYPE", "")
     desktop = os.environ.get("XDG_CURRENT_DESKTOP", "")
     wayland = session == "wayland" or "wayland" in os.environ.get("WAYLAND_DISPLAY", "")
-    system.probes.append(_probe("probe_session", wayland, session or desktop or "unknown",
+    if session:
+        session_detail = f"{session} ({desktop})" if desktop else session
+    elif wayland:
+        session_detail = "wayland (WAYLAND_DISPLAY)"
+    else:
+        session_detail = desktop or "unknown"
+    system.probes.append(_probe("probe_session", wayland, session_detail,
                                 "KOS needs a Plasma 6 Wayland session, not X11 or a bare TTY."))
 
     plasma_bin = shutil.which("plasmashell")
     plasma = "KDE" in desktop.upper() or bool(plasma_bin)
-    plasma_detail = desktop or (plasma_bin or "not detected")
+    plasma_detail = desktop or ("plasmashell present" if plasma_bin else "not detected")
     system.probes.append(_probe("probe_plasma", plasma, plasma_detail,
                                 "Install KDE Plasma 6 first; KOS replaces its shell."))
 
@@ -216,6 +233,20 @@ def detect(fixed_os_release: str | None = None) -> System:
     manager = next((m for m in ("apt-get", "pacman", "dnf", "zypper") if shutil.which(m)), "")
     system.probes.append(_probe("probe_manager", bool(manager), manager or "not found",
                                 "No supported package manager found."))
+
+    if root is not None and (Path(root) / "tools" / "kosctl").is_file():
+        rc, doctor_out = _run(["bash", str(Path(root) / "tools" / "kosctl"), "doctor"], timeout=30)
+        if doctor_out or rc == 0:
+            missing = parse_missing_packages(doctor_out)
+            if missing:
+                listed = ", ".join(missing[:6]) + (f" +{len(missing) - 6}" if len(missing) > 6 else "")
+                system.probes.append(Probe(
+                    key="probe_packages", status="WARN",
+                    detail=f"{len(missing)} missing: {listed}",
+                    remedy="kosctl install adds these with the system package manager."))
+            else:
+                system.probes.append(Probe(key="probe_packages", status="PASS",
+                                           detail="build dependencies present"))
 
     system.blocked = any(p.status == "FAIL" for p in system.probes)
     return system

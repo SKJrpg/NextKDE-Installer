@@ -43,6 +43,7 @@ class StepRunner:
         self.root = Path(root)
         self.log = log_file
         self.phase = ""
+        self.progress: float | None = None
         self.proc: subprocess.Popen[bytes] | None = None
         self._sel = selectors.DefaultSelector()
         self._buffer = ""
@@ -136,4 +137,8 @@ class StepRunner:
         match = BANNER.match(text.strip())
         if match:
             self.phase = match.group(1)
+        # ninja and make print "[64/206]" while they work: real progress, not a guess.
+        counter = re.search(r"\[\s*(\d+)\s*/\s*(\d+)\s*\]", text)
+        if counter and int(counter.group(2)) > 0:
+            self.progress = min(1.0, int(counter.group(1)) / int(counter.group(2)))
         return text

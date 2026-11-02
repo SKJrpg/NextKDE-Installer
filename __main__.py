@@ -85,7 +85,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("config source must be 'stable' or 'main'")
     opts = _options(args, config)
 
-    system = detect()
+    system = detect(root=root)
     steps = build_plan(system.family, opts, root)
 
     if args.check:
@@ -109,7 +109,7 @@ def main(argv: list[str] | None = None) -> int:
         log_path = log_dir / "install.log"
         return plain.execute(system, steps, root, log_path, strings)
 
-    return curses_ui.UI(system, root, strings, log_dir).run()
+    return curses_ui.UI(system, root, strings, log_dir, lang_explicit=bool(args.lang)).run()
 
 
 if __name__ == "__main__":
