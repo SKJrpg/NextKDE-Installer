@@ -20,7 +20,7 @@ from textual.app import App
 from .. import VERSION, workflow
 from ..backend import contract, probe
 from ..backend.models import BackendIncompatible, BackendInfo
-from ..core.askpass import Askpass, sudo_ready
+from ..core.askpass import Askpass
 from ..core.events import Event
 from ..core.session import InstallSession
 from ..detect import System, detect
@@ -78,7 +78,9 @@ class KosApp(App):
         self.exit_code = 0
         self.cancel_event = threading.Event()
         self.session = None             # the last InstallSession
-        self.askpass: Askpass | None = None   # set only while a run needs sudo
+        self.askpass: Askpass | None = None   # set while a run may need a sudo password
+        self._dialog_token: str | None = None  # the request the open dialog answers
+        self._answered: set[str] = set()       # tokens this run has already handled
         self.install_worker = None
         self.prepare_worker = None
         self.action_worker = None
@@ -94,6 +96,8 @@ class KosApp(App):
 
     def on_mount(self) -> None:
         self.push_screen(WelcomeScreen(self.strings))
+        # A sudo call may block at any point in a run; this answers its request.
+        self.set_interval(0.15, self._poll_askpass)
 
     # -- wizard state ----------------------------------------------------
     def _detect_backend(self, root) -> None:
@@ -131,47 +135,14 @@ class KosApp(App):
             f"{prefix}-%Y%m%d-%H%M%S-{self._log_seq}.log")
 
     def start_install(self) -> None:
-        """Enter from Review: ask for the sudo password once, then run the plan."""
-        prepared = self._prepared_source()
-        planned = build_plan(self.system.family, self.opts, self.paths, prepared,
-                             backend=self.backend)
-        # Only when a real sudo call is coming and this run has no password yet.
-        if planned and self.askpass is None and not self._sudo_ready():
-            self.push_screen(PasswordDialog(self.strings), self._password_entered)
-            return
-        self._start_install()
-
-    def _prepared_source(self):
-        mode = workflow.MODES.get(self.opts.source)
-        prepared = self.prepared if (self.prepared is not None
-                                     and self.prepared.mode == mode) else None
-        self.prepared = prepared
-        return prepared
-
-    @staticmethod
-    def _sudo_ready() -> bool:
-        """True when sudo already works without a password in this run."""
-        return sudo_ready()
-
-    def _password_entered(self, password: str | None) -> None:
-        if not password:                # cancelled or empty: stay on Review
-            return
-        self.askpass = Askpass()
-        self.askpass.set_password(password)
-        self._start_install()
-
-    def _close_askpass(self) -> None:
-        askpass, self.askpass = self.askpass, None
-        if askpass is not None:
-            askpass.close()
-
-    def _start_install(self) -> None:
+        """Enter from Review: run the plan; sudo asks when it needs a password."""
         prepared = self._prepared_source()
         self.prepare_error = ""
         self.exit_code = 0
         self.cancel_event = threading.Event()
         self.log_tail.clear()
         self.log_path = self._new_log_path()
+        self._new_askpass()
         if prepared is not None:
             self.steps = build_plan(self.system.family, self.opts, self.paths,
                                     prepared, backend=self.backend)
@@ -183,6 +154,56 @@ class KosApp(App):
             self.push_screen(InstallationScreen(self.strings, (),
                                                 self.prepare_log_path))
             self.prepare_worker = self._run_prepare()
+
+    def _prepared_source(self):
+        mode = workflow.MODES.get(self.opts.source)
+        prepared = self.prepared if (self.prepared is not None
+                                     and self.prepared.mode == mode) else None
+        self.prepared = prepared
+        return prepared
+
+    def _new_askpass(self) -> None:
+        """One channel per run: children get its env, no password exists yet."""
+        self._close_askpass()
+        self.askpass = Askpass()
+        self._dialog_token = None
+        self._answered.clear()
+
+    def _poll_askpass(self) -> None:
+        """A blocked sudo call left a request: ask for it, one dialog at a time."""
+        askpass = self.askpass
+        if askpass is None or self._dialog_token is not None:
+            return
+        token = askpass.pending()
+        if token is None or token in self._answered:
+            return
+        self._dialog_token = token
+        self.push_screen(PasswordDialog(self.strings),
+                         lambda password: self._password_answer(token, password))
+
+    def _password_answer(self, token: str, password: str | None) -> None:
+        self._dialog_token = None
+        askpass = self.askpass
+        if askpass is None:             # the run ended while the dialog was open
+            return
+        self._answered.add(token)
+        if password:
+            askpass.answer(token, password)
+        else:
+            # Denied: this request and every later one fail at once, so sudo does
+            # not ask three times, and the blocked step fails instead of waiting.
+            self.log_tail.append(self.strings("sudo_password_missing"))
+            askpass.cancel()
+            self.cancel_install()
+            if self.action_screen is not None:
+                self.cancel_action()
+        self._poll_askpass()    # a request that arrived while the dialog was open
+
+    def _close_askpass(self) -> None:
+        askpass, self.askpass = self.askpass, None
+        self._dialog_token = None
+        if askpass is not None:
+            askpass.close()
 
     def _new_session(self, steps, log_path, root):
         if self._session_factory is not None:
@@ -196,6 +217,7 @@ class KosApp(App):
         log_path = self._new_log_path("manage")
         self.action_event = threading.Event()
         self.action_screen = screen
+        self._new_askpass()
         screen.action_started(title, log_path)
         self.action_worker = self._run_action(list(steps), log_path)
 
@@ -211,6 +233,7 @@ class KosApp(App):
 
     def _action_finished(self, session, code: int) -> None:
         screen, self.action_screen = self.action_screen, None
+        self._close_askpass()
         if screen is not None and screen.is_mounted:
             screen.handle_action_done(session, code)
 
@@ -302,6 +325,7 @@ class KosApp(App):
 
     def _prepare_failed(self, error: str) -> None:
         self.prepare_error = error
+        self._close_askpass()
         if isinstance(self.screen, InstallationScreen):
             self.pop_screen()
         if isinstance(self.screen, ReviewScreen):
@@ -309,6 +333,7 @@ class KosApp(App):
 
     def _prepare_cancelled(self) -> None:
         """Cancelling the clone is a cancelled install, not a failed one."""
+        self._close_askpass()
         if isinstance(self.screen, InstallationScreen):
             self.pop_screen()
         self.exit_code = 130

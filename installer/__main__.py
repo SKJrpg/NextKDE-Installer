@@ -183,8 +183,9 @@ def main(argv: list[str] | None = None) -> int:
             sys.stdout.reconfigure(line_buffering=True)
         except AttributeError:
             pass
-        # One password for every sudo call in this run; children get no tty, so
-        # without one the run cannot succeed and stops before any step.
+        # No event loop here to answer an askpass request mid-run, so the
+        # password is asked up front. Children get no tty, so without one the
+        # run cannot succeed and stops before any step.
         askpass = None
         try:
             if not sudo_ready():

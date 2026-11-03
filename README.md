@@ -63,6 +63,28 @@ For the product itself use `kosctl` directly: `kosctl install`, `kosctl install 
 `kosctl snapshot`, `kosctl rollback`. The installer never re-implements them and does not
 wrap them in a second command tree.
 
+## sudo
+
+Nothing asks for a password up front. The install children run without a tty, so a
+`sudo` shim and an askpass helper are put on their `PATH`: when a step's `sudo` needs
+a password, the helper leaves a request and blocks, and the wizard shows one dialog
+for it. A full install therefore asks twice, like running `kosctl` by hand — once for
+the build packages, once for the KWin system plugins after the build. Nothing else
+prompts: a run whose dependencies are all present asks exactly once, after the build,
+and a `sudo` timestamp that is still valid (`sudo -n` passing, or a password typed a
+minute ago) means zero prompts. The plan starting is never a reason to ask.
+
+The answer is written to one file only this user can read, is used for that `sudo`
+call, and is removed as soon as sudo has it; it never reaches the log, argv or the
+result screen. Cancelling the dialog denies the password: that request and every
+later one fail at once (no three-attempt retry), the step fails, and the run ends
+with "sudo password was not provided". Priming sudo first (`sudo -v`) avoids the
+prompt entirely for the following minutes.
+
+`--plain` and `--yes` have no event loop to answer a request mid-run, so they ask
+once with `getpass` when stdin is a tty; without one they need a primed `sudo -v`
+and exit 2 before starting anything.
+
 ## Layout
 
 ```

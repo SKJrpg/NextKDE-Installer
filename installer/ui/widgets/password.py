@@ -1,4 +1,4 @@
-"""The one password prompt: asked once per run, only when sudo needs it."""
+"""The sudo password prompt: shown only while a sudo call waits for it."""
 
 from __future__ import annotations
 

@@ -107,10 +107,6 @@ class WizardTest(unittest.IsolatedAsyncioTestCase):
         patcher = mock.patch("installer.workflow.identity", side_effect=fake_identity)
         patcher.start()
         self.addCleanup(patcher.stop)
-        # Sudo is primed here: the password prompt has its own tests (test_sudo).
-        patcher = mock.patch("installer.ui.app.sudo_ready", return_value=True)
-        patcher.start()
-        self.addCleanup(patcher.stop)
 
     def make_app(self, mode: str = "ok") -> "KosApp":
         return KosApp(lang="en", system=fake_system(),

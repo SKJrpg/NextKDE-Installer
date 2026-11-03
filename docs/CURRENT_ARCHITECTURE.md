@@ -36,6 +36,7 @@ installer/
   core/
     events.py           Event: one classified line or state change from a worker
     session.py          InstallSession: runs the plan, reports events, cancels
+    askpass.py          sudo shim + askpass helper: one answer per blocked sudo call
   ui/
     app.py              KosApp: wizard state (Options, prepared source, steps),
                         thread workers, cancel/quit
@@ -44,9 +45,10 @@ installer/
     screens/            welcome, system, options, review, installation, result,
                         and the management area (units, snapshots, logs, management)
     widgets/confirm.py  modal confirmation used by the destructive actions
+    widgets/password.py modal that answers one blocked sudo call
   render/
     plain.py            the same plan without a TTY; NO_COLOR aware
-tests/                  152 offline unit tests (tests/, tests/core/, tests/ui/)
+tests/                  171 offline unit tests (tests/, tests/core/, tests/ui/)
 vendor/                 pinned Textual 8.2.8 + rich and its dependencies
 docs/design.md          the independent-installer architecture proposal
 docs/BACKEND_CONTRACT.md  capability names, contract shapes, probe fallback
@@ -155,6 +157,32 @@ selector, classifies lines, and writes them to the run log. `cancel()` signals t
 group with SIGTERM and escalates to SIGKILL after five seconds; `close()` always waits, so the
 child is reaped. No `shell=True` anywhere.
 
+### sudo, on demand
+
+The install children get no tty, so `core/askpass.py` gives each run a private `0700`
+directory (under `XDG_RUNTIME_DIR`, `/tmp` as fallback) holding a `sudo` shim and an
+`askpass.sh` helper; the session merges `PATH` (the directory first) and `SUDO_ASKPASS` into
+every step's env. The shim adds the `-A` sudo otherwise ignores. The helper is the only thing
+that ever asks: it creates `pending.<token>`, polls every 100 ms for `answer.<token>` (hard
+timeout 180 s), prints that file's contents once, and removes both. `Askpass.pending()` is
+what the UI watches, `answer()` writes a `0600` file, and `cancel()` writes an empty answer
+plus a `denied` marker so this and every later request fail immediately instead of sudo
+asking three times. The flush of the whole password story: no password is written until a
+request exists, and the answer is deleted as soon as sudo reads it.
+
+`KosApp` polls `pending()` every 150 ms on the event loop and pushes `PasswordDialog` once
+per request (never stacked; a request that arrives while a dialog is open is asked right
+after it closes). So nothing is asked at startup and nothing is asked at all when `sudo -n
+true` already works: a full install asks once for the build packages and once for the KWin
+system plugins after the build, the way running `kosctl` by hand does. The request is the
+only trigger, never the plan starting: dependencies that are already present produce no
+early prompt (exactly one prompt, after the build), and a still-valid sudo timestamp
+produces none at all. Denying cancels the run; the step fails and the result screen says
+the password was not provided.
+`--plain`/`--yes` have no event loop to answer requests mid-run, so they keep the up-front
+`getpass` (with a tty) or exit 2 before starting (without one), and the password is written
+before the run instead.
+
 ## 8. Backend surface actually used
 
 The capability each call needs is declared in `installer/backend/models.py`; a
@@ -174,7 +202,7 @@ empty. This is a product-side gap, not an installer bug.
 
 ## 9. Verified state
 
-- `PYTHONPATH=$PWD/vendor python3 -m unittest discover -s tests` → 133 tests, offline
+- `PYTHONPATH=$PWD/vendor python3 -m unittest discover -s tests` → 171 tests, offline
   (bare repositories, `file://`); the Textual tests skip when `vendor/` is missing.
 - Host: `./install.sh --root <checkout> --check` and `… --plain --check` →
   `KOS Installer — CachyOS (x86_64)`, exit 0, nothing cloned.
