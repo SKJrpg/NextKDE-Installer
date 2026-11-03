@@ -8,6 +8,7 @@ before the next step starts.
 from __future__ import annotations
 
 import threading
+from dataclasses import replace
 from pathlib import Path
 from typing import Callable
 
@@ -21,11 +22,14 @@ _TAIL = 8
 
 
 class InstallSession:
-    def __init__(self, paths, steps, log_path, root=None) -> None:
+    def __init__(self, paths, steps, log_path, root=None, extra_env=None) -> None:
         self.paths = paths
         self.steps = list(steps)
         self.log_path = Path(log_path)
         self.root = Path(root) if root is not None else Path(paths.source_root)
+        # Merged into every step (the askpass PATH and SUDO_ASKPASS): a copy per
+        # step, so the caller's list is never mutated.
+        self.extra_env = dict(extra_env or {})
         self.result = ""            # ok | failed | cancelled, once run() returns
         self.exit_code = 0
         self.failed_index: int | None = None
@@ -44,6 +48,8 @@ class InstallSession:
                            index=index, total=total))
                 if not step.argv:
                     continue
+                if self.extra_env:
+                    step = replace(step, env={**step.env, **self.extra_env})
                 runner = StepRunner(step, self.root, log)
                 try:
                     runner.start()

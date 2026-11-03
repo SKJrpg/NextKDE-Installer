@@ -101,3 +101,16 @@ class SessionTest(unittest.TestCase):
         # close() is the reap: it ran for the killed step and no other.
         self.assertEqual(self.closed, ["slow"])
         self.assertLess(elapsed, 10)
+
+    def test_extra_env_reaches_every_step_without_mutating_them(self) -> None:
+        steps = [sh("one", 'printf "%s\\n" "$SUDO_ASKPASS"'),
+                 sh("two", 'printf "%s\\n" "$SUDO_ASKPASS"')]
+        session = InstallSession(self.paths, steps, self.log,
+                                 extra_env={"SUDO_ASKPASS": "/run/kos/askpass.sh"})
+        events: list[Event] = []
+        code = session.run(events.append, threading.Event())
+
+        self.assertEqual(code, 0)
+        self.assertEqual([event.text for event in events if event.kind == "log"],
+                         ["/run/kos/askpass.sh", "/run/kos/askpass.sh"])
+        self.assertEqual([step.env for step in steps], [{}, {}])

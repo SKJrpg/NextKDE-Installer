@@ -8,8 +8,10 @@ install path. ``--root`` (or ``KOS_ROOT``) names that checkout.
 from __future__ import annotations
 
 import argparse
+import getpass
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -17,6 +19,7 @@ from pathlib import Path
 from . import VERSION, workflow
 from .backend import contract, probe
 from .backend.models import BackendIncompatible
+from .core.askpass import Askpass, sudo_ready
 from .detect import detect
 from .paths import Paths
 from .plan import ALL_APPS, Options, build_plan, unsupported
@@ -180,26 +183,46 @@ def main(argv: list[str] | None = None) -> int:
             sys.stdout.reconfigure(line_buffering=True)
         except AttributeError:
             pass
-        # The installer owns the source: fetch the chosen commit first, then run
-        # the plan built for that workspace.
+        # One password for every sudo call in this run; children get no tty, so
+        # without one the run cannot succeed and stops before any step.
+        askpass = None
         try:
-            preparation = workflow.begin(opts.source, opts, paths)
-        except (OSError, ValueError, subprocess.SubprocessError) as error:
-            print(f"{strings('prepare_failed')}: {error}", file=sys.stderr)
-            return 1
-        def plan_from_workspace() -> list:
-            """The plan for the workspace that was just fetched (design §10.7)."""
-            prepared = preparation.prepared
-            root = Path(prepared.path)
-            info = contract.read(root) or probe.detect(root)
-            return build_plan(system.family, opts, paths, prepared, backend=info)
+            if not sudo_ready():
+                if not sys.stdin.isatty():
+                    print(strings("sudo_needs_password"), file=sys.stderr)
+                    return 2
+                askpass = Askpass()
+                try:
+                    askpass.set_password(
+                        getpass.getpass(strings("sudo_password_prompt")))
+                except (EOFError, KeyboardInterrupt):
+                    print(strings("sudo_needs_password"), file=sys.stderr)
+                    return 2
+                # The plain path runs its children from this process's env.
+                os.environ.update(askpass.env)
+            # The installer owns the source: fetch the chosen commit first, then run
+            # the plan built for that workspace.
+            try:
+                preparation = workflow.begin(opts.source, opts, paths)
+            except (OSError, ValueError, subprocess.SubprocessError) as error:
+                print(f"{strings('prepare_failed')}: {error}", file=sys.stderr)
+                return 1
+            def plan_from_workspace() -> list:
+                """The plan for the workspace that was just fetched (design §10.7)."""
+                prepared = preparation.prepared
+                root = Path(prepared.path)
+                info = contract.read(root) or probe.detect(root)
+                return build_plan(system.family, opts, paths, prepared, backend=info)
 
-        try:
-            return plain.execute(system, plan_from_workspace, paths, strings,
-                                 preparation=preparation)
-        except BackendIncompatible as error:
-            print(strings("backend_incompatible") % error, file=sys.stderr)
-            return 2
+            try:
+                return plain.execute(system, plan_from_workspace, paths, strings,
+                                     preparation=preparation)
+            except BackendIncompatible as error:
+                print(strings("backend_incompatible") % error, file=sys.stderr)
+                return 2
+        finally:
+            if askpass is not None:
+                askpass.close()
 
     # Imported here: the module needs Textual, which the branch above just checked.
     from .ui.app import KosApp

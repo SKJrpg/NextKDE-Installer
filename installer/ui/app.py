@@ -20,6 +20,7 @@ from textual.app import App
 from .. import VERSION, workflow
 from ..backend import contract, probe
 from ..backend.models import BackendIncompatible, BackendInfo
+from ..core.askpass import Askpass, sudo_ready
 from ..core.events import Event
 from ..core.session import InstallSession
 from ..detect import System, detect
@@ -31,6 +32,7 @@ from .screens.result import ResultScreen
 from .screens.review import ReviewScreen
 from .screens.welcome import WelcomeScreen
 from .theme import resolve_mode
+from .widgets.password import PasswordDialog
 
 
 class KosApp(App):
@@ -76,6 +78,7 @@ class KosApp(App):
         self.exit_code = 0
         self.cancel_event = threading.Event()
         self.session = None             # the last InstallSession
+        self.askpass: Askpass | None = None   # set only while a run needs sudo
         self.install_worker = None
         self.prepare_worker = None
         self.action_worker = None
@@ -128,11 +131,42 @@ class KosApp(App):
             f"{prefix}-%Y%m%d-%H%M%S-{self._log_seq}.log")
 
     def start_install(self) -> None:
-        """Enter from Review: prepare the source if needed, then run the plan."""
+        """Enter from Review: ask for the sudo password once, then run the plan."""
+        prepared = self._prepared_source()
+        planned = build_plan(self.system.family, self.opts, self.paths, prepared,
+                             backend=self.backend)
+        # Only when a real sudo call is coming and this run has no password yet.
+        if planned and self.askpass is None and not self._sudo_ready():
+            self.push_screen(PasswordDialog(self.strings), self._password_entered)
+            return
+        self._start_install()
+
+    def _prepared_source(self):
         mode = workflow.MODES.get(self.opts.source)
         prepared = self.prepared if (self.prepared is not None
                                      and self.prepared.mode == mode) else None
         self.prepared = prepared
+        return prepared
+
+    @staticmethod
+    def _sudo_ready() -> bool:
+        """True when sudo already works without a password in this run."""
+        return sudo_ready()
+
+    def _password_entered(self, password: str | None) -> None:
+        if not password:                # cancelled or empty: stay on Review
+            return
+        self.askpass = Askpass()
+        self.askpass.set_password(password)
+        self._start_install()
+
+    def _close_askpass(self) -> None:
+        askpass, self.askpass = self.askpass, None
+        if askpass is not None:
+            askpass.close()
+
+    def _start_install(self) -> None:
+        prepared = self._prepared_source()
         self.prepare_error = ""
         self.exit_code = 0
         self.cancel_event = threading.Event()
@@ -153,7 +187,8 @@ class KosApp(App):
     def _new_session(self, steps, log_path, root):
         if self._session_factory is not None:
             return self._session_factory(steps, log_path, root)
-        return InstallSession(self.paths, steps, log_path, root=root)
+        return InstallSession(self.paths, steps, log_path, root=root,
+                              extra_env=self.askpass.env if self.askpass else None)
 
     # -- management actions ----------------------------------------------
     def start_action(self, screen, title: str, steps) -> None:
@@ -287,6 +322,11 @@ class KosApp(App):
         if isinstance(self.screen, InstallationScreen):
             # A session that raises ends without a done/cancel event of its own.
             self.screen.stop_activity()
+        if code and any("incorrect password" in text
+                        for _level, text in getattr(session, "tail", [])):
+            # The password was wrong: drop it so Retry asks again, and say why.
+            self.log_tail.append(self.strings("sudo_password_wrong"))
+        self._close_askpass()
         result = getattr(session, "result", "")
         if not result:
             result = "cancelled" if code == 130 else "failed" if code else "ok"
@@ -301,8 +341,8 @@ class KosApp(App):
 
     def _result_dismissed(self, value: str | None) -> None:
         if value == "retry":
-            below = self._screen_stack[-2] if len(self._screen_stack) > 1 else None
-            if isinstance(below, InstallationScreen):
+            # The result screen is already popped; Installation sits on Review.
+            if isinstance(self.screen, InstallationScreen):
                 self.pop_screen()  # drop Installation, back to Review
             if isinstance(self.screen, ReviewScreen):
                 self.screen.reload()
@@ -331,6 +371,7 @@ class KosApp(App):
         # Last resort: never leave an install child running behind a closed UI.
         self.cancel_event.set()
         self.action_event.set()
+        self._close_askpass()
         for worker in (self.install_worker, self.prepare_worker, self.action_worker):
             if worker is not None and not worker.is_finished:
                 try:

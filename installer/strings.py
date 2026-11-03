@@ -129,8 +129,8 @@ _TEXT = {
                          "Install git before running the installer."),
     "remedy_probe_python": ("需要 Python 3.10 或更新版本。",
                             "Python 3.10 or newer is required."),
-    "remedy_probe_sudo": ("安装前先执行 `sudo -v`，或直接在终端里运行。",
-                          "Prime sudo with `sudo -v` before installing, or use a terminal."),
+    "remedy_probe_sudo": ("安装器启动时会询问一次密码；也可以先执行 `sudo -v`。",
+                          "The installer asks for it once when the run starts; `sudo -v` beforehand also works."),
     "remedy_probe_manager": ("没有找到受支持的包管理器。",
                              "No supported package manager was found."),
     "remedy_probe_packages": ("kosctl install 会用系统包管理器补上这些包。",
@@ -138,6 +138,17 @@ _TEXT = {
     "why_probe_git": ('用来取源码和切换发布标签，缺了安装器无法开始。', 'Fetches the source and checks out release tags; without it the installer cannot start.'),
     "why_probe_python": ('安装器和 kosctl 的辅助脚本都依赖 python3。', "The installer and kosctl's helper scripts both need python3."),
     "why_probe_sudo": ('装系统包和写 /usr 需要 root；提前授权，避免十几分钟的构建被打断。', 'Package installs and /usr writes need root; priming it avoids interrupting a long build.'),
+    "sudo_password_title": ("需要 sudo 密码", "sudo password"),
+    "sudo_password_body": ("安装需要 root 权限；密码只用于本次运行，不会写入磁盘或日志。",
+                           "The install needs root. The password is used for this run only; "
+                           "it is not written to disk or to the log."),
+    "sudo_password_prompt": ("sudo 密码：", "sudo password: "),
+    "sudo_needs_password": ("sudo 需要密码，但当前没有终端可以输入。先执行 `sudo -v`，再运行安装器。",
+                            "sudo needs a password and there is no terminal to ask on. "
+                            "Run `sudo -v` first, then start the installer again."),
+    "sudo_password_wrong": ("sudo 拒绝了密码（3 次尝试失败）；密码未保存，请重试。",
+                            "sudo rejected the password (3 incorrect password attempts); "
+                            "it was not kept, retry to enter it again."),
     "why_probe_manager": ('决定构建依赖和运行期集成由哪个包管理器装。', 'Decides which package manager installs the build and runtime packages.'),
     "why_probe_packages": ('这些包由 kosctl install 通过包管理器补上，通常是几十秒。', 'These are added by kosctl install through the package manager, usually seconds.'),
     "deps_title": ('构建依赖（%s）', 'Build packages (%s)'),

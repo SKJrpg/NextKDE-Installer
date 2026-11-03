@@ -227,8 +227,8 @@ def detect(fixed_os_release: str | None = None, root: Path | None = None) -> Sys
 
     rc, _ = _run(["sudo", "-n", "true"], timeout=3.0)
     system.probes.append(_probe("probe_sudo", rc == 0, "authorised" if rc == 0 else "password required",
-                                "Prime sudo with `sudo -v` before installing, or use a terminal.",
-                                warn=True))
+                                "The installer asks for it once when the run starts; "
+                                "`sudo -v` beforehand also works.", warn=True))
 
     manager = next((m for m in ("apt-get", "pacman", "dnf", "zypper") if shutil.which(m)), "")
     system.probes.append(_probe("probe_manager", bool(manager), manager or "not found",

@@ -90,6 +90,7 @@ class EntryTest(unittest.TestCase):
                 mock.patch("installer.__main__.build_plan", return_value=fake_plan()), \
                 mock.patch("installer.__main__.workflow.begin",
                            return_value=preparation), \
+                mock.patch("installer.__main__.sudo_ready", return_value=True), \
                 mock.patch("installer.__main__.plain.execute", return_value=0) as execute, \
                 mock.patch("importlib.util.find_spec", return_value=None):
             code = main(["--root", directory])
