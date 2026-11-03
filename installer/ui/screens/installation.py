@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from rich.text import Text
 from textual.app import ComposeResult
-from textual.containers import VerticalScroll
-from textual.widgets import Button, ProgressBar, RichLog, Static
+from textual.containers import Horizontal, VerticalScroll
+from textual.widgets import Button, LoadingIndicator, ProgressBar, RichLog, Static
 
 from ...core.events import Event
 from . import WizardScreen
@@ -32,7 +32,9 @@ class InstallationScreen(WizardScreen):
         self.pending_stages = None
 
     def body(self) -> ComposeResult:
-        yield Static(id="install_head")
+        with Horizontal(id="install_head_row"):
+            yield Static(id="install_head")
+            yield LoadingIndicator(id="activity")
         with VerticalScroll(id="stages_box"):
             yield Static(id="stages")
         yield ProgressBar(id="progress", total=None)
@@ -89,6 +91,7 @@ class InstallationScreen(WizardScreen):
             self.state = "install_failed"
             self.query_one("#progress", ProgressBar).update(total=None)
             self._paint()
+            self.stop_activity()
         elif event.kind == "cancelled":
             for index, state in enumerate(self.states):
                 if state == "current":
@@ -96,6 +99,7 @@ class InstallationScreen(WizardScreen):
             self.state = "cancelled"
             self.query_one("#progress", ProgressBar).update(total=None)
             self._paint()
+            self.stop_activity()
         elif event.kind == "done":
             for index, step in enumerate(self.steps):
                 if self.states[index] not in ("failed", "skipped"):
@@ -105,6 +109,12 @@ class InstallationScreen(WizardScreen):
             self.query_one("#progress", ProgressBar).update(total=100, progress=100)
             self.query_one("#progress_state", Static).update("100%")
             self._paint()
+            self.stop_activity()
+
+    def stop_activity(self) -> None:
+        """The spinner means "still running"; drop it the moment that is untrue."""
+        for indicator in self.query("#activity"):
+            indicator.remove()
 
     def note_cancel(self) -> None:
         self.state = "install_cancelling"

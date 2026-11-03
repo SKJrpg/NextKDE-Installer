@@ -34,6 +34,8 @@ from .screens.welcome import WelcomeScreen
 
 class KosApp(App):
     CSS_PATH = "theme/app.tcss"
+    # A developer affordance; its footer hint has no place in an installer.
+    ENABLE_COMMAND_PALETTE = False
 
     def __init__(self, lang: str | None = None, system: System | None = None,
                  paths: Paths | None = None, *, opts: Options | None = None,
@@ -94,6 +96,19 @@ class KosApp(App):
     def invalidate_prepared(self) -> None:
         self.prepared = None
         self.prepare_error = ""
+
+    async def set_language(self, lang: str) -> None:
+        """Switch every label now; the wizard keeps its place and its state."""
+        if lang == self.lang:
+            return
+        self.lang = lang
+        self.strings = Strings(lang)
+        self.title = f"{self.strings('title')} · NextKDE"
+        for screen in self._screen_stack:
+            if hasattr(screen, "apply_language"):
+                screen.apply_language(self.strings)
+        await self.screen.recompose()
+        self.screen.refresh_bindings()   # the fresh footer reads them on compose
 
     def _new_log_path(self, prefix: str = "install"):
         self._log_seq += 1
@@ -257,6 +272,9 @@ class KosApp(App):
 
     def _install_finished(self, session, code: int) -> None:
         self.exit_code = code
+        if isinstance(self.screen, InstallationScreen):
+            # A session that raises ends without a done/cancel event of its own.
+            self.screen.stop_activity()
         result = getattr(session, "result", "")
         if not result:
             result = "cancelled" if code == 130 else "failed" if code else "ok"

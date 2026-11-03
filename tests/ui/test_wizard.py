@@ -253,3 +253,35 @@ class WizardTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(app.exit_code, 130)
             text = str(app.screen.query_one("#result_text").render())
             self.assertIn("cancelled", text.lower())
+
+    async def test_activity_indicator_lives_only_while_installing(self) -> None:
+        app = self.make_app(mode="cancel")
+        async with app.run_test(size=(100, 30)) as pilot:
+            await self.to_options(pilot)
+            await pilot.press("enter")
+            await pilot.pause()
+            await pilot.press("enter")
+            for _ in range(200):
+                await asyncio.sleep(0.01)
+                if isinstance(app.screen, InstallationScreen) and app.session is not None:
+                    break
+            screen = app.screen
+            self.assertEqual(len(screen.query("#activity")), 1)
+
+            await pilot.press("ctrl+c")
+            await self.wait_screen(app, ResultScreen)
+            await pilot.pause()
+            self.assertEqual(len(screen.query("#activity")), 0)
+
+    async def test_activity_indicator_stops_when_the_run_finishes(self) -> None:
+        app = self.make_app()
+        async with app.run_test(size=(100, 30)) as pilot:
+            await self.to_options(pilot)
+            await pilot.press("enter")
+            await pilot.pause()
+            await pilot.press("enter")
+            await self.wait_screen(app, ResultScreen)
+            await pilot.pause()
+            install = next(s for s in app._screen_stack
+                           if isinstance(s, InstallationScreen))
+            self.assertEqual(len(install.query("#activity")), 0)

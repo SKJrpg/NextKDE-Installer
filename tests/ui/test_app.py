@@ -24,11 +24,21 @@ if _VENDOR.is_dir():
 HAS_TEXTUAL = importlib.util.find_spec("textual") is not None
 
 if HAS_TEXTUAL:
+    from textual.widgets import Checkbox
+    from textual.widgets._footer import FooterKey
+
     from installer.detect import OsInfo, Probe, System
     from installer.paths import Paths
+    from installer.strings import Strings
     from installer.ui.app import KosApp
+    from installer.ui.screens.options import OptionsScreen
     from installer.ui.screens.system import SystemScreen
     from installer.ui.screens.welcome import WelcomeScreen
+
+
+def footer_text(app) -> str:
+    """What the footer currently says, as text."""
+    return " ".join(key.description for key in app.screen.query(FooterKey))
 
 
 def fake_system() -> "System":
@@ -38,7 +48,8 @@ def fake_system() -> "System":
         method="kosctl",
         arch="x86_64",
         probes=[Probe("probe_os", "PASS", "CachyOS"),
-                Probe("probe_disk", "WARN", "4.2 GiB free")],
+                Probe("probe_disk", "WARN", "4.2 GiB free",
+                      "At least 6 GiB is needed for the build tree.")],
     )
 
 
@@ -102,6 +113,90 @@ class AppShellTest(unittest.IsolatedAsyncioTestCase):
             await pilot.press("escape")
             await pilot.pause()
             self.assertIsInstance(app.screen, WelcomeScreen)
+
+    async def test_language_switch_rewrites_the_page_and_the_footer(self) -> None:
+        app = self.make_app(lang="zh")
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.pause()
+            self.assertIn("发行版", str(app.screen.query_one("#facts").render()))
+            self.assertIn("进入", footer_text(app))
+
+            await pilot.press("right")
+            await pilot.pause()
+            self.assertEqual(app.lang, "en")
+            self.assertIn("Distribution", str(app.screen.query_one("#facts").render()))
+            self.assertIn("open", footer_text(app))
+            self.assertIn("Language", str(app.screen.query_one("#language").render()))
+
+            await pilot.press("left")
+            await pilot.pause()
+            self.assertEqual(app.lang, "zh")
+            self.assertIn("发行版", str(app.screen.query_one("#facts").render()))
+
+    async def test_footer_offers_no_command_palette(self) -> None:
+        app = self.make_app()
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.pause()
+            self.assertFalse(app.ENABLE_COMMAND_PALETTE)
+            self.assertNotIn("palette", footer_text(app).lower())
+
+    async def test_probe_detail_follows_the_focused_row(self) -> None:
+        app = self.make_app()
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.press("enter")
+            await pilot.pause()
+            await pilot.press("down")
+            await pilot.pause()
+            detail = str(app.screen.query_one("#probe_detail_text").render())
+            self.assertIn("Why it matters", detail)
+            self.assertIn(Strings("en")("why_probe_disk"), detail)
+            self.assertIn("4.2 GiB free", detail)
+            self.assertIn("WARN", detail)
+
+    async def test_probe_detail_is_reachable_on_a_small_terminal(self) -> None:
+        app = self.make_app()
+        async with app.run_test(size=(66, 20)) as pilot:
+            await pilot.press("enter")
+            await pilot.pause()
+            await pilot.press("down")
+            await pilot.pause()
+            self.assertEqual(app.screen.row, 1)
+            # Below 110 columns the detail stacks under the list, scrollable.
+            self.assertFalse(app.screen.query_one("#probe_detail").has_class("-wide"))
+            detail = str(app.screen.query_one("#probe_detail_text").render())
+            self.assertIn(Strings("en")("why_probe_disk"), detail)
+            self.assertGreater(app.screen.query_one("#probe_detail").max_scroll_y, 0)
+
+    async def test_wide_options_explain_the_source(self) -> None:
+        app = self.make_app()
+        async with app.run_test(size=(120, 30)) as pilot:
+            await pilot.press("enter")
+            await pilot.pause()
+            await pilot.press("enter")
+            await pilot.pause()
+            self.assertIsInstance(app.screen, OptionsScreen)
+            self.assertTrue(app.screen.query_one("#option_detail").has_class("-wide"))
+            detail = str(app.screen.query_one("#option_detail_text").render())
+            self.assertIn(Strings("en")("detail_source"), detail)
+
+    async def test_wide_options_detail_follows_focus(self) -> None:
+        app = self.make_app()
+        async with app.run_test(size=(120, 30)) as pilot:
+            await pilot.press("enter")
+            await pilot.pause()
+            await pilot.press("enter")
+            await pilot.pause()
+
+            def detail() -> str:
+                return str(app.screen.query_one("#option_detail_text").render())
+
+            app.screen.query_one("#spatial", Checkbox).focus()
+            await pilot.pause()
+            self.assertIn(Strings("en")("opt_spatial_hint"), detail())
+
+            app.screen.query_one("#app_todo", Checkbox).focus()
+            await pilot.pause()
+            self.assertIn(Strings("en")("detail_apps"), detail())
 
 
 class InstallShTest(unittest.TestCase):

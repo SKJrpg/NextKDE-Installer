@@ -20,14 +20,34 @@ STEPS = ("step_welcome", "step_system", "step_options", "step_review", "step_ins
 class ChromeScreen(Screen):
     """Header and footer with localized key labels; the management area."""
 
-    # (keys, action, string key for the footer description)
-    KEYS: tuple[tuple[str, str, str], ...] = ()
+    # (keys, action, string key for the footer description[, key display[, show]])
+    KEYS: tuple[tuple, ...] = ()
 
     def __init__(self, strings: Strings, **kwargs) -> None:
         super().__init__(**kwargs)
         self.strings = strings
-        for keys, action, label in self.KEYS:
-            self._bindings.bind(keys, action, strings(label))
+        self._base_bindings = self._bindings.copy()
+        self._bind_keys()
+
+    def _bind_keys(self) -> None:
+        """(Re)bind KEYS with the current language's footer words."""
+        self._bindings = self._base_bindings.copy()
+        for entry in self.KEYS:
+            keys, action, label, *rest = entry
+            display = rest[0] if rest else None
+            if display and self.strings.ascii:
+                display = display.replace("←", "left").replace("→", "right") \
+                                 .replace("↑", "up").replace("↓", "down")
+            show = rest[1] if len(rest) > 1 else True
+            for key in keys.split(","):
+                # Our binding must win over the screen's own (e.g. tab).
+                self._bindings.key_to_bindings.pop(key.strip(), None)
+            self._bindings.bind(keys, action, self.strings(label) if show else "",
+                                key_display=display)
+
+    def apply_language(self, strings: Strings) -> None:
+        self.strings = strings
+        self._bind_keys()
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)

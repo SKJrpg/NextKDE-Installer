@@ -11,12 +11,28 @@ from . import WizardScreen
 
 class WelcomeScreen(WizardScreen):
     STEP = 0
-    KEYS = (("enter", "open_system", "key_open"), ("m", "open_manage", "key_manage"),
+    KEYS = (("left,right,tab", "cycle_language", "key_language", "←/→/Tab"),
+            ("enter", "open_system", "key_open"), ("m", "open_manage", "key_manage"),
             ("q", "quit", "key_quit"))
 
     def body(self) -> ComposeResult:
         yield Static(self.strings("welcome_intro"), id="intro")
         yield Static(self._facts(), id="facts")
+        yield Static(self._language(), id="language")
+
+    def _language(self) -> Text:
+        s = self.strings
+        on, off = ("(*)", "( )") if s.ascii else ("(•)", "( )")
+        text = Text()
+        text.append(s("label_language"), style="dim")
+        text.append("  ")
+        for index, (code, name) in enumerate((("zh", "中文"), ("en", "English"))):
+            if index:
+                text.append("  ")
+            text.append(on if self.app.lang == code else off,
+                        style="bold" if self.app.lang == code else None)
+            text.append(" " + name)
+        return text
 
     def _facts(self) -> Text:
         s = self.strings
@@ -35,6 +51,9 @@ class WelcomeScreen(WizardScreen):
             if index < len(pairs) - 1:
                 text.append("\n")
         return text
+
+    async def action_cycle_language(self) -> None:
+        await self.app.set_language("en" if self.app.lang == "zh" else "zh")
 
     def action_open_system(self) -> None:
         from .system import SystemScreen
