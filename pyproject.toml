@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nextkde-installer"
+description = "Standalone installer and wizard for NextKDE"
+readme = "README.md"
+requires-python = ">=3.10"
+dynamic = ["version"]
+
+[tool.setuptools.packages.find]
+include = ["installer*"]
+
+[tool.setuptools.dynamic]
+version = {attr = "installer.VERSION"}

@@ -1,5 +1,10 @@
 __pycache__/
 *.pyc
 .venv/
+vendor/
 dist/
 *.egg-info/
+
+
+AGENTS.md
+.opencode/

@@ -33,5 +33,12 @@ if ! python_ok; then
     exit 2
 fi
 
-exec env PYTHONPATH="$here${PYTHONPATH:+:$PYTHONPATH}" \
+# Vendored Textual lives in vendor/ (tools/vendor.py builds it); it is optional,
+# so a checkout without it keeps the current plain/curses behaviour.
+vendor_path=
+if [ -d "$here/vendor" ]; then
+    vendor_path="$here/vendor:"
+fi
+
+exec env PYTHONPATH="$vendor_path$here${PYTHONPATH:+:$PYTHONPATH}" \
     python3 -m installer "$@"
