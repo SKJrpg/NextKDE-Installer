@@ -22,6 +22,7 @@ sys.path.insert(0, str(HERE))
 
 from installer import manage  # noqa: E402
 from installer.detect import OsInfo, Probe, System  # noqa: E402
+from installer.paths import Paths  # noqa: E402
 from installer.plan import Step  # noqa: E402
 from installer.render import curses_ui, plain  # noqa: E402
 from installer.render import layout as layout_mod  # noqa: E402
@@ -120,6 +121,11 @@ class FakeWin:
         return "".join("".join(row[x:x + width]) for row in self.cells).strip()
 
 
+def make_paths(root: Path = Path("/repo"), state: Path = Path("/state")) -> Paths:
+    return Paths(installer_root=HERE, source_root=Path(root),
+                 build_root=Path("/cache/build"), state_root=Path(state))
+
+
 def make_system(blocked: bool = False, probes: list[Probe] | None = None) -> System:
     return System(os=OsInfo(id="arch", version="", like=(), pretty="Arch Linux"),
                   family="arch", method="kosctl", arch="x86_64",
@@ -133,7 +139,8 @@ def make_ui(blocked: bool = False, lang: str = "en", probes: list[Probe] | None 
             mock.patch.object(curses_ui, "latest_release", return_value="v0.1.1"), \
             mock.patch.object(manage, "deps_from_docs", return_value=empty), \
             mock.patch.object(manage, "deps", return_value=empty):
-        ui = UI(make_system(blocked, probes), Path("/repo"), Strings(lang), Path(directory))
+        ui = UI(make_system(blocked, probes), make_paths(state=Path(directory)),
+                Strings(lang))
     if ascii_glyphs:
         ui.theme = Theme(ASCII, color=False)
     return ui
@@ -860,8 +867,8 @@ class PlainTest(unittest.TestCase):
         step = Step("core", "kosctl install", [sys.executable, "-c", "raise SystemExit(3)"])
         with tempfile.TemporaryDirectory() as directory, \
                 mock.patch.object(plain.sys, "stdout", stream):
-            log = Path(directory) / "install.log"
-            code = plain.execute(system, [step], Path("."), log, Strings("en"))
+            paths = make_paths(Path("."), Path(directory))
+            code = plain.execute(system, [step], paths, Strings("en"))
         self.assertEqual(code, 1)
         output = stream.getvalue()
         self.assertIn(Strings("en")("log_path"), output)

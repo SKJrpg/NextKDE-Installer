@@ -9,12 +9,12 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 
 from . import VERSION
 from .detect import detect
+from .paths import Paths
 from .plan import ALL_APPS, Options, build_plan, unsupported
 from .render import curses_ui, plain
 from .strings import Strings, choose_language
@@ -105,7 +105,7 @@ def main(argv: list[str] | None = None) -> int:
         print(strings("note_no_cjk"), file=sys.stderr)
     # The installer is its own repository: the product checkout is an input,
     # never something inferred from __file__.
-    root = Path(args.root or os.environ.get("KOS_ROOT") or Path.home() / "NextKde").resolve()
+    paths = Paths.resolve(args.root)
     config = _load_config(args.config) if args.config else {}
     if config.get("source") not in (None, "stable", "main", "local"):
         parser.error("config source must be 'stable', 'main' or 'local'")
@@ -114,8 +114,8 @@ def main(argv: list[str] | None = None) -> int:
     if unknown:
         parser.error("unknown apps: " + ", ".join(sorted(unknown)))
 
-    system = detect(root=root)
-    steps = build_plan(system.family, opts, root)
+    system = detect(root=paths.source_root)
+    steps = build_plan(system.family, opts, paths)
     blocked_options = unsupported(system.family, opts)
 
     if args.check:
@@ -145,12 +145,10 @@ def main(argv: list[str] | None = None) -> int:
             sys.stdout.reconfigure(line_buffering=True)
         except AttributeError:
             pass
-    log_dir = Path.home() / ".local" / "state" / "kos" / "installer"
     if not interactive:
-        log_path = log_dir / "install.log"
-        return plain.execute(system, steps, root, log_path, strings)
+        return plain.execute(system, steps, paths, strings)
 
-    return curses_ui.UI(system, root, strings, log_dir, lang_explicit=bool(args.lang)).run()
+    return curses_ui.UI(system, paths, strings, lang_explicit=bool(args.lang)).run()
 
 
 if __name__ == "__main__":

@@ -18,6 +18,7 @@ from pathlib import Path
 
 from .. import manage
 from ..detect import System, detect, method_label
+from ..paths import Paths
 from ..plan import (ALL_APPS, Options, Step, apps_missing, build_plan, git_state,
                     latest_release, proxy_url, selected_apps, unsupported)
 from ..runner import StepRunner, classify
@@ -59,18 +60,19 @@ class UI:
     LANGUAGES = ("zh", "en")
     WIZARD = (WELCOME, SYSTEM, OPTIONS, REVIEW, INSTALL, RESULT)
 
-    def __init__(self, system: System, root, strings, log_dir,
+    def __init__(self, system: System, paths: Paths, strings,
                  lang_explicit: bool = False) -> None:
         self.system = system
-        self.root = Path(root)
+        self.paths = paths
+        self.root = paths.source_root
         self.s = strings
-        self.log_dir = Path(log_dir)
+        self.log_dir = paths.log_dir
         self.opts = Options()
         # An empty app set with apps enabled means "the standard four"; showing
         # it as checked is the same plan the backend already produces.
         if self.opts.apps and not self.opts.app_set:
             self.opts.app_set = set(ALL_APPS)
-        self.steps: list[Step] = build_plan(system.family, self.opts, self.root)
+        self.steps: list[Step] = build_plan(system.family, self.opts, self.paths)
         self.screen = self.WELCOME
         self.row = 0          # list row shared by manage/units/snapshots/logs
         self.lang_row = 0 if strings.lang == "zh" else 1
@@ -83,7 +85,7 @@ class UI:
         self.theme = Theme(self._glyphs(), color=False)
         self.layout = layout_for(80, 24)
         self.log_lines: list[tuple[str, str]] = []
-        self.log_path = self.log_dir / time.strftime("install-%Y%m%d-%H%M%S.log")
+        self.log_path = paths.log_dir / time.strftime("install-%Y%m%d-%H%M%S.log")
         self.log_paused = False
         self.log_scroll = 0
         self.current: Step | None = None
@@ -299,7 +301,7 @@ class UI:
         return None
 
     def _enter_review(self) -> None:
-        self.steps = build_plan(self.system.family, self.opts, self.root)
+        self.steps = build_plan(self.system.family, self.opts, self.paths)
         self.app_deps = apps_missing(self.root) if self.opts.apps else []
         self.review_scroll = 0
         self.screen = self.REVIEW
@@ -1475,7 +1477,7 @@ class UI:
                                      max(0, len(self.log_lines) - 1)))
 
     def _install_body(self, stdscr) -> None:
-        self.steps = build_plan(self.system.family, self.opts, self.root)
+        self.steps = build_plan(self.system.family, self.opts, self.paths)
         self.result = ""
         self.failed = None
         self.failed_rc = None
@@ -1486,7 +1488,7 @@ class UI:
         self.log_scroll = 0
         self.install_started = time.monotonic()
         self.log_dir.mkdir(parents=True, exist_ok=True)
-        self.log_path = self.log_dir / time.strftime("install-%Y%m%d-%H%M%S.log")
+        self.log_path = self.paths.log_dir / time.strftime("install-%Y%m%d-%H%M%S.log")
         with self.log_path.open("w", encoding="utf-8") as log:
             log.write(f"# {self.system.label} {self.system.arch}\n")
             index = 0

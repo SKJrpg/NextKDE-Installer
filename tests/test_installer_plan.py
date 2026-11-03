@@ -17,6 +17,7 @@ HERE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(HERE))
 
 from installer.detect import family_of, parse_missing_packages, parse_os_release  # noqa: E402
+from installer.paths import Paths  # noqa: E402
 from installer import plan  # noqa: E402
 from installer.__main__ import _load_config as load_config  # noqa: E402
 from installer.__main__ import _options as options  # noqa: E402
@@ -25,6 +26,12 @@ from installer.plan import (ALL_APPS, Options, build_plan, parse_app_deps, proxy
 from installer.strings import choose_language, cjk_fonts_available, resolve_lang  # noqa: E402
 
 ROOT = Path("/repo")
+
+
+def paths_for(root: Path) -> Paths:
+    return Paths(installer_root=HERE, source_root=Path(root),
+                 build_root=Path("/cache/build"), state_root=Path("/state"))
+
 
 DEBIAN = 'ID=debian\nVERSION_ID="13"\nPRETTY_NAME="Debian GNU/Linux 13 (trixie)"\n'
 UBUNTU = 'ID=ubuntu\nVERSION_ID="26.04"\nID_LIKE=debian\nPRETTY_NAME="Ubuntu 26.04"\n'
@@ -63,7 +70,7 @@ class OsReleaseTest(unittest.TestCase):
 
 class PlanTest(unittest.TestCase):
     def test_debian_uses_the_wrapper(self) -> None:
-        steps = build_plan("debian", Options(source="main", start=True), ROOT)
+        steps = build_plan("debian", Options(source="main", start=True), paths_for(ROOT))
         # The wrapper installs the core; activation is a step of its own.
         self.assertEqual([step.key for step in steps], ["debian", "start"])
         argv = steps[0].argv
@@ -75,13 +82,13 @@ class PlanTest(unittest.TestCase):
     def test_debian_passes_the_checkout_origin(self) -> None:
         with mock.patch.object(plan, "origin_url",
                                return_value="https://github.com/fork/NextKde.git"):
-            argv = build_plan("debian", Options(), ROOT)[0].argv
+            argv = build_plan("debian", Options(), paths_for(ROOT))[0].argv
         self.assertEqual(argv[argv.index("--repo") + 1],
                          "https://github.com/fork/NextKde.git")
 
     def test_debian_local_keeps_the_checkout(self) -> None:
         with mock.patch.object(plan, "origin_url", return_value=""):
-            argv = build_plan("debian", Options(source="local"), ROOT)[0].argv
+            argv = build_plan("debian", Options(source="local"), paths_for(ROOT))[0].argv
         self.assertIn("--local", argv)
         self.assertNotIn("--version", argv)
         self.assertNotIn("--repo", argv)
@@ -89,13 +96,13 @@ class PlanTest(unittest.TestCase):
     def test_debian_components_follow_the_core(self) -> None:
         steps = build_plan("debian",
                            Options(apps=True, app_set={"calendar"}, lockscreen=True, start=True),
-                           ROOT)
+                           paths_for(ROOT))
         self.assertEqual([step.key for step in steps],
                          ["debian", "apps", "lockscreen", "start"])
         self.assertEqual(steps[1].argv[steps[1].argv.index("--only") + 1], "calendar")
 
     def test_arch_clean_main_selects_source_first(self) -> None:
-        steps = build_plan("arch", Options(), Path("/nonexistent-checkout"))
+        steps = build_plan("arch", Options(), paths_for(Path("/nonexistent-checkout")))
         # A missing checkout reports dirty, so source selection must be skipped.
         self.assertEqual(steps[0].key, "source")
         self.assertEqual(steps[0].argv, [])
@@ -104,42 +111,42 @@ class PlanTest(unittest.TestCase):
     def test_components_add_steps(self) -> None:
         steps = build_plan("arch", Options(apps=True, app_set=set(ALL_APPS),
                                            lockscreen=True, start=True),
-                           Path("/nonexistent-checkout"))
+                           paths_for(Path("/nonexistent-checkout")))
         keys = [step.key for step in steps]
         self.assertEqual(keys, ["source", "core", "apps", "lockscreen", "start"])
 
     def test_nixos_uses_flake(self) -> None:
-        steps = build_plan("nixos", Options(), ROOT)
+        steps = build_plan("nixos", Options(), paths_for(ROOT))
         self.assertEqual(steps[0].argv[-2:], ["nix", "install"])
 
     def test_report_only_families_plan_nothing(self) -> None:
-        self.assertEqual(build_plan("opensuse", Options(), ROOT), [])
-        self.assertEqual(build_plan(None, Options(), ROOT), [])
+        self.assertEqual(build_plan("opensuse", Options(), paths_for(ROOT)), [])
+        self.assertEqual(build_plan(None, Options(), paths_for(ROOT)), [])
 
     def test_apps_subset_passes_only(self) -> None:
         opts = Options(apps=True, app_set={"calendar", "weather"})
-        steps = build_plan("arch", opts, Path("/nonexistent-checkout"))
+        steps = build_plan("arch", opts, paths_for(Path("/nonexistent-checkout")))
         apps = next(step for step in steps if step.key == "apps")
         self.assertIn("--only", apps.argv)
         self.assertEqual(apps.argv[apps.argv.index("--only") + 1], "calendar,weather")
 
         full = build_plan("arch", Options(apps=True, app_set=set(ALL_APPS)),
-                          Path("/nonexistent-checkout"))
+                          paths_for(Path("/nonexistent-checkout")))
         self.assertNotIn("--only", next(step for step in full if step.key == "apps").argv)
 
         # An empty set means "the standard apps", not "nothing": --apps used to
         # be a no-op because of this.
         none = Options(apps=True, app_set=set())
-        argv = next(step for step in build_plan("arch", none, Path("/nonexistent-checkout"))
+        argv = next(step for step in build_plan("arch", none, paths_for(Path("/nonexistent-checkout")))
                     if step.key == "apps").argv
         self.assertNotIn("--only", argv)
 
     def test_spatial_is_off_unless_asked(self) -> None:
-        steps = build_plan("arch", Options(), Path("/nonexistent-checkout"))
+        steps = build_plan("arch", Options(), paths_for(Path("/nonexistent-checkout")))
         self.assertTrue(all(step.env.get("KOS_BUILD_SPATIAL") == "OFF" for step in steps))
-        on = build_plan("arch", Options(spatial=True), Path("/nonexistent-checkout"))
+        on = build_plan("arch", Options(spatial=True), paths_for(Path("/nonexistent-checkout")))
         self.assertTrue(all(step.env.get("KOS_BUILD_SPATIAL") == "ON" for step in on))
-        debian = build_plan("debian", Options(), ROOT)[0].argv
+        debian = build_plan("debian", Options(), paths_for(ROOT))[0].argv
         self.assertEqual(debian[debian.index("--spatial") + 1], "off")
 
     def test_proxy_url_reports_what_would_be_forwarded(self) -> None:
@@ -164,8 +171,8 @@ class PlanTest(unittest.TestCase):
 
         os.environ["http_proxy"] = "http://127.0.0.1:7897"
         try:
-            on = build_plan("arch", Options(proxy=True), Path("/nonexistent-checkout"))
-            off = build_plan("arch", Options(proxy=False), Path("/nonexistent-checkout"))
+            on = build_plan("arch", Options(proxy=True), paths_for(Path("/nonexistent-checkout")))
+            off = build_plan("arch", Options(proxy=False), paths_for(Path("/nonexistent-checkout")))
             self.assertEqual(on[0].env.get("http_proxy"), "http://127.0.0.1:7897")
             self.assertNotIn("http_proxy", off[0].env)
         finally:
@@ -310,7 +317,7 @@ class LanguageTest(unittest.TestCase):
 
 
     def test_local_source_never_updates(self) -> None:
-        steps = build_plan("arch", Options(source="local"), Path("/nonexistent-checkout"))
+        steps = build_plan("arch", Options(source="local"), paths_for(Path("/nonexistent-checkout")))
         self.assertEqual(steps[0].key, "source")
         self.assertEqual(steps[0].argv, [])
         self.assertEqual(steps[0].note, "skipped_local")

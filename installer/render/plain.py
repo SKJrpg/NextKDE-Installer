@@ -12,9 +12,9 @@ import os
 import sys
 import time
 from collections import deque
-from pathlib import Path
 
 from ..detect import System, method_label
+from ..paths import Paths
 from ..plan import Step
 from ..runner import StepRunner, classify
 
@@ -74,8 +74,9 @@ def print_report(system: System, steps: list[Step], strings) -> None:
         print(f"  - {_paint(strings('review_blocked'), '\033[31m', colour)}")
 
 
-def execute(system: System, steps: list[Step], root: Path, log_path: Path, strings) -> int:
+def execute(system: System, steps: list[Step], paths: Paths, strings) -> int:
     colour = _colour()
+    log_path = paths.log_dir / "install.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("w", encoding="utf-8") as log:
         log.write(f"# {system.label} {system.arch}\n")
@@ -85,7 +86,7 @@ def execute(system: System, steps: list[Step], root: Path, log_path: Path, strin
                 print(f"  {strings(step.note) if step.note else 'skipped'}")
                 continue
             print(f"  $ {' '.join(step.argv)}")
-            runner = StepRunner(step, root, log)
+            runner = StepRunner(step, paths.source_root, log)
             runner.start()
             tail: deque[tuple[str, str]] = deque(maxlen=8)
             try:

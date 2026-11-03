@@ -13,6 +13,8 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .paths import Paths
+
 
 ALL_APPS = ("calendar", "todo", "weather", "calculator")
 
@@ -191,10 +193,12 @@ def _component_steps(opts: Options, root: Path, env: dict[str, str]) -> list[Ste
     return steps
 
 
-def build_plan(family: str | None, opts: Options, root: Path) -> list[Step]:
-    root = Path(root)
+def build_plan(family: str | None, opts: Options, paths: Paths) -> list[Step]:
+    root = Path(paths.source_root)
     env = {**session_env(), **_proxy_env(opts.proxy),
            "KOS_BUILD_SPATIAL": "ON" if opts.spatial else "OFF"}
+    # paths.build_root is not passed as KOS_BUILD_DIR/KOS_APPS_BUILD_DIR: the
+    # product backend's path behaviour must be verified first (design §4.5).
     kosctl = str(root / "tools" / "kosctl")
 
     if family == "debian":
