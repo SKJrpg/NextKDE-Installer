@@ -253,5 +253,29 @@ class CanonicalTest(unittest.TestCase):
         self.assertEqual(CANONICAL_REPO, "https://github.com/NextKde/NextKde.git")
 
 
+class TimeoutTest(unittest.TestCase):
+    """A hung network must not freeze the UI behind an unbounded subprocess."""
+
+    @staticmethod
+    def completed(stdout: str = "") -> subprocess.CompletedProcess:
+        return subprocess.CompletedProcess([], 0, stdout, "")
+
+    def test_run_passes_the_timeout_through(self) -> None:
+        from installer.source import git as git_module
+        with mock.patch("installer.source.git.subprocess.run",
+                        return_value=self.completed()) as run:
+            git_module.run(None, "status")
+            self.assertEqual(run.call_args.kwargs["timeout"], git_module.TIMEOUT)
+            git_module.run(None, "status", timeout=3)
+            self.assertEqual(run.call_args.kwargs["timeout"], 3)
+
+    def test_ls_remote_uses_a_short_timeout(self) -> None:
+        from installer.source import git as git_module
+        with mock.patch("installer.source.git.subprocess.run",
+                        return_value=self.completed("a\trefs/heads/main\n")) as run:
+            self.assertEqual(git_module.ls_remote("r", "main"), "a")
+            self.assertEqual(run.call_args.kwargs["timeout"], 60)
+
+
 if __name__ == "__main__":
     unittest.main()

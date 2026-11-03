@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import subprocess
+
 from rich.cells import cell_len
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import VerticalScroll
 from textual.widgets import Static
 
+from ... import workflow
 from ...detect import method_label
-from ...plan import selected_apps, unsupported
+from ...plan import build_plan, selected_apps, unsupported
 from . import WizardScreen
 
 
@@ -21,6 +24,8 @@ class ReviewScreen(WizardScreen):
     def __init__(self, strings, **kwargs) -> None:
         super().__init__(strings, **kwargs)
         self.details = False
+        self._source = None       # identity resolved for an unprepared source
+        self._resolved = False
 
     def body(self) -> ComposeResult:
         with VerticalScroll(id="review"):
@@ -85,9 +90,26 @@ class ReviewScreen(WizardScreen):
         text.append_text(self._pairs(pairs))
         return text
 
+    def _plan_steps(self):
+        """The plan that preparation will produce, not the legacy-update one.
+
+        Before the source exists, resolve its identity so the argv already
+        points inside the workspace that ``preparation.finish()`` creates.
+        """
+        if self.app.prepared is None and not self._resolved:
+            self._resolved = True
+            try:
+                self._source = workflow.identity(self.app.opts.source, self.app.opts,
+                                                 self.app.paths)
+            except (OSError, ValueError, subprocess.SubprocessError):
+                self._source = None  # unreachable ref: fall back to the raw plan
+        prepared = self.app.prepared or self._source
+        return build_plan(self.app.system.family, self.app.opts, self.app.paths,
+                          prepared)
+
     def _steps(self) -> Text:
         s = self.strings
-        steps = self.app.plan_steps()
+        steps = self._plan_steps()
         text = Text(s("review_steps"), style="bold")
         if not steps:
             text.append("\n")

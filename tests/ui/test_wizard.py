@@ -11,6 +11,7 @@ import importlib.util
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 _VENDOR = ROOT / "vendor"
@@ -47,13 +48,22 @@ def fake_system() -> "System":
     )
 
 
+def fake_source(mode: str = "stable") -> "PreparedSource":
+    return PreparedSource(mode=workflow.MODES.get(mode, "stable"),
+                          repository="https://example.invalid/r.git",
+                          ref="v1.0", commit="a" * 40,
+                          path=Path("/tmp/nextkde-fake"), dirty=False,
+                          managed=True)
+
+
 def fake_prepare(mode, opts, paths) -> "workflow.Preparation":
     """Preparation that resolves instantly and never touches the network."""
-    prepared = PreparedSource(mode="stable", repository="https://example.invalid/r.git",
-                              ref="v1.0", commit="a" * 40,
-                              path=Path("/tmp/nextkde-fake"), dirty=False,
-                              managed=True)
-    return workflow.Preparation(paths, prepared=prepared)
+    return workflow.Preparation(paths, prepared=fake_source())
+
+
+def fake_identity(mode, opts, paths) -> "PreparedSource":
+    """The identity Review resolves for an unprepared source, offline."""
+    return fake_source(mode)
 
 
 class FakeSession:
@@ -87,6 +97,12 @@ class FakeSession:
 
 @unittest.skipUnless(HAS_TEXTUAL, "textual is not vendored (run tools/vendor.py)")
 class WizardTest(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        # Review resolves the source identity to build the real plan.
+        patcher = mock.patch("installer.workflow.identity", side_effect=fake_identity)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def make_app(self, mode: str = "ok") -> "KosApp":
         return KosApp(lang="en", system=fake_system(),
                       paths=Paths.resolve(source_root=ROOT),
@@ -134,7 +150,8 @@ class WizardTest(unittest.IsolatedAsyncioTestCase):
             await pilot.press("enter")
             await pilot.pause()
             self.assertIsInstance(app.screen, ReviewScreen)
-            steps = build_plan(app.system.family, app.opts, app.paths)
+            steps = build_plan(app.system.family, app.opts, app.paths,
+                               fake_source(app.opts.source))
             text = str(app.screen.query_one("#steps").render())
             for step in steps:
                 self.assertIn(step.title, text)
@@ -143,6 +160,21 @@ class WizardTest(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             argv = " ".join(steps[0].argv)
             self.assertIn(argv, str(app.screen.query_one("#steps").render()))
+
+    async def test_review_omits_the_legacy_update_step(self) -> None:
+        app = self.make_app()
+        async with app.run_test(size=(100, 30)) as pilot:
+            await self.to_options(pilot)
+            await pilot.press("enter")
+            await pilot.pause()
+            self.assertIsInstance(app.screen, ReviewScreen)
+            text = str(app.screen.query_one("#steps").render())
+            self.assertNotIn("kosctl update", text)
+            prepared = build_plan(app.system.family, app.opts, app.paths,
+                                  fake_source(app.opts.source))
+            self.assertNotIn("source", [step.key for step in prepared])
+            for step in prepared:
+                self.assertIn(step.title, text)
 
     async def test_confirm_reaches_installation_and_result(self) -> None:
         app = self.make_app()

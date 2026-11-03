@@ -68,9 +68,6 @@ class KosApp(App):
         self.prepared = None
         self.prepare_error = ""
 
-    def plan_steps(self):
-        return build_plan(self.system.family, self.opts, self.paths, self.prepared)
-
     def _new_log_path(self):
         return self.paths.log_dir / time.strftime("install-%Y%m%d-%H%M%S.log")
 

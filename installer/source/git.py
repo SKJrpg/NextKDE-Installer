@@ -9,12 +9,13 @@ from pathlib import Path
 TIMEOUT = 600  # a clone of the product tree on a slow link
 
 
-def run(root: Path | str | None, *args: str) -> subprocess.CompletedProcess:
+def run(root: Path | str | None, *args: str,
+        timeout: float = TIMEOUT) -> subprocess.CompletedProcess:
     """Run one git command; ``root`` becomes ``-C`` (None runs it anywhere)."""
     command = ["git"] if root is None else ["git", "-C", str(root)]
     return subprocess.run(
         [*command, *args],
-        capture_output=True, text=True, timeout=TIMEOUT, check=False,
+        capture_output=True, text=True, timeout=timeout, check=False,
         # A missing credential or host key must fail, not wait on a prompt.
         env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
     )
@@ -70,7 +71,8 @@ def ls_remote(repository: str, ref: str) -> str:
     commit is the one that ends up in a workspace.
     """
     wanted = [ref] if ref.startswith("refs/") else [f"refs/heads/{ref}", f"refs/tags/{ref}"]
-    result = _check(run(None, "ls-remote", repository, *wanted), f"ls-remote {repository}")
+    result = _check(run(None, "ls-remote", repository, *wanted, timeout=60),
+                    f"ls-remote {repository}")
     found = {}
     for line in result.stdout.splitlines():
         sha, _, name = line.partition("\t")
