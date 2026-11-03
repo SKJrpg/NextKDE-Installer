@@ -108,7 +108,7 @@ SKJrpg/NextKDE-Installer
 产品仓库：
 
 ```
-SKJrpg/NextKde
+NextKde/NextKde
 ```
 
 两个仓库有不同的开发流程和版本体系。

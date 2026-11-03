@@ -55,7 +55,7 @@ def git_state(root: Path) -> tuple[str, bool]:
     return branch.stdout.strip(), bool(dirty.stdout.strip())
 
 
-CANONICAL_REPO = "https://github.com/SuceV587/NextKde.git"
+CANONICAL_REPO = "https://github.com/NextKde/NextKde.git"
 
 
 def latest_release(root: Path, max_age: float = 6 * 3600) -> str:
