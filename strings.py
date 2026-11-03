@@ -14,10 +14,6 @@ from pathlib import Path
 
 _TEXT = {
     "title": ("KOS 安装器", "KOS Installer"),
-    "subtitle": (
-        "检测发行版，选择已经存在的安装方式并执行。",
-        "Detect the distribution, choose the install path that already exists, run it.",
-    ),
     "start": ("开始", "Start"),
     "quit": ("退出", "Quit"),
     "cancel": ("取消", "Cancel"),
@@ -25,11 +21,8 @@ _TEXT = {
     "skip": ("跳过", "Skip"),
     "abort": ("中止", "Abort"),
     "components": ("组件", "Components"),
-    "checks_passed": ("项检测通过", "checks passed"),
-    "details_hint": ("按 d 查看全部检测项 · F5 重新检测", "d for all checks · F5 re-check"),
     "step_review": ("确认", "Review"),
     "step_install": ("安装", "Install"),
-    "step_result": ("完成", "Finish"),
     "probe_os": ("操作系统", "Operating system"),
     "probe_arch": ("架构", "Architecture"),
     "probe_session": ("会话类型", "Session type"),
@@ -42,9 +35,9 @@ _TEXT = {
     "probe_sudo": ("sudo 授权", "sudo access"),
     "probe_manager": ("包管理器", "Package manager"),
     "probe_packages": ("构建依赖", "Build packages"),
-    "method": ("安装方式", "Install path"),
-    "method_debian": ("使用 tools/install-debian13.sh（apt、backports、代理、构建、校验）",
-                      "tools/install-debian13.sh (apt, backports, proxy, build, verify)"),
+    "method": ("安装方式", "Method"),
+    "method_wrapper": ("使用 tools/install-debian13.sh（apt、backports、代理、构建、校验）",
+                       "tools/install-debian13.sh (apt, backports, proxy, build, verify)"),
     "method_kosctl": ("使用 tools/kosctl（装依赖、构建、部署、接管桌面）",
                       "tools/kosctl (deps, build, deploy, takeover)"),
     "method_nixos": ("使用 tools/kosctl nix install（flake）",
@@ -53,28 +46,16 @@ _TEXT = {
                       "Prints the manual commands for this distribution; runs nothing"),
     "method_unknown": ("无法识别的发行版，只给出最接近的手册链接",
                        "Unknown distribution; prints the closest manual recipe"),
-    "opt_source": ("来源版本", "Source release"),
-    "opt_apps": ("可选应用", "Optional apps"),
     "opt_lockscreen": ("锁屏主题", "Lock screen theme"),
     "opt_spatial": ("景深/空间壁纸", "Depth / 3D wallpaper"),
     "opt_spatial_hint": ("额外拉 OpenCV + ONNX（约 150 MB）", "pulls OpenCV + ONNX (~150 MB)"),
     "opt_proxy": ("代理", "Proxy"),
     "on": ("开", "on"),
     "off": ("关", "off"),
-    "unset": ("未设置", "unset"),
-    "review_title": ("安装确认", "Review"),
-    "review_warn": ("以下命令将以你的用户身份执行：", "These commands will run as you:"),
     "review_target": ("安装到 ~/.local（用户目录，无需 root）", "Installs to ~/.local (user directory, no root)"),
-    "review_takeover_short": ("完成后接管 plasmashell（重新登录生效）",
-                              "takes over plasmashell · effective after the next login"),
-    "review_apps_missing": ("应用依赖缺失", "app dependencies missing"),
-    "review_apps_ok": ("应用依赖齐全", "app dependencies present"),
     "review_none": ("该发行版没有自动安装路径。", "No automatic path for this distribution."),
-    "install_title": ("安装执行", "Installation"),
-    "phase_idle": ("等待开始", "waiting"),
     "failed": ("失败", "failed"),
     "cancelled": ("已取消", "cancelled"),
-    "log_hint": ("日志：", "Log: "),
     "cancel_confirm": ("确定取消安装？当前步骤会被终止。", "Cancel the install? The current step will be terminated."),
     "skipped_source": ("当前 checkout 有未提交改动或不在 main，跳过来源选择。",
                        "Checkout is dirty or not on main; source selection skipped."),
@@ -84,15 +65,8 @@ _TEXT = {
     "failure_title": ("安装失败", "Install failed"),
     "next_steps": ("注销并重新登录，使 KWin 插件和桌面接管生效。",
                    "Log out and back in so KWin plugins and the desktop takeover apply."),
-    "row_system": ('系统检查', 'System checks'),
     "row_manage": ('管理已安装单元', 'Manage installed units'),
-    "row_install": ('安装', 'Install'),
-    "system_title": ('系统检查', 'System checks'),
-    "system_ok": ('全部通过', 'all passed'),
-    "system_issues": ('项需注意', 'need attention'),
-    "step_menu": ('菜单', 'Menu'),
     "step_system": ('检查', 'Checks'),
-    "step_manage": ('管理', 'Manage'),
     "opt_start": ('安装后立即启动', 'Start after install'),
     "manage_units": ('单元', 'Units'),
     "manage_snapshots": ('快照', 'Snapshots'),
@@ -101,48 +75,27 @@ _TEXT = {
     "manage_uninstall": ('卸载', 'Uninstall'),
     "manage_empty": ('还没有安装任何单元。', 'Nothing installed yet.'),
     "units_title": ('已安装单元', 'Installed units'),
-    "units_hint": ('Space 启用/停用 · Esc 返回', 'Space enable/disable · Esc back'),
     "units_none": ('未记录任何单元；先完成一次安装。', 'No units recorded; install first.'),
     "snapshots_title": ('配置快照', 'Config snapshots'),
     "snapshots_create": ('新建快照', 'Create snapshot'),
     "snapshots_none": ('还没有快照。', 'No snapshots yet.'),
-    "snapshots_hint": ('Space 新建 · Enter 回滚所选 · Esc 返回', 'Space create · Enter roll back the selection · Esc back'),
     "action_title": ('执行', 'Running'),
-    "action_done": ('完成', 'done'),
-    "action_failed": ('失败', 'failed'),
-    "action_hint": ('Enter 返回', 'Enter back'),
     "log_title": ('日志', 'Log'),
-    "log_hint": ('↑↓ 滚动 · Esc 返回', '↑↓ scroll · Esc back'),
+    "log_path": ('日志：', 'Log: '),
     "logs_none": ('还没有日志。', 'No logs yet.'),
     "confirm_uninstall": ('卸载核心并撤销桌面接管？', 'Uninstall core and revert the desktop takeover?'),
     "confirm_rollback": ('回滚到这个快照？当前配置会先自动备份。', 'Roll back to this snapshot? The current config is backed up first.'),
-    "hint_menu": ('↑↓ 移动 · Space 切换 · Enter 进入 · q 退出', '↑↓ move · Space toggle · Enter open · q quit'),
-    "hint_system": ('Enter/Esc 返回 · F5 重新检测', 'Enter/Esc back · F5 re-check'),
-    "hint_units": ('Space 启用/停用 · Esc 返回', 'Space enable/disable · Esc back'),
-    "hint_snapshots": ('Space 新建 · Enter 回滚 · Esc 返回', 'Space create · Enter roll back · Esc back'),
-    "hint_manage": ('↑↓ 移动 · Enter 进入 · Esc 返回', '↑↓ move · Enter open · Esc back'),
-    "detail_system": ('12 项环境检查：发行版、会话、KWin、Quickshell、磁盘、sudo、包管理器、构建依赖。', 'Twelve checks: distro, session, KWin, Quickshell, disk, sudo, package manager, build packages.'),
     "detail_source": ('stable = 最新发布 tag；main = 开发分支。只在 checkout 位于 main 且干净时才会执行 update。', 'stable = latest release tag; main = development. Only runs when the checkout is clean and on main.'),
-    "detail_apps": ('日历、待办、天气、计算器，装进 ~/.local；需要 KF6 的 calendarcore 和 pkgconf。', 'Calendar, Todo, Weather, Calculator into ~/.local; needs KF6 calendarcore and pkgconf.'),
+    "detail_apps": ('每个应用装进 ~/.local，可单独选择；需要 KF6 的 calendarcore 和 pkgconf。',
+                    'Each app installs into ~/.local on its own; needs KF6 calendarcore and pkgconf.'),
     "detail_lockscreen": ('把锁屏主题装进桌面接管包；卸载核心时会一起移除。', 'Installs the lock screen theme into the takeover package; removed with the core install.'),
     "detail_spatial": ('景深引擎 + 3D 壁纸插件。会拉 OpenCV（约 113 MB）和 pin 死的 ONNX Runtime（约 40 MB），构建时间明显变长。', 'Depth engine + 3D wallpaper. Pulls OpenCV (~113 MB) and the pinned ONNX Runtime (~40 MB); the build takes noticeably longer.'),
     "detail_start": ('安装完成后立刻执行 kosctl start（会重启用户服务）；关掉则等下次登录。', 'Runs kosctl start right after the install (restarts user services); otherwise it waits for the next login.'),
     "detail_manage": ('单元开关、配置快照与回滚、doctor、日志、卸载。', 'Unit toggles, config snapshots and rollback, doctor, logs, uninstall.'),
-    "detail_install": ('进入确认页：先列出将要执行的命令，再开始安装。', 'Opens the review: it lists the commands before anything runs.'),
-    "detail_hint": ('当前值', 'current'),
-    "row_settings": ('安装设置', 'Install settings'),
-    "menu_back": ('返回', 'Back'),
-    "crumb_root": ('主菜单', 'Main menu'),
-    "detail_settings": ('来源版本与三个可选组件。Enter 进入，Esc 返回。', 'Source release and the three optional components. Enter opens, Esc goes back.'),
-    "detail_back": ('返回上一级菜单。', 'Back to the previous menu.'),
     "app_calendar": ('日历', 'Calendar'),
     "app_todo": ('待办', 'Todo'),
     "app_weather": ('天气', 'Weather'),
     "app_calculator": ('计算器', 'Calculator'),
-    "welcome_version": ('选择版本', 'Select version'),
-    "branch_main": ('main（开发分支）', 'main (development)'),
-    "branch_release": ('release（最新发布）', 'release (latest)'),
-    "hint_version": ('↑↓ 选择 · Enter 继续 · Esc 返回', '↑↓ select · Enter continue · Esc back'),
     "why_probe_os": ('决定走哪条安装路径：Debian 用包装脚本，Arch/Fedora 用 kosctl，其它发行版只给手册命令。', 'Decides the install path: the Debian wrapper, kosctl on Arch/Fedora, a manual recipe elsewhere.'),
     "why_probe_arch": ('只有 x86_64 和 aarch64 有准备好的依赖；其它架构缺 ONNX 运行时。', 'Only x86_64 and aarch64 have prepared dependencies; other architectures lack the ONNX runtime.'),
     "why_probe_session": ('KOS 是 Wayland shell，X11 或纯控制台下起不来，只能显示成墙纸。', 'KOS is a Wayland shell; under X11 or a bare console it cannot come up.'),
@@ -155,27 +108,157 @@ _TEXT = {
     "why_probe_sudo": ('装系统包和写 /usr 需要 root；提前授权，避免十几分钟的构建被打断。', 'Package installs and /usr writes need root; priming it avoids interrupting a long build.'),
     "why_probe_manager": ('决定构建依赖和运行期集成由哪个包管理器装。', 'Decides which package manager installs the build and runtime packages.'),
     "why_probe_packages": ('这些包由 kosctl install 通过包管理器补上，通常是几十秒。', 'These are added by kosctl install through the package manager, usually seconds.'),
-    "row_deps": ('依赖包', 'Packages'),
     "deps_title": ('构建依赖（%s）', 'Build packages (%s)'),
     "deps_summary": ('已安装 %d/%d', '%d/%d installed'),
-    "deps_empty": ("读不到依赖列表（kosctl deps 失败）", "Could not read the package list (kosctl deps failed)"),
-    "deps_scroll_hint": ("PgUp/PgDn 滚动", "PgUp/PgDn to scroll"),
-    "deps_hint": ('↑↓ 滚动 · Enter/Esc 返回', '↑↓ scroll · Enter/Esc back'),
-    "review_deps_missing": ('依赖缺失：%s', 'missing packages: %s'),
-    "review_deps_hint": ('[i] 先安装这些依赖（kosctl deps --install）', '[i] install them first (kosctl deps --install)'),
-    "review_deps_ok": ('依赖齐全', 'dependencies present'),
+    "review_deps_missing": ('缺少 %s', 'missing %s'),
+    "review_deps_ok": ('齐全', 'all present'),
     "review_blocked": ("有检查未通过（❌），安装已禁用。先修好再回来。",
                        "A check failed (❌); the install is disabled until it passes."),
     "unsupported_options": ("当前发行版路径不支持：%s；没有执行任何操作。",
                             "Not supported by this backend: %s; nothing was run."),
-    "label_system": ("系统", "System"),
-    "hint_setup": ("↑↓ 移动 · Space 切换 · Enter 下一步 · d 详情 · q 退出",
-                   "↑↓ move · Space toggle · Enter next · d details · q quit"),
     "hint_review": ("Enter 开始安装 · Esc 返回", "Enter install · Esc back"),
     "hint_install": ("Ctrl+C 取消", "Ctrl+C cancel"),
     "hint_result": ("Enter 退出 · r 重试", "Enter quit · r retry"),
     "note_no_cjk": ("未找到中文字体，改用英文界面（--lang zh 可强制中文）",
                     "no CJK font found; showing English (--lang zh forces Chinese)"),
+
+    # -- wizard chrome -------------------------------------------------
+    "step_welcome": ("欢迎", "Welcome"),
+    "step_options": ("安装设置", "Options"),
+    "step_of": ("步骤 %d/%d", "Step %d/%d"),
+    "nav_manage": ("管理", "Manage"),
+    "notice_big": ("终端太小：至少 %dx%d，当前 %dx%d", "Terminal too small: need %dx%d, have %dx%d"),
+    "listing_range": ("%d–%d / %d", "%d–%d / %d"),
+
+    # -- welcome -------------------------------------------------------
+    "welcome_intro": ("用 Quickshell 重写的 Plasma 6 桌面：面板、启动器、锁屏与原生特效。",
+                      "A Plasma 6 desktop rebuilt in Quickshell: panels, launcher, lock screen, native effects."),
+    "label_distro": ("发行版", "Distribution"),
+    "label_arch": ("架构", "Architecture"),
+    "label_session": ("会话", "Session"),
+    "label_path": ("安装位置", "Install path"),
+    "label_language": ("语言", "Language"),
+    "label_source": ("安装来源", "Source"),
+    "label_apps": ("可选应用", "Optional apps"),
+    "label_deps": ("依赖", "Dependencies"),
+    "label_core": ("核心", "Core"),
+    "label_required": ("必需", "required"),
+    "welcome_start": ("开始安装", "Start"),
+    "source_stable": ("稳定发布", "Stable release"),
+    "source_main": ("开发分支 main", "Development branch main"),
+    "source_local": ("本地源码", "Local checkout"),
+    "source_stable_note": ("切换到这个发布标签安装", "checks out this release tag"),
+    "source_main_note": ("跟随 main 的最新提交", "follows the tip of main"),
+    "source_local_note": ("沿用当前分支与工作区，不切换版本", "keeps the current branch and working tree"),
+
+    # -- system checks -------------------------------------------------
+    "system_head": ("系统兼容性", "System compatibility"),
+    "system_counts": ("通过 %d · 注意 %d · 失败 %d", "%d pass · %d warn · %d fail"),
+    "check_what": ("检查内容", "Checked"),
+    "check_why": ("为什么需要", "Why it matters"),
+    "check_result": ("检测结果", "Detected"),
+    "check_status": ("状态", "Status"),
+    "check_fixable": ("安装器能否处理", "Installer can fix"),
+    "check_fix_yes": ("可以，由安装步骤完成", "Yes, the install steps do it"),
+    "check_fix_no": ("不行，需要你先处理", "No, fix it first"),
+    "check_remedy": ("恢复方法", "How to fix"),
+    "check_none": ("没有可用的检测结果", "No check results"),
+    "status_pass": ("通过", "pass"),
+    "status_warn": ("注意", "warn"),
+    "status_fail": ("失败", "fail"),
+
+    # -- options -------------------------------------------------------
+    "options_head": ("安装设置", "Install settings"),
+    "group_source": ("1. 安装来源", "1. Installation source"),
+    "group_core": ("2. 核心组件", "2. Core components"),
+    "group_optional": ("3. 可选应用", "3. Optional apps"),
+    "group_advanced": ("4. 高级选项", "4. Advanced options"),
+    "core_shell": ("KOS Shell", "KOS Shell"),
+    "detail_core": ("重写后的 Plasma 桌面：面板、启动器、锁屏与 KWin 插件；必需组件，不能取消。",
+                    "The rebuilt Plasma desktop: panels, launcher, lock screen, KWin plugins; required, cannot be turned off."),
+    "apps_impact": ("额外依赖 KF6 calendarcore、pkgconf，安装约 20–60 秒",
+                    "Extra deps KF6 calendarcore, pkgconf; about 20–60 s"),
+
+    # -- review --------------------------------------------------------
+    "review_head": ("安装确认", "Review"),
+    "review_summary": ("摘要", "Summary"),
+    "review_steps": ("将执行的步骤", "Steps that will run"),
+    "review_side": ("副作用与提示", "Side effects and warnings"),
+    "review_details": ("[t] 展开完整命令", "[t] show full commands"),
+    "review_details_on": ("[t] 收起完整命令", "[t] hide full commands"),
+    "review_side_takeover": ("安装会接管 plasmashell，注销重新登录后生效。",
+                             "The install takes over plasmashell; it applies after a log out and back in."),
+    "review_side_session": ("安装后会重启用户服务，当前桌面会短暂闪断。",
+                            "User services restart after the install; the current session blips."),
+    "review_side_userpath": ("文件写入 ~/.local，不需要 root；系统包由包管理器安装。",
+                             "Files go to ~/.local, no root needed; system packages come from the package manager."),
+    "review_side_log": ("完整输出写入日志文件。", "Full output goes to a log file."),
+    "review_no_steps": ("没有可执行的安装步骤。", "No install steps to run."),
+    "review_unsupported": ("当前安装路径不支持：%s；这些选择不会执行。",
+                           "Not supported by this install path: %s; those choices will not run."),
+    "review_skip_missing": ("依赖未装齐，安装可能中途失败。", "Dependencies are missing; the install may fail halfway."),
+    "review_apps_none": ("无", "none"),
+    "review_cmd": ("命令", "command"),
+    "step_count": ("%d 个步骤", "%d steps"),
+
+    # -- install dashboard ---------------------------------------------
+    "install_head": ("安装执行", "Installation"),
+    "install_running": ("正在安装", "Installing"),
+    "install_cancelling": ("正在取消…", "Cancelling…"),
+    "install_done": ("安装完成", "Finished"),
+    "install_failed": ("安装失败", "Failed"),
+    "install_stage": ("阶段", "Phase"),
+    "install_elapsed": ("已用 %s", "%s elapsed"),
+    "install_no_progress": ("没有可测量的进度", "no measured progress"),
+    "install_step_progress": ("已完成 %d/%d 步", "%d/%d steps done"),
+    "install_log_live": ("自动滚动", "auto-scroll"),
+    "install_log_paused": ("已暂停自动滚动，↑↓ 查看历史", "auto-scroll paused, ↑↓ to read back"),
+    "stage_done": ("完成", "done"),
+    "stage_running": ("进行中", "running"),
+    "stage_failed": ("失败", "failed"),
+    "stage_skipped": ("跳过", "skipped"),
+    "stage_waiting": ("等待", "waiting"),
+
+    # -- result --------------------------------------------------------
+    "result_ran": ("已完成的操作", "What ran"),
+    "result_components": ("已安装组件", "Installed components"),
+    "result_exit_code": ("退出码", "Exit code"),
+    "result_error": ("错误摘要", "Error summary"),
+    "result_tail": ("日志末尾", "Log tail"),
+    "result_retry_safe": ("重试只重复未完成的步骤", "retry repeats only what did not finish"),
+    "result_none_logged": ("没有输出", "no output"),
+    "result_skipped": ("已跳过：%s", "skipped: %s"),
+    "result_cancelled": ("安装已取消，没有完成。", "The install was cancelled before it finished."),
+    "result_units_none": ("（未记录组件）", "(no components recorded)"),
+
+    # -- footer key labels ---------------------------------------------
+    "key_move": ("移动", "move"),
+    "key_select": ("选择", "select"),
+    "key_open": ("进入", "open"),
+    "key_toggle": ("切换", "toggle"),
+    "key_cycle": ("选择", "choose"),
+    "key_continue": ("继续", "continue"),
+    "key_back": ("返回", "back"),
+    "key_quit": ("退出", "quit"),
+    "key_start": ("开始安装", "start install"),
+    "key_help": ("帮助", "help"),
+    "key_refresh": ("重新检测", "re-check"),
+    "key_cancel": ("取消", "cancel"),
+    "key_pause": ("暂停日志", "pause log"),
+    "key_resume": ("继续滚动", "resume log"),
+    "key_scroll": ("滚动", "scroll"),
+    "key_details": ("命令详情", "commands"),
+    "key_manage": ("管理", "manage"),
+    "key_retry": ("重试", "retry"),
+    "key_log": ("日志", "log"),
+    "key_exit": ("退出", "exit"),
+    "key_language": ("语言", "language"),
+    "key_create": ("新建", "create"),
+    "key_rollback": ("回滚", "roll back"),
+    "key_deps": ("安装依赖", "install deps"),
+    "help_title": ("快捷键", "Keys"),
+    "help_close": ("任意键关闭", "any key closes"),
+    "help_heading": ("当前页面可用的按键：", "Keys on this page:"),
 }
 
 
@@ -186,6 +269,27 @@ def effective_locale(env: dict) -> str:
         if value:
             return value
     return ""
+
+
+def terminal_is_utf8(env: dict | None = None) -> bool:
+    """Whether the terminal itself is UTF-8, not whether Python thinks so.
+
+    Python coerces a C/POSIX locale to UTF-8 (PEP 538), so
+    ``sys.stdout.encoding`` says utf-8 on a terminal that cannot draw "✔".
+    The environment locale is the honest signal.
+    """
+    env = os.environ if env is None else env
+    return _is_utf8(env, effective_locale(env))
+
+
+def ascii_terminal(env: dict | None = None) -> bool:
+    """One signal for every glyph decision: no Unicode on this terminal.
+
+    The Linux console has no line drawing or status glyphs at all, and a
+    non-UTF-8 locale cannot encode them; both fall back to ASCII.
+    """
+    env = os.environ if env is None else env
+    return env.get("TERM") == "linux" or not terminal_is_utf8(env)
 
 
 def _is_utf8(env: dict, locale: str) -> bool:
@@ -267,12 +371,22 @@ def choose_language(explicit: str | None, env: dict | None = None,
     return ("zh", False) if fonts else ("en", True)
 
 
+_ASCII_PUNCTUATION = {"·": "|", "—": "-", "…": "..."}
+
+
 class Strings:
     def __init__(self, lang: str) -> None:
         self.lang = lang
+        # Punctuation a non-UTF-8 terminal cannot show is transliterated; the
+        # words themselves are unchanged.
+        self.ascii = ascii_terminal()
 
     def __call__(self, key: str) -> str:
         pair = _TEXT.get(key)
         if pair is None:
             return key
-        return pair[0] if self.lang == "zh" else pair[1]
+        text = pair[0] if self.lang == "zh" else pair[1]
+        if self.ascii:
+            for source, target in _ASCII_PUNCTUATION.items():
+                text = text.replace(source, target)
+        return text

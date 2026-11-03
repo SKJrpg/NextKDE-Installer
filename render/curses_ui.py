@@ -1,9 +1,12 @@
-"""Menu-driven installer and manager, in the shape archinstall uses: one list
-of settings with their current values, sub-pages for the ones that need them,
-and a single Install action at the bottom.
+"""The installer wizard and manager: input routing, navigation and state.
 
-Screens: Menu, System checks, Review, Install, Result, Manage, Units,
-Snapshots, Action (one command with its output), Log.
+Screens: Welcome, System checks, Options, Review, Install, Result, Manage,
+Units, Snapshots, Action, Log.
+
+Geometry is decided by layout.py (narrow / standard / wide), colours and glyphs
+by theme.py, and every write goes through widgets.Canvas, so no screen can
+overdraw another pane. Backend work (detect, plan, runner, manage) is imported
+unchanged: screens only present what it reports.
 """
 
 from __future__ import annotations
@@ -11,15 +14,18 @@ from __future__ import annotations
 import curses
 import locale
 import time
-import unicodedata
 from pathlib import Path
 
-from .. import VERSION
-from ..detect import System, detect, method_label
 from .. import manage
+from ..detect import System, detect, method_label
 from ..plan import (ALL_APPS, Options, Step, apps_missing, build_plan, git_state,
-                    latest_release, proxy_url)
+                    latest_release, proxy_url, selected_apps, unsupported)
 from ..runner import StepRunner, classify
+from ..strings import Strings
+from .layout import (MIN_H, MIN_W, Box, layout_for, scroll_start, split_rows,
+                     stack_list)
+from .theme import (ASCII, PAIRS, UNICODE, Theme, supports_unicode)
+from .widgets import Canvas, Row, _printable, _width, _wrap
 
 LOGO = (
     "███╗   ██╗███████╗██╗  ██╗████████╗    ██╗  ██╗██████╗ ███████╗",
@@ -30,79 +36,28 @@ LOGO = (
     "╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝   ╚═╝       ╚═╝  ╚═╝╚═════╝ ╚══════╝",
 )
 
-MIN_W, MIN_H = 66, 20
-_CYAN, _GREEN, _YELLOW, _RED, _DIM = 1, 2, 3, 4, 5
+ENTER = (10, 13, curses.KEY_ENTER)
+UP = (curses.KEY_UP, ord("k"))
+DOWN = (curses.KEY_DOWN, ord("j"))
+SOURCES = ("stable", "main", "local")
+STAGE_COUNT = 5
+# The install steps themselves resolve these; everything else is the user's.
+FIXABLE = ("probe_packages", "probe_quickshell")
+_COLORS = {"brand": curses.COLOR_CYAN, "ok": curses.COLOR_GREEN,
+           "warn": curses.COLOR_YELLOW, "fail": curses.COLOR_RED}
 
 
-def _width(text: str) -> int:
-    return sum(2 if unicodedata.east_asian_width(ch) in "WF" else 1 for ch in text)
-
-
-def _clip(text: str, cells: int) -> str:
-    if cells <= 0:
-        return ""
-    if _width(text) <= cells:
-        return text
-    kept, used = [], 0
-    for char in text:
-        width = 2 if unicodedata.east_asian_width(char) in "WF" else 1
-        if used + width > cells - 1:
-            break
-        kept.append(char)
-        used += width
-    return "".join(kept) + "…"
-
-
-
-def _wide(char: str) -> int:
-    return 2 if unicodedata.east_asian_width(char) in "WF" else 1
-
-
-_NO_LINE_START = "、。，；：）」』】！？!?,.;:)]}"
-
-
-def _wrap(text: str, cells: int) -> list[str]:
-    """Wrap by display width, without breaking Latin words or starting a line
-    with CJK punctuation."""
-    lines = []
-    while text:
-        used, cut = 0, 0
-        for index, char in enumerate(text):
-            if used + _wide(char) > cells:
-                break
-            used += _wide(char)
-            cut = index + 1
-        cut = max(cut, 1)
-        chunk, rest = text[:cut], text[cut:]
-        if rest and not rest[0].isspace() and not _is_cjk(rest[0]) and not _is_cjk(chunk[-1]):
-            # A Latin word straddles the cut. Moving the whole word down beats
-            # splitting "sudo" into "s" + "udo"; the nearest space is useless
-            # here because mixed CJK text can be a whole phrase without one.
-            word_start = len(chunk)
-            while word_start > 0 and (chunk[word_start - 1].isalnum()
-                                      or chunk[word_start - 1] in "-_"):
-                word_start -= 1
-            if 0 < len(chunk) - word_start <= 16:
-                chunk, rest = text[:word_start], text[word_start:]
-            else:
-                space = chunk.rfind(" ")
-                if space > 0 and len(chunk) - space <= 24 and not any(
-                        _is_cjk(char) for char in chunk[space + 1:]):
-                    chunk, rest = text[:space], text[space + 1:]
-        if rest and rest[0] in _NO_LINE_START:
-            chunk, rest = chunk + rest[0], rest[1:]
-        lines.append(chunk.rstrip())
-        text = rest.lstrip()
-    return lines
-
-
-def _is_cjk(char: str) -> bool:
-    return unicodedata.east_asian_width(char) in "WF"
+def _clock(seconds: float) -> str:
+    seconds = int(max(0.0, seconds))
+    return f"{seconds // 60:02d}:{seconds % 60:02d}"
 
 
 class UI:
-    (WELCOME, VERSION, MENU, SYSTEM, REVIEW, INSTALL, RESULT, MANAGE, UNITS,
-     SNAPSHOTS, ACTION, LOG) = range(12)
+    (WELCOME, SYSTEM, OPTIONS, REVIEW, INSTALL, RESULT, MANAGE, UNITS,
+     SNAPSHOTS, ACTION, LOG) = range(11)
+
+    LANGUAGES = ("zh", "en")
+    WIZARD = (WELCOME, SYSTEM, OPTIONS, REVIEW, INSTALL, RESULT)
 
     def __init__(self, system: System, root, strings, log_dir,
                  lang_explicit: bool = False) -> None:
@@ -111,30 +66,40 @@ class UI:
         self.s = strings
         self.log_dir = Path(log_dir)
         self.opts = Options()
+        # An empty app set with apps enabled means "the standard four"; showing
+        # it as checked is the same plan the backend already produces.
+        if self.opts.apps and not self.opts.app_set:
+            self.opts.app_set = set(ALL_APPS)
         self.steps: list[Step] = build_plan(system.family, self.opts, self.root)
         self.screen = self.WELCOME
-        self.row = 0
+        self.row = 0          # list row shared by manage/units/snapshots/logs
         self.lang_row = 0 if strings.lang == "zh" else 1
-        self.branch_row = 0 if self.opts.source == "main" else 1
-        self.welcome_row = self.lang_row
-        self.latest_tag = latest_release(self.root)
-        self.focus = 0  # 0 = left menu, 1 = the submenu inside the right column
-        self.sub_row = 0
+        self.opt_row = 0
         self.sys_row = 0
-        self.deps_row = 0
-        self.apps_expanded = False
-        self.rows: list[tuple[str, str, str, str]] = []
+        self.review_scroll = 0
+        self.review_details = False
+        self.help_open = False
+        self.latest_tag = latest_release(self.root)
+        self.theme = Theme(self._glyphs(), color=False)
+        self.layout = layout_for(80, 24)
         self.log_lines: list[tuple[str, str]] = []
+        self.log_path = self.log_dir / time.strftime("install-%Y%m%d-%H%M%S.log")
+        self.log_paused = False
+        self.log_scroll = 0
         self.current: Step | None = None
         self.phase = ""
         self.step_index = 0
-        self.current_progress = 0.0
-        self.app_deps: list[str] = []
+        self.current_progress: float | None = None
+        self.install_started = 0.0
+        self.cancel_requested = False
         self.result = ""
         self.failed: Step | None = None
-        self.cancel_requested = False
+        self.failed_index: int | None = None
+        self.failed_rc: int | None = None
+        self.skipped_steps: set[int] = set()
+        self.result_units: list[manage.Unit] = []
+        self.app_deps: list[str] = []
         self._drawn_screen = -1
-        self.log_path = self.log_dir / time.strftime("install-%Y%m%d-%H%M%S.log")
         self.action_title = ""
         self.action_steps: list[Step] = []
         self.action_state = ""
@@ -148,14 +113,20 @@ class UI:
         self.snapshots: list[manage.Snapshot] = []
         self.picker: list[tuple[str, str]] = []
         self.log_text: list[str] = []
-        self.log_scroll = 0
+        self.log_text_path = self.log_path
+        self.log_scroll_view = 0
         self.confirm = ""
         self.confirm_action = ""
         self.log_return = self.MANAGE
+        self.manage_return = self.WELCOME
         branch, dirty = git_state(self.root)
         self.source_applies = branch == "main" and not dirty
 
-    # -- entry ----------------------------------------------------------
+    # -- glyphs and entry ------------------------------------------------
+    @staticmethod
+    def _glyphs():
+        return UNICODE if supports_unicode() else ASCII
+
     def run(self) -> int:
         locale.setlocale(locale.LC_ALL, "")
         return curses.wrapper(self._loop)
@@ -163,29 +134,30 @@ class UI:
     def _loop(self, stdscr) -> int:
         curses.curs_set(0)
         stdscr.keypad(True)
+        color = False
         if curses.has_colors():
             curses.start_color()
             try:
                 curses.use_default_colors()
-                bg = -1
+                background = -1
             except curses.error:
-                bg = curses.COLOR_BLACK
-            curses.init_pair(_CYAN, curses.COLOR_CYAN, bg)
-            curses.init_pair(_GREEN, curses.COLOR_GREEN, bg)
-            curses.init_pair(_YELLOW, curses.COLOR_YELLOW, bg)
-            curses.init_pair(_RED, curses.COLOR_RED, bg)
-            curses.init_pair(_DIM, curses.COLOR_WHITE, bg)
+                background = curses.COLOR_BLACK
+            for role, pair in PAIRS.items():
+                curses.init_pair(pair, _COLORS[role], background)
+            color = True
+        self.theme = Theme(self._glyphs(), color=color)
 
         while True:
             self._draw(stdscr)
             ch = stdscr.getch()
             if ch == curses.KEY_RESIZE:
                 continue
+            if self.help_key(ch):
+                continue
             handler = {
                 self.WELCOME: self._welcome_key,
-                self.VERSION: self._version_key,
-                self.MENU: self._menu_key,
                 self.SYSTEM: self._system_key,
+                self.OPTIONS: self._options_key,
                 self.REVIEW: self._review_key,
                 self.RESULT: self._result_key,
                 self.MANAGE: self._manage_key,
@@ -201,179 +173,41 @@ class UI:
                 return code
 
     # -- welcome ---------------------------------------------------------
-    LANGUAGES = ("zh", "en")
-    SOURCES = ("main", "stable")
+    def _apply_language(self) -> None:
+        self.s = Strings(self.LANGUAGES[self.lang_row])
 
     def _welcome_key(self, stdscr, ch) -> int | None:
-        if ch in (curses.KEY_UP, ord("k")):
-            self.lang_row = (self.lang_row - 1) % len(self.LANGUAGES)
-        elif ch in (curses.KEY_DOWN, ord("j")):
+        if ch in UP or ch in DOWN or ch in (curses.KEY_LEFT, curses.KEY_RIGHT) \
+                or ch == ord(" "):
             self.lang_row = (self.lang_row + 1) % len(self.LANGUAGES)
-        elif ch in (10, 13, curses.KEY_ENTER):
-            from ..strings import Strings
-
-            self.s = Strings(self.LANGUAGES[self.lang_row])
-            self.screen = self.VERSION
+            self._apply_language()
+        elif ch in ENTER:
+            self._apply_language()
+            self.screen = self.SYSTEM
+        elif ch in (ord("m"), ord("M")):
+            self._enter_manage(self.WELCOME)
         elif ch in (ord("q"), 27):
             return 0
         return None
 
-    def _version_key(self, stdscr, ch) -> int | None:
-        if ch in (curses.KEY_UP, ord("k")):
-            self.branch_row = (self.branch_row - 1) % len(self.SOURCES)
-        elif ch in (curses.KEY_DOWN, ord("j")):
-            self.branch_row = (self.branch_row + 1) % len(self.SOURCES)
-        elif ch in (10, 13, curses.KEY_ENTER):
-            self.opts.source = self.SOURCES[self.branch_row]
-            self.screen = self.MENU
-        elif ch == 27:
-            self.screen = self.WELCOME
-        elif ch in (ord("q"),):
-            return 0
-        return None
-
-    # -- menu -----------------------------------------------------------
-    def _menu_rows(self) -> list[tuple[str, str, str, str]]:
-        """(key, label, value, kind) for the fixed left column."""
-        return [
-            ("system", self.s("row_system"), "", "screen:SYSTEM"),
-            ("settings", self.s("row_settings"), "", "menu"),
-            ("manage", self.s("row_manage"), "", "screen:MANAGE"),
-            ("install", self.s("row_install"), "", "review"),
-        ]
-
-    def _sub_rows(self) -> list[tuple[str, str, str, str]]:
-        """Children of the focused left item, shown in the middle column."""
-        key = self.rows[self.row][0] if self.rows else ""
-        if key != "settings":
-            return []
-        rows = []
-        if self.source_applies:
-            rows.append(("source", self.s("opt_source"), self.opts.source, "cycle"))
-        marker = " ▼" if self.apps_expanded else " ▶"
-        rows += [
-            ("apps", self.s("opt_apps") + marker, "", "expand"),
-            *([("app:" + name,
-                "  " + ("└─ " if index == len(ALL_APPS) - 1 else "├─ ")
-                + self.s("app_" + name),
-                self._onoff(name in self.opts.app_set), "app")
-               for index, name in enumerate(ALL_APPS)] if self.apps_expanded else []),
-            ("lockscreen", self.s("opt_lockscreen"), self._onoff(self.opts.lockscreen), "toggle"),
-            ("spatial", self.s("opt_spatial"), self._onoff(self.opts.spatial), "toggle"),
-            ("start", self.s("opt_start"), self._onoff(self.opts.start), "toggle"),
-        ]
-        return rows
-
-    def _deps_summary(self) -> str:
-        data = self.deps_data
-        if not data or not data.packages:
-            return ""
-        ok = sum(1 for _name, good in data.packages if good)
-        return f"{ok}/{len(data.packages)}"
-
-    def _onoff(self, value: bool) -> str:
-        return "[x]" if value else "[ ]"
-
-    def _menu_key(self, stdscr, ch) -> int | None:
-        self.rows = self._menu_rows()
-        self.sub = self._sub_rows()
-        if ch in (curses.KEY_PPAGE, curses.KEY_NPAGE) and 0 <= self.row < len(self.rows) \
-                and self.rows[self.row][0] == "system":
-            self.deps_row = max(0, self.deps_row + (-10 if ch == curses.KEY_PPAGE else 10))
-            return None
-        if ch in (ord("q"),):
-            return 0
-        if ch == 27:
-            if self.focus:
-                self.focus = 0
-                return None
-            return 0
-        if ch in (curses.KEY_UP, ord("k")):
-            if self.focus:
-                self.sub_row = max(0, self.sub_row - 1)
-            else:
-                self.row = (self.row - 1) % len(self.rows)
-            return None
-        if ch in (curses.KEY_DOWN, ord("j")):
-            if self.focus:
-                self.sub_row = min(len(self.sub) - 1, self.sub_row + 1) if self.sub else 0
-            else:
-                self.row = (self.row + 1) % len(self.rows)
-            return None
-        if ch in (curses.KEY_RIGHT,):
-            if not self.focus and self.sub:
-                self.focus = 1
-            return None
-        if ch in (curses.KEY_LEFT,):
-            self.focus = 0
-            return None
-        if ch in (ord(" "), 10, 13, curses.KEY_ENTER):
-            if self.focus and self.sub:
-                key, _label, _value, kind = self.sub[self.sub_row]
-                if kind in ("toggle", "cycle", "app"):
-                    self._cycle(key, kind)
-                elif kind == "expand":
-                    self.apps_expanded = not self.apps_expanded
-                return None
-            key, _label, _value, kind = self.rows[self.row]
-            if kind == "menu":
-                if self.sub:
-                    self.focus = 1
-                    self.sub_row = min(self.sub_row, len(self.sub) - 1)
-            elif kind in ("toggle", "cycle"):
-                self._cycle(key, kind)
-            elif kind == "review":
-                self.steps = build_plan(self.system.family, self.opts, self.root)
-                self.app_deps = apps_missing(self.root) if self.opts.apps else []
-                self.screen = self.REVIEW
-            elif kind.startswith("screen:"):
-                target = getattr(self, kind.split(":", 1)[1])
-                if target == self.MANAGE:
-                    self._enter_manage()
-                elif target == self.SYSTEM:
-                    self._load_deps()
-                    self.screen = target
-                else:
-                    self.screen = target
-            return None
-        if ch == curses.KEY_F5:
-            self.system = detect(root=self.root)
-        return None
-
-    def _cycle(self, key: str, kind: str) -> None:
-        if key == "source":
-            self.opts.source = "main" if self.opts.source == "stable" else "stable"
-        elif key == "apps":
-            self.opts.apps = not self.opts.apps
-        elif key.startswith("app:"):
-            name = key.split(":", 1)[1]
-            if name in self.opts.app_set:
-                self.opts.app_set.discard(name)
-            else:
-                self.opts.app_set.add(name)
-            self.opts.apps = bool(self.opts.app_set)
-        elif key == "lockscreen":
-            self.opts.lockscreen = not self.opts.lockscreen
-        elif key == "spatial":
-            self.opts.spatial = not self.opts.spatial
-        elif key == "start":
-            self.opts.start = not self.opts.start
-
-    # -- system checks --------------------------------------------------
+    # -- system checks ---------------------------------------------------
     def _system_key(self, stdscr, ch) -> int | None:
-        if ch in (curses.KEY_UP, ord("k")):
+        if ch in UP:
             self.sys_row = max(0, self.sys_row - 1)
-        elif ch in (curses.KEY_DOWN, ord("j")):
+        elif ch in DOWN:
             self.sys_row += 1
         elif ch == curses.KEY_PPAGE:
-            self.deps_row = max(0, self.deps_row - 10)
+            self.sys_row = max(0, self.sys_row - 10)
         elif ch == curses.KEY_NPAGE:
-            self.deps_row += 10
-        elif ch in (10, 13, 27, curses.KEY_ENTER, ord("q")):
-            self.screen = self.MENU
+            self.sys_row += 10
         elif ch == curses.KEY_F5:
             self.system = detect(root=self.root)
             self._load_deps()
+            self.sys_row = 0
+        elif ch in ENTER:
+            self.screen = self.OPTIONS
+        elif ch in (27, ord("q")):
+            self.screen = self.WELCOME
         self.sys_row = min(self.sys_row, max(0, len(self.system.probes) - 1))
         return None
 
@@ -382,38 +216,138 @@ class UI:
         self.deps_data = manage.deps_from_docs(self.root, self.system.family or "")
         if not self.deps_data.packages:
             self.deps_data = manage.deps(self.root)
-        self.deps_row = 0
 
-    # -- review / install -----------------------------------------------
+    def _missing_deps(self) -> list[str]:
+        return [name for name, good in (self.deps_data.packages if self.deps_data else [])
+                if not good]
+
+    # -- options ---------------------------------------------------------
+    def _options_rows(self) -> list[tuple[str, str, str, str]]:
+        """(kind, key, label, value); ``group`` rows are headings."""
+        s = self.s
+        rows: list[tuple[str, str, str, str]] = [
+            ("group", "group_source", s("group_source"), ""),
+            ("source", "source", s("source_" + self.opts.source),
+             self.latest_tag if self.opts.source == "stable" else ""),
+            ("group", "group_core", s("group_core"), ""),
+            ("core", "core", s("core_shell"), s("label_required")),
+            ("group", "group_optional", s("group_optional"), ""),
+        ]
+        rows += [("app", name, s("app_" + name), "") for name in ALL_APPS]
+        rows += [
+            ("group", "group_advanced", s("group_advanced"), ""),
+            ("toggle", "lockscreen", s("opt_lockscreen"), ""),
+            ("toggle", "spatial", s("opt_spatial"), ""),
+            ("toggle", "start", s("opt_start"), ""),
+        ]
+        return rows
+
+    @staticmethod
+    def _option_targets(rows) -> list[int]:
+        return [index for index, row in enumerate(rows) if row[0] != "group"]
+
+    def _focused_option(self) -> tuple[str, str]:
+        rows = self._options_rows()
+        targets = self._option_targets(rows)
+        if not targets:
+            return "", ""
+        index = targets[min(self.opt_row, len(targets) - 1)]
+        kind, key, _label, _value = rows[index]
+        return kind, key
+
+    def _option_on(self, kind: str, key: str) -> bool:
+        if kind == "app":
+            return key in self.opts.app_set
+        if kind == "toggle":
+            return bool(getattr(self.opts, key))
+        return True
+
+    def _set_option(self, kind: str, key: str, on: bool) -> None:
+        if kind == "app":
+            if on:
+                self.opts.app_set.add(key)
+            else:
+                self.opts.app_set.discard(key)
+            self.opts.apps = bool(self.opts.app_set)
+        elif kind == "toggle":
+            setattr(self.opts, key, on)
+        elif kind == "source":
+            options = list(SOURCES)
+            step = 1 if on else -1
+            self.opts.source = options[(options.index(self.opts.source) + step) % len(options)]
+
+    def _options_key(self, stdscr, ch) -> int | None:
+        rows = self._options_rows()
+        targets = self._option_targets(rows)
+        self.opt_row = max(0, min(self.opt_row, len(targets) - 1))
+        if ch in UP:
+            self.opt_row = max(0, self.opt_row - 1)
+        elif ch in DOWN:
+            self.opt_row = min(len(targets) - 1, self.opt_row + 1)
+        elif ch in (curses.KEY_LEFT, curses.KEY_RIGHT, ord(" ")):
+            kind, key = self._focused_option()
+            if kind == "source":
+                self._set_option(kind, key, ch == curses.KEY_RIGHT)
+            elif kind in ("toggle", "app"):
+                on = (ch == curses.KEY_RIGHT) if ch in (curses.KEY_LEFT, curses.KEY_RIGHT) \
+                    else not self._option_on(kind, key)
+                self._set_option(kind, key, on)
+        elif ch in ENTER:
+            self._enter_review()
+        elif ch in (27, ord("q")):
+            self.screen = self.WELCOME
+        return None
+
+    def _enter_review(self) -> None:
+        self.steps = build_plan(self.system.family, self.opts, self.root)
+        self.app_deps = apps_missing(self.root) if self.opts.apps else []
+        self.review_scroll = 0
+        self.screen = self.REVIEW
+
+    # -- review / install ------------------------------------------------
     def _review_key(self, stdscr, ch) -> int | None:
         if ch in (ord("i"), ord("I")):
-            missing = [name for name, good in (self.deps_data.packages if self.deps_data else [])
-                       if not good]
-            if missing:
+            if self._missing_deps():
                 self._run_action(stdscr, "kosctl deps --install",
                                  [manage.kosctl(self.root, "deps", "--install")], self.REVIEW)
                 self._load_deps()
             return None
-        if ch in (10, 13, curses.KEY_ENTER):
+        if ch in (ord("t"), ord("T")):
+            self.review_details = not self.review_details
+            self.review_scroll = 0
+        elif ch in UP:
+            self.review_scroll = max(0, self.review_scroll - 1)
+        elif ch in DOWN:
+            self.review_scroll += 1
+        elif ch == curses.KEY_PPAGE:
+            self.review_scroll = max(0, self.review_scroll - 8)
+        elif ch == curses.KEY_NPAGE:
+            self.review_scroll += 8
+        elif ch in ENTER:
             if self.system.blocked:
                 return None
             self.screen = self.INSTALL
             self._install_loop(stdscr)
-            self.screen = self.RESULT
-        elif ch == 27:
-            self.screen = self.WELCOME
+            self._enter_result()
+        elif ch in (27, ord("q")):
+            self.screen = self.OPTIONS
         return None
 
+    def _enter_result(self) -> None:
+        self.screen = self.RESULT
+        self.result_units = manage.units(self.root)
+        self.review_details = False
+
     def _result_key(self, stdscr, ch) -> int | None:
-        if self.result == "failed" and ch in (ord("r"), ord("R")):
+        if self.result != "ok" and ch in (ord("r"), ord("R")):
             self.screen = self.INSTALL
             self._install_loop(stdscr)
-            self.screen = self.RESULT
+            self._enter_result()
         elif ch in (ord("l"), ord("L")):
             self._open_install_log()
         elif ch in (ord("m"), ord("M")):
-            self._enter_manage()
-        elif ch in (10, 13, curses.KEY_ENTER, ord("q"), 27):
+            self._enter_manage(self.RESULT)
+        elif ch in (*ENTER, ord("q"), 27):
             return self._exit_code()
         return None
 
@@ -434,7 +368,11 @@ class UI:
             ("uninstall", self.s("manage_uninstall")),
         ]
 
-    def _enter_manage(self) -> None:
+    def _manage_values(self) -> dict[str, str]:
+        return {"units": str(len(self.units)), "snapshots": str(len(self.snapshots))}
+
+    def _enter_manage(self, return_screen: int) -> None:
+        self.manage_return = return_screen
         self.units = manage.units(self.root)
         self.snapshots = manage.snapshots(self.root)
         self.row = 0
@@ -445,13 +383,13 @@ class UI:
             self._resolve_confirm(stdscr, ch in (ord("y"), ord("Y")))
             return None
         rows = self._manage_rows()
-        if ch in (curses.KEY_UP, ord("k")):
+        if ch in UP:
             self.row = (self.row - 1) % len(rows)
-        elif ch in (curses.KEY_DOWN, ord("j")):
+        elif ch in DOWN:
             self.row = (self.row + 1) % len(rows)
-        elif ch == 27:
-            self.screen = self.RESULT if self.result else self.MENU
-        elif ch in (10, 13, curses.KEY_ENTER):
+        elif ch in (27, ord("q")):
+            self.screen = self.manage_return
+        elif ch in ENTER:
             key = rows[self.row][0]
             if key == "units":
                 self.units = manage.units(self.root)
@@ -475,14 +413,14 @@ class UI:
 
     def _units_key(self, stdscr, ch) -> int | None:
         if not self.units:
-            if ch in (27, 10, 13, curses.KEY_ENTER):
+            if ch in (27, *ENTER):
                 self.screen = self.MANAGE
             return None
-        if ch in (curses.KEY_UP, ord("k")):
+        if ch in UP:
             self.row = (self.row - 1) % len(self.units)
-        elif ch in (curses.KEY_DOWN, ord("j")):
+        elif ch in DOWN:
             self.row = (self.row + 1) % len(self.units)
-        elif ch == 27:
+        elif ch in (27, ord("q")):
             self.screen = self.MANAGE
         elif ch == ord(" "):
             unit = self.units[self.row].name
@@ -495,7 +433,7 @@ class UI:
                 return None
             self._run_action(stdscr, f"kosctl {verb} {unit}",
                              [manage.kosctl(self.root, verb, unit)], self.UNITS)
-        elif ch in (10, 13, curses.KEY_ENTER):
+        elif ch in ENTER:
             self.screen = self.MANAGE
         return None
 
@@ -503,7 +441,7 @@ class UI:
         if self.confirm:
             self._resolve_confirm(stdscr, ch in (ord("y"), ord("Y")))
             return None
-        if ch == 27:
+        if ch in (27, ord("q")):
             self.screen = self.MANAGE
             return None
         if ch == ord(" "):
@@ -513,11 +451,11 @@ class UI:
             return None
         if not self.snapshots:
             return None
-        if ch in (curses.KEY_UP, ord("k")):
+        if ch in UP:
             self.row = (self.row - 1) % len(self.snapshots)
-        elif ch in (curses.KEY_DOWN, ord("j")):
+        elif ch in DOWN:
             self.row = (self.row + 1) % len(self.snapshots)
-        elif ch in (10, 13, curses.KEY_ENTER):
+        elif ch in ENTER:
             self.confirm = self.s("confirm_rollback")
             self.confirm_action = "rollback"
         return None
@@ -599,6 +537,7 @@ class UI:
 
     # -- logs -------------------------------------------------------------
     def _open_install_log(self) -> None:
+        self.log_return = self.RESULT if self.result else self.MANAGE
         self._show_log(self.log_path)
 
     def _open_logs(self) -> None:
@@ -607,596 +546,913 @@ class UI:
         if not files:
             self.picker = []
             self.log_text = [self.s("logs_none")]
-            self.log_scroll = 0
+            self.log_scroll_view = 0
             self.screen = self.LOG
             return
         self.picker = [(str(path), path.name) for path in files]
         self.row = 0
         self.screen = self.LOG
 
-    def _show_log(self, path: Path) -> None:  # noqa: D401 - keeps the sort order
+    def _show_log(self, path: Path) -> None:
         try:
             self.log_text = path.read_text(encoding="utf-8", errors="replace").splitlines()
         except OSError as error:
             self.log_text = [str(error)]
-        self.log_scroll = max(0, len(self.log_text) - 10)
+        self.log_scroll_view = max(0, len(self.log_text) - 10)
         self.picker = []
+        self.log_text_path = path
         self.screen = self.LOG
 
     def _log_key(self, stdscr, ch) -> int | None:
         if self.picker:  # choosing a file
-            if ch in (curses.KEY_UP, ord("k")):
+            if ch in UP:
                 self.row = (self.row - 1) % len(self.picker)
-            elif ch in (curses.KEY_DOWN, ord("j")):
+            elif ch in DOWN:
                 self.row = (self.row + 1) % len(self.picker)
-            elif ch in (10, 13, curses.KEY_ENTER):
+            elif ch in ENTER:
                 self._show_log(Path(self.picker[self.row][0]))
-            elif ch == 27:
-                self.screen = self.MANAGE
+            elif ch in (27, ord("q")):
+                self.screen = self.log_return
             return None
-        if ch == 27:
-            self.screen = self.MANAGE if self.result != "" else self.RESULT
+        if ch in (27, ord("q")):
+            self.screen = self.log_return
             return None
-        if ch in (curses.KEY_UP, ord("k")):
-            self.log_scroll = max(0, self.log_scroll - 1)
-        elif ch in (curses.KEY_DOWN, ord("j")):
-            self.log_scroll = min(max(0, len(self.log_text) - 1), self.log_scroll + 1)
+        if ch in UP:
+            self.log_scroll_view = max(0, self.log_scroll_view - 1)
+        elif ch in DOWN:
+            self.log_scroll_view = min(max(0, len(self.log_text) - 1),
+                                       self.log_scroll_view + 1)
         elif ch == curses.KEY_PPAGE:
-            self.log_scroll = max(0, self.log_scroll - 10)
+            self.log_scroll_view = max(0, self.log_scroll_view - 10)
         elif ch == curses.KEY_NPAGE:
-            self.log_scroll += 10
+            self.log_scroll_view += 10
         return None
 
     # -- drawing ---------------------------------------------------------
-    def _attr(self, color: int = 0, bold: bool = False) -> int:
-        attr = curses.color_pair(color) if curses.has_colors() and color else 0
-        return attr | (curses.A_BOLD if bold else 0)
-
-    def _put(self, stdscr, y: int, x: int, text: str, attr: int = 0, width: int | None = None) -> None:
-        h, w = stdscr.getmaxyx()
-        if y < 0 or y >= h or x < 0 or x >= w or not text:
-            return
-        limit = ((w - x) if width is None else min(width, w - x)) - 1
-        if limit <= 0:
-            return
-        try:
-            stdscr.addnstr(y, x, _clip(text, limit), limit, attr)
-        except curses.error:
-            pass
-
     def _clamp_row(self, count: int) -> None:
         self.row = max(0, min(self.row, count - 1))
-
-    @staticmethod
-    def _columns(width: int) -> tuple[int, int, int] | None:
-        """(left width, right x, right width) or None when the terminal is narrow."""
-        if width < 88:
-            return None
-        # Cap the whole block: on a 280-column terminal an uncapped split pushes
-        # the values and the detail text to opposite edges and the columns stop
-        # reading as columns.
-        usable = min(width, 100)
-        left = 40
-        return left, left + 4, usable - left - 4
-
-    def _detail(self, stdscr, top: int, bottom: int, x: int, width: int, lines: list[str]) -> None:
-        try:
-            stdscr.vline(top, x - 2, curses.ACS_VLINE, max(0, bottom - top))
-        except curses.error:
-            pass
-        y = top
-        for line in lines:
-            for chunk in _wrap(line, max(1, width - 2)):
-                if y >= bottom:
-                    return
-                self._put(stdscr, y, x, chunk, self._attr(_DIM), width)
-                y += 1
-            y += 0
-
-    def _draw_confirm(self, stdscr, bottom: int, x: int, width: int) -> None:
-        if self.confirm:
-            self._put(stdscr, bottom - 1, x, f"{self.confirm} [y/N]",
-                      self._attr(_YELLOW, True), width)
 
     def _draw(self, stdscr) -> None:
         if self.screen != self._drawn_screen:
             stdscr.clearok(True)
             self._drawn_screen = self.screen
         stdscr.erase()
-        h, w = stdscr.getmaxyx()
-        if h < MIN_H or w < MIN_W:
-            self._put(stdscr, 0, 0, self.s("title"), self._attr(_CYAN, True))
-            self._put(stdscr, 2, 0, f"terminal too small: need {MIN_W}x{MIN_H}, have {w}x{h}",
-                      self._attr(_YELLOW))
+        height, width = stdscr.getmaxyx()
+        c = Canvas(stdscr, self.theme)
+        layout = layout_for(width, height)
+        self.layout = layout
+        if layout.tiny:
+            c.put(0, 1, self.s("title"), "brand", True)
+            c.wrapped(2, 1, max(1, width - 2), 2,
+                      self.s("notice_big") % (MIN_W, MIN_H, width, height), "warn")
             stdscr.noutrefresh()
             curses.doupdate()
             return
-        self._header(stdscr, h, w)
-        self._footer(stdscr, h, w)
-        top, bottom = 2, h - 2
-        x, width = 1, w - 2
-        screen = self.screen
-        # Every screen shares self.row; coming back from a longer list (the
-        # manage menu, a unit list) must not index past this one.
-        if screen == self.MENU:
-            self._clamp_row(len(self._menu_rows()))
-        elif screen == self.MANAGE:
-            self._clamp_row(len(self._manage_rows()))
-        elif screen == self.UNITS:
-            self._clamp_row(len(self.units))
-        elif screen == self.SNAPSHOTS:
-            self._clamp_row(len(self.snapshots))
-        if screen == self.WELCOME:
-            self._welcome(stdscr, top, bottom, x, width)
-        elif screen == self.VERSION:
-            self._version(stdscr, top, bottom, x, width)
-        elif screen == self.MENU:
-            self._menu(stdscr, top, bottom, x, width)
-        elif screen == self.SYSTEM:
-            self._system(stdscr, top, bottom, x, width)
-        elif screen == self.REVIEW:
-            self._review(stdscr, top, bottom, x, width)
-        elif screen == self.INSTALL:
-            self._installation(stdscr, top, bottom, x, width)
-        elif screen == self.RESULT:
-            self._result(stdscr, top, bottom, x, width)
-        elif screen == self.MANAGE:
-            self._manage(stdscr, top, bottom, x, width)
-            self._draw_confirm(stdscr, bottom, x, width)
-        elif screen == self.UNITS:
-            self._units(stdscr, top, bottom, x, width)
-        elif screen == self.SNAPSHOTS:
-            self._snapshots(stdscr, top, bottom, x, width)
-            self._draw_confirm(stdscr, bottom, x, width)
-        elif screen == self.ACTION:
-            self._action(stdscr, top, bottom, x, width)
-        elif screen == self.LOG:
-            self._log(stdscr, top, bottom, x, width)
+        self._header(c, layout)
+        self._footer(c, layout)
+        self._clamp_rows()
+        full = Box(layout.x, layout.top, layout.usable, layout.bottom - layout.top)
+        if self.screen in self.WIZARD and self.screen != self.WELCOME:
+            box, side = layout.content, layout.detail
+            if layout.nav:
+                self._nav(c, layout.nav)
+                c.vrule(layout.nav.right, layout.nav.y, layout.nav.h)
+            if side is not None:
+                # The rule sits in the first gap column, leaving one blank
+                # before the column's text: "│ text", not "│text".
+                c.vrule(side.x - 2, side.y, side.h)
+        elif self.screen in (self.WELCOME, self.LOG, self.ACTION):
+            # A hero page, a log reader and one command's output all read
+            # better across the whole width.
+            box, side = full, None
+        else:
+            box, side = self._management_split(full)
+            if side is not None:
+                # The rule sits in the first gap column, leaving one blank
+                # before the column's text: "│ text", not "│text".
+                c.vrule(side.x - 2, side.y, side.h)
+        drawer = {
+            self.WELCOME: self._welcome,
+            self.SYSTEM: self._system,
+            self.OPTIONS: self._options,
+            self.REVIEW: self._review,
+            self.INSTALL: self._installation,
+            self.RESULT: self._result,
+            self.MANAGE: self._manage,
+            self.UNITS: self._units,
+            self.SNAPSHOTS: self._snapshots,
+            self.ACTION: self._action,
+            self.LOG: self._log,
+        }[self.screen]
+        drawer(c, box, side)
+        if self.confirm:
+            c.dialog(self.s("title"), [self.confirm], "[y/N]")
+        if self.help_open:
+            self._help(c)
         stdscr.noutrefresh()
         curses.doupdate()
 
-    def _header(self, stdscr, h: int, w: int) -> None:
-        # The header is a constant: it must not change when the language does.
-        title = "KOS Installer"
-        if self.opts.source == "main":
-            branch = "main"
-        else:
-            branch = f"release {self.latest_tag}" if self.latest_tag else "release"
-        # No installer version here: the header names the release being installed.
-        self._put(stdscr, 0, 1, f"{title} · {branch}", self._attr(_CYAN, True))
-        right = f"{self.system.label} · {self.system.arch}"
-        self._put(stdscr, 0, max(1, w - _width(right) - 1), right, self._attr(_DIM))
-        try:
-            stdscr.hline(1, 0, curses.ACS_HLINE, w)
-        except curses.error:
-            pass
+    def _clamp_rows(self) -> None:
+        # Every screen shares self.row; coming back from a longer list (the
+        # manage menu, a unit list) must not index past this one.
+        if self.screen == self.MANAGE:
+            self._clamp_row(len(self._manage_rows()))
+        elif self.screen == self.UNITS:
+            self._clamp_row(len(self.units))
+        elif self.screen == self.SNAPSHOTS:
+            self._clamp_row(len(self.snapshots))
+        elif self.screen == self.REVIEW:
+            self.review_scroll = max(0, self.review_scroll)
+        elif self.screen == self.LOG:
+            if self.picker:
+                self._clamp_row(len(self.picker))
+            else:
+                self.log_scroll_view = max(0, min(self.log_scroll_view,
+                                                  max(0, len(self.log_text) - 1)))
 
-    def _footer(self, stdscr, h: int, w: int) -> None:
-        try:
-            stdscr.hline(h - 2, 0, curses.ACS_HLINE, w)
-        except curses.error:
-            pass
-        if self.screen == self.WELCOME:
-            self._put(stdscr, h - 1, 1, "↑↓ select · Enter continue · q quit", self._attr(_DIM))
+    def _management_split(self, full: Box) -> tuple[Box, Box | None]:
+        if full.w < 70:
+            return full, None
+        list_w = max(30, min(52, full.w * 2 // 3))
+        return (Box(full.x, full.y, list_w, full.h),
+                Box(full.x + list_w + 2, full.y, full.w - list_w - 2, full.h))
+
+    def _header(self, c: Canvas, layout) -> None:
+        # The brand is constant: it must not change when the language does.
+        sep = f" {self.theme.glyphs.sep} "
+        source = self._source_text()
+        left = f"KOS Installer{sep}{source}"
+        right = f"{self.system.label}{sep}{self.system.arch}"
+        c.put(0, layout.x, left, "brand", True, layout.usable)
+        if _width(left) + 3 + _width(right) <= layout.usable:
+            c.put(0, layout.x + layout.usable - _width(right) - 1, right, "secondary",
+                  False, _width(right) + 1)
+        c.rule(1, layout.x, layout.usable)
+
+    def _footer(self, c: Canvas, layout) -> None:
+        c.rule(layout.height - 2, 0, layout.width)
+        sep = f" {self.theme.glyphs.sep} "
+        hints = sep.join(f"{key} {label}" for key, label in self.footer_parts())
+        c.put(layout.height - 1, 1, hints, "secondary", False, layout.width - 1)
+
+    def footer_parts(self) -> list[tuple[str, str]]:
+        """Only the keys that do something on this screen."""
+        s = self.s
+        up_down = self.theme.glyphs.up_down
+        left_right = self.theme.glyphs.left_right
+        parts = {
+            self.WELCOME: [(up_down + left_right, s("key_language")),
+                           ("Enter", s("key_start")), ("m", s("key_manage")),
+                           ("q", s("key_quit"))],
+            self.SYSTEM: [(up_down, s("key_select")), ("Enter", s("key_continue")),
+                          ("F5", s("key_refresh")), ("Esc", s("key_back"))],
+            self.OPTIONS: [(up_down, s("key_move")), ("Space", s("key_toggle")),
+                           (left_right, s("key_cycle")), ("Enter", s("key_continue")),
+                           ("Esc", s("key_back"))],
+            self.REVIEW: [(up_down, s("key_scroll")), ("t", s("key_details")),
+                          ("Enter", s("key_start")), ("Esc", s("key_back"))],
+            self.INSTALL: [("Ctrl+C", s("key_cancel")),
+                           ("p", s("key_resume") if self.log_paused else s("key_pause")),
+                           (up_down, s("key_scroll"))],
+            self.RESULT: [("Enter", s("key_exit")), ("l", s("key_log")),
+                          ("m", s("key_manage"))],
+            self.MANAGE: [(up_down, s("key_move")), ("Enter", s("key_open")),
+                          ("Esc", s("key_back"))],
+            self.UNITS: [(up_down, s("key_move")), ("Space", s("key_toggle")),
+                         ("Esc", s("key_back"))],
+            self.SNAPSHOTS: [(up_down, s("key_move")), ("Space", s("key_create")),
+                             ("Enter", s("key_rollback")), ("Esc", s("key_back"))],
+            self.ACTION: [("Enter", s("key_back"))],
+            self.LOG: [(up_down, s("key_scroll")), ("Esc", s("key_back"))],
+        }.get(self.screen, [])
+        if self.screen == self.REVIEW and self._missing_deps():
+            parts = parts[:1] + [("i", s("key_deps"))] + parts[1:]
+        if self.screen == self.RESULT and self.result != "ok":
+            parts = parts[:1] + [("r", s("key_retry"))] + parts[1:]
+        if self.screen not in (self.INSTALL, self.ACTION, self.LOG):
+            parts = [*parts, ("F1", s("key_help"))]
+        return parts
+
+    def help_key(self, ch) -> bool:
+        """True when the key belonged to the help overlay."""
+        if self.help_open:
+            self.help_open = False
+            return True
+        if ch in (curses.KEY_F1, ord("?")) and self.screen != self.INSTALL:
+            self.help_open = True
+            return True
+        return False
+
+    def _help(self, c: Canvas) -> None:
+        lines = [self.s("help_heading"),
+                 *[f"{key}: {label}" for key, label in self.footer_parts()]]
+        c.dialog(self.s("help_title"), lines, self.s("help_close"))
+
+    def _heading(self, c: Canvas, box: Box, text: str, step: int | None = None,
+                 hint: str = "") -> None:
+        c.put(box.y, box.x, text, "brand", True, box.w)
+        if hint:
+            right = box.x + box.w - _width(hint) - 1
+            if right > box.x + _width(text) + 2:
+                c.put(box.y, right, hint, "secondary", False, _width(hint) + 1)
             return
-        key = {
-            self.WELCOME: "hint_welcome",
-            self.VERSION: "hint_version",
-            self.MENU: "hint_menu",
-            self.SYSTEM: "hint_system",
-            self.REVIEW: "hint_review",
-            self.INSTALL: "hint_install",
-            self.RESULT: "hint_result",
-            self.MANAGE: "hint_manage",
-            self.UNITS: "hint_units",
-            self.SNAPSHOTS: "hint_snapshots",
-            self.ACTION: "action_hint",
-            self.LOG: "log_hint",
-        }.get(self.screen, "hint_menu")
-        self._put(stdscr, h - 1, 1, self.s(key), self._attr(_DIM))
+        if step is None or self.layout.nav is not None:
+            return
+        tag = self.s("step_of") % (step + 1, STAGE_COUNT)
+        right = box.x + box.w - _width(tag) - 1
+        if right > box.x + _width(text) + 2:
+            c.put(box.y, right, tag, "secondary", False, _width(tag) + 1)
 
-    def _welcome(self, stdscr, top: int, bottom: int, x: int, width: int) -> None:
-        y = top + 2
-        for line in LOGO:
-            self._put(stdscr, y, x, line, self._attr(_CYAN, True), max(10, width))
-            y += 1
-        y += 2
-        self._put(stdscr, y, x, "Select language", self._attr(_DIM), width)
-        y += 1
-        for index, lang in enumerate(self.LANGUAGES):
-            focused = index == self.lang_row
-            label = "中文" if lang == "zh" else "English"
-            prefix = "❯ " if focused else "  "
-            attr = self._attr(_CYAN, True) if focused else 0
-            self._put(stdscr, y, x, f"{prefix}{label}", attr, width)
-            y += 1
+    def _range_hint(self, start: int, shown: int, total: int) -> str:
+        """Say where the visible window sits, so a clipped list is not silent."""
+        if total <= shown:
+            return ""
+        return self.s("listing_range") % (start + 1, start + shown, total)
 
-    def _version(self, stdscr, top: int, bottom: int, x: int, width: int) -> None:
-        y = top + 2
-        self._put(stdscr, y, x, self.s("welcome_version"), self._attr(_CYAN, True), width)
-        y += 2
-        for offset, source in enumerate(self.SOURCES):
-            focused = offset == self.branch_row
-            key = "branch_main" if source == "main" else "branch_release"
-            label = self.s(key)
-            if source != "main" and self.latest_tag:
-                label = f"{label} {self.latest_tag}"
-            prefix = "❯ " if focused else "  "
-            attr = self._attr(_CYAN, True) if focused else 0
-            self._put(stdscr, y, x, f"{prefix}{label}", attr, width)
-            y += 1
-
-    def _menu(self, stdscr, top: int, bottom: int, x: int, width: int) -> None:
-        y = top + 1
-        cols = self._columns(width)
-        usable = min(width, 118)
-        left_w = 40
-        mid_x, mid_w = left_w + 4, 24
-        detail_x = mid_x + mid_w + 3
-        detail_w = max(20, usable - detail_x)
-        self.rows = self._menu_rows()
-        sub = self._sub_rows()
-        rows_y = y
-        for index, (key, label, value, _kind) in enumerate(self.rows):
-            selected = index == self.row
-            if selected and self.focus == 0:
-                attr = self._attr(_CYAN, True)
-            elif selected:
-                attr = self._attr(_DIM)  # focus is in the submenu, not here
+    def _nav(self, c: Canvas, box: Box) -> None:
+        if box.h <= 0:
+            return
+        step = {self.WELCOME: 0, self.SYSTEM: 1, self.OPTIONS: 2, self.REVIEW: 3,
+                self.INSTALL: 4, self.RESULT: 4}.get(self.screen, 0)
+        labels = (self.s("step_welcome"), self.s("step_system"), self.s("step_options"),
+                  self.s("step_review"), self.s("step_install"))
+        glyphs = self.theme.glyphs
+        y = box.y + 1
+        for index, label in enumerate(labels):
+            if y >= box.bottom:
+                return
+            if index == step:
+                # Brand bold marks "you are here"; reverse is reserved for the
+                # row that actually has focus.
+                c.put(y, box.x, f"{glyphs.pointer} {label}", "brand", True, box.w)
+            elif index < step:
+                c.put(y, box.x, f"  {glyphs.ok} {label}", "secondary", False, box.w)
             else:
-                attr = 0
-            prefix = "❯ " if selected else "  "
-            line = f"{prefix}{label}"
-            if value:
-                pad = max(1, left_w - _width(line) - _width(value) - 2)
-                line = f"{line}{' ' * pad}{value}"
-            self._put(stdscr, y, x, line, attr, left_w - 1)
+                c.put(y, box.x, f"  {glyphs.info} {label}", "secondary", False, box.w)
             y += 1
+        if box.bottom - y >= 3:
+            c.rule(y + 1, box.x, max(1, box.w - 2))
+            c.put(y + 2, box.x, f"m {self.s('nav_manage')}", "secondary", False, box.w)
 
-        focused_key = self.rows[self.row][0]
-        if sub:
-            # The right column splits: children in the middle, their detail
-            # further right. The left column never changes.
-            try:
-                # same span as the detail separator, or the two lines end unevenly
-                stdscr.vline(rows_y, mid_x - 2, curses.ACS_VLINE, max(0, bottom - 2 - rows_y))
-            except curses.error:
-                pass
-            sy = rows_y
-            for index, (key, label, value, _kind) in enumerate(sub):
-                selected = index == self.sub_row and self.focus == 1
-                attr = (self._attr(_CYAN, True) if selected
-                        else self._attr(_DIM) if self.focus == 0 else 0)
-                prefix = "❯ " if selected else "  "
-                line = f"{prefix}{label}"
-                if value:
-                    pad = max(1, mid_w - _width(line) - _width(value) - 2)
-                    line = f"{line}{' ' * pad}{value}"
-                self._put(stdscr, sy, mid_x, line, attr, mid_w - 1)
-                sy += 1
-            focused_key = sub[self.sub_row][0]
-            value = sub[self.sub_row][2]
-            detail_key = "apps" if focused_key.startswith("app:") else focused_key
-            lines = [self.s(f"detail_{detail_key}")]
-            if value and not value.startswith("["):
-                lines += ["", f"{self.s('detail_hint')}: {value}"]
-            elif detail_key == "apps":
-                lines += ["", f"{len(self.opts.app_set)}/{len(ALL_APPS)}"]
-            self._detail(stdscr, rows_y, bottom - 2, detail_x, detail_w, lines)
-        elif cols:
-            if focused_key == "system":
-                # Both blocks live in this pane, split by a rule: the checks on
-                # top, the packages below (PgUp/PgDn scrolls the lower half).
-                lines = []
-                for probe in self.system.probes:
-                    glyph = {"PASS": "✔", "WARN": "⚠", "FAIL": "✖"}.get(probe.status, "·")
-                    lines.append(f"{glyph} {self.s(probe.key)}: {probe.detail}")
-                data = self.deps_data
-                if data and data.packages:
-                    ok = sum(1 for _name, good in data.packages if good)
-                    lines += ["", "─" * max(10, detail_w - 4),
-                              f"{self.s('deps_title') % data.family}  "
-                              f"{self.s('deps_summary') % (ok, len(data.packages))}"]
-                    lines += [f"{'✔' if good else '✖'} {name}"
-                              for name, good in data.packages[self.deps_row:]]
+    def _source_text(self) -> str:
+        if self.opts.source == "local":
+            return self.s("source_local")
+        if self.opts.source == "main":
+            return self.s("source_main")
+        tag = f" {self.latest_tag}" if self.latest_tag else ""
+        return f"{self.s('source_stable')}{tag}"
+
+    def _session_text(self) -> str:
+        probe = next((p for p in self.system.probes if p.key == "probe_session"), None)
+        return probe.detail if probe else "?"
+
+    # -- welcome ---------------------------------------------------------
+    def _welcome(self, c: Canvas, box: Box, side: Box | None = None) -> None:
+        glyphs = self.theme.glyphs
+        # A hero block: one centred column instead of panes. It reads as a
+        # landing page and keeps the language choice and the start action on
+        # screen however short the terminal is.
+        block_w = min(box.w, 74)
+        block_x = box.x + (box.w - block_w) // 2
+        y = box.y + 1
+        logo_fits = box.h >= 22 and block_w >= _width(LOGO[0])
+        if logo_fits:
+            pad = max(0, (block_w - _width(LOGO[0])) // 2)
+            for line in LOGO:
+                c.put(y, block_x + pad, line, "brand", True, block_w - pad)
+                y += 1
+            y += 1
+        else:
+            c.put(y, block_x, "NextKDE", "brand", True, block_w)
+            y += 2
+        y = c.wrapped(y, block_x, block_w, 2, self.s("welcome_intro"), "secondary") + 1
+        facts = [
+            (self.s("label_distro"), self.system.label),
+            (self.s("label_arch"), self.system.arch),
+            (self.s("label_session"), self._session_text()),
+            (self.s("label_path"), self.s("review_target")),
+            (self.s("label_source"), self._source_text()),
+        ]
+        # Language and start need three rows; the facts use whatever is above.
+        language_y = box.bottom - 3
+        if language_y - y > len(facts):
+            key_w = max(_width(label) for label, _value in facts) + 2
+            for label, value in facts:
+                c.put(y, block_x, label, "secondary", False, key_w + 1)
+                c.put(y, block_x + key_w, value, "text", False, max(4, block_w - key_w))
+                y += 1
+            language_y = min(y + 1, box.bottom - 3)
+        else:
+            language_y = min(y, box.bottom - 3)
+        self._language_row(c, Box(block_x, box.y, block_w, box.h), language_y)
+        start_y = min(language_y + 2, box.bottom - 1)
+        c.put(start_y, block_x, f"{glyphs.pointer} [Enter] {self.s('welcome_start')}",
+              "brand", True, block_w)
+
+    def _language_row(self, c: Canvas, box: Box, y: int) -> None:
+        if y >= box.bottom - 1:
+            return
+        glyphs = self.theme.glyphs
+        label = self.s("label_language")
+        labels = [("中文" if lang == "zh" else "English", index)
+                  for index, lang in enumerate(self.LANGUAGES)]
+        chips = sum(_width(text) + 4 for text, _index in labels) + 2
+        inline = _width(label) + 3 + chips <= box.w
+        if inline:
+            c.put(y, box.x, label, "secondary", False, _width(label) + 1)
+            x = box.x + _width(label) + 3
+        else:
+            c.put(y, box.x, label, "secondary", False, box.w)
+            y += 1
+            x = box.x + 2
+        for text, index in labels:
+            if y >= box.bottom - 1:
+                return
+            active = index == self.lang_row
+            if active:
+                c.put(y, x, glyphs.pointer, "brand", True, 3)
+            c.put(y, x + 2, text, "selected" if active else "secondary", False,
+                  _width(text) + 1)
+            if inline:
+                x += 2 + _width(text) + 4
             else:
-                lines = [self.s(f"detail_{focused_key}")]
-            self._detail(stdscr, rows_y, bottom - 2, left_w + 4, detail_w, lines)
+                y += 1
+                x = box.x + 2
 
-        y = max(y, rows_y + len(self.rows)) + 1
-        self._put(stdscr, y, x, self.s("review_target"), self._attr(_DIM), width)
-        y += 1
+    # -- system ----------------------------------------------------------
+    def _system(self, c: Canvas, box: Box, side: Box | None = None) -> None:
+        probes = self.system.probes
+        if not probes:
+            self._heading(c, box, self.s("system_head"), 1)
+            c.put(box.y + 2, box.x, self.s("check_none"), "warn", False, box.w)
+            return
+        self.sys_row = max(0, min(self.sys_row, len(probes) - 1))
+        passed = sum(1 for probe in probes if probe.status == "PASS")
+        warned = sum(1 for probe in probes if probe.status == "WARN")
+        failed = sum(1 for probe in probes if probe.status == "FAIL")
+        counts = self.s("system_counts") % (passed, warned, failed)
+        c.put(box.y + 1, box.x, counts, "fail" if failed else "warn" if warned else "ok",
+              False, box.w)
+        y = box.y + 3
+        body = Box(box.x, y, box.w, max(1, box.bottom - y))
+        detail_box = side
+        if side is None:
+            list_box, detail_box = stack_list(body, len(probes), min(9, max(4, body.h // 2)))
+            if detail_box is not None:
+                c.rule(detail_box.y - 1, detail_box.x, detail_box.w)
+        else:
+            list_box = body
+        rows = self._probe_rows(probes, list_box.w)
+        start = scroll_start(self.sys_row, len(rows), list_box.h)
+        self._heading(c, box, self.s("system_head"), 1,
+                      self._range_hint(start, list_box.h, len(rows)))
+        c.rows(list_box, rows, self.sys_row, start)
+        if detail_box is None or detail_box.h <= 0:
+            return
+        detail_rows = self._probe_detail(probes[self.sys_row], detail_box.w)
+        if self.deps_data and self.deps_data.packages and detail_box.h >= 14:
+            ok = sum(1 for _name, good in self.deps_data.packages if good)
+            detail_rows += [Row(""), Row("─" * max(4, detail_box.w - 2), "secondary"),
+                            Row(self.s("deps_title") % self.deps_data.family, "brand", True),
+                            Row(self.s("deps_summary") % (ok, len(self.deps_data.packages)),
+                                "secondary")]
+            for name, good in self.deps_data.packages:
+                detail_rows.append(Row(f"{self.theme.glyph('PASS' if good else 'FAIL')} {name}",
+                                       "ok" if good else "fail"))
+        c.rows(detail_box, detail_rows, None, 0, pointer=False)
+
+    def _probe_rows(self, probes, width: int) -> list[Row]:
+        names = [self.s(probe.key) for probe in probes]
+        words = [self.s("status_" + probe.status.lower()) for probe in probes]
+        name_w = min(24, max(_width(name) for name in names) + 4)
+        word_w = max(_width(word) for word in words) + 2
+        rows = []
+        for index, probe in enumerate(probes):
+            role = {"PASS": "ok", "WARN": "warn", "FAIL": "fail"}.get(probe.status, "text")
+            text = f"{self.theme.glyph(probe.status)} {names[index]}"
+            if width >= name_w + word_w + 12:
+                text += " " * max(1, name_w - _width(text))
+                text += words[index] + " " * max(1, word_w - _width(words[index]))
+                text += probe.detail
+            rows.append(Row(text, role))
+        return rows
+
+    def _probe_detail(self, probe, width: int) -> list[Row]:
+        s = self.s
+        role = {"PASS": "ok", "WARN": "warn", "FAIL": "fail"}.get(probe.status, "text")
+        pairs = [
+            (s("check_what"), s(probe.key), "secondary"),
+            (s("check_status"), s("status_" + probe.status.lower()), role),
+            (s("check_result"), probe.detail, "text"),
+            (s("check_why"), s("why_" + probe.key), "secondary"),
+            (s("check_fixable"), s("check_fix_yes") if probe.key in FIXABLE
+             else s("check_fix_no"), "ok" if probe.key in FIXABLE else "warn"),
+        ]
+        if probe.remedy and probe.status != "PASS":
+            pairs.append((s("check_remedy"), probe.remedy, "warn"))
+        return self._pairs(pairs, width)
+
+    def _pairs(self, pairs, width: int) -> list[Row]:
+        rows: list[Row] = []
+        for label, value, role in pairs:
+            prefix = f"{label}: " if label else ""
+            chunks = _wrap(prefix + value, max(10, width - 2))
+            rows.append(Row(chunks[0], role))
+            rows += [Row(f"  {chunk}", role) for chunk in chunks[1:]]
+        return rows
+
+    # -- options ---------------------------------------------------------
+    def _options(self, c: Canvas, box: Box, side: Box | None = None) -> None:
+        rows = self._options_rows()
+        targets = self._option_targets(rows)
+        if targets:
+            self.opt_row = max(0, min(self.opt_row, len(targets) - 1))
+        body = Box(box.x, box.y + 2, box.w, max(1, box.h - 2))
+        display: list[Row] = []
+        selected_row = 0
+        target_index = 0
+        for kind, key, label, value in rows:
+            if kind == "group":
+                display.append(Row(label, "brand", True))
+                continue
+            selected = target_index == self.opt_row
+            if selected:
+                selected_row = len(display)
+            display.append(Row(self._option_line(kind, key, label, value, body.w)))
+            target_index += 1
+        detail_box = side
+        if side is None:
+            list_box, detail_box = stack_list(body, len(display),
+                                              min(6, max(2, body.h // 3)))
+            if detail_box is not None:
+                c.rule(detail_box.y - 1, detail_box.x, detail_box.w)
+        else:
+            list_box = body
+        start = scroll_start(selected_row, len(display), list_box.h)
+        self._heading(c, box, self.s("options_head"), 2,
+                      self._range_hint(start, list_box.h, len(display)))
+        c.rows(list_box, display, selected_row, start)
+        if detail_box is None or detail_box.h <= 0:
+            return
+        kind, key = self._focused_option()
+        c.rows(detail_box, self._option_detail(kind, key, detail_box.w), None, 0,
+               pointer=False)
+
+    def _option_line(self, kind: str, key: str, label: str, value: str,
+                     width: int) -> str:
+        glyphs = self.theme.glyphs
+        if kind == "core":
+            mark = glyphs.ok
+        elif kind in ("toggle", "app"):
+            mark = glyphs.checked if self._option_on(kind, key) else glyphs.unchecked
+        else:
+            mark = " "
+        text = f"{mark} {label}"
+        if not value:
+            return text
+        pad = width - 3 - _width(text) - _width(value) - 2
+        return f"{text}{' ' * pad}{value}" if pad > 0 else f"{text}  {value}"
+
+    def _option_detail(self, kind: str, key: str, width: int) -> list[Row]:
+        s = self.s
+        desc = {"source": "detail_source", "core": "detail_core",
+                "app": "detail_apps", "toggle": "detail_" + key}.get(kind, "detail_core")
+        rows = [Row(chunk, "secondary") for chunk in _wrap(s(desc), max(10, width))]
+        if kind == "source":
+            rows += [Row(chunk, "secondary")
+                     for chunk in _wrap(s("source_" + self.opts.source + "_note"),
+                                        max(10, width))]
+            if not self.source_applies and self.opts.source != "local":
+                rows.append(Row(""))
+                rows += [Row(chunk, "warn")
+                         for chunk in _wrap(s("skipped_source"), max(10, width))]
+        if kind == "app":
+            rows += [Row(chunk, "warn") for chunk in _wrap(s("apps_impact"), max(10, width))]
+        if kind == "toggle" and key == "spatial":
+            rows += [Row(chunk, "warn")
+                     for chunk in _wrap(s("opt_spatial_hint"), max(10, width))]
+        return rows
+
+    # -- review ----------------------------------------------------------
+    def _review(self, c: Canvas, box: Box, side: Box | None = None) -> None:
+        self._heading(c, box, self.s("review_head"), 3)
+        body = Box(box.x, box.y + 2, box.w, max(1, box.h - 2))
+        summary = self._review_summary(body.w)
+        side_rows = self._review_side(body.w)
+        if side is not None:
+            steps_box = body
+            c.rows(side, side_rows, None, 0, pointer=False)
+        else:
+            steps_box = body
+            summary = summary + [Row("")] + side_rows
+        rows = summary + [Row("")] + self._review_steps(steps_box.w)
+        rows += [Row(""), Row(self.s("review_details_on") if self.review_details
+                              else self.s("review_details"), "secondary")]
+        self.review_scroll = max(0, min(self.review_scroll,
+                                        max(0, len(rows) - steps_box.h)))
+        c.rows(steps_box, rows, None, self.review_scroll, pointer=False)
+
+    def _review_summary(self, width: int) -> list[Row]:
+        s = self.s
+        sep = f" {self.theme.glyphs.sep} "
+        # The same list the plan will install, so review cannot promise
+        # something the backend will not do.
+        apps = [s("app_" + name) for name in selected_apps(self.opts)]
+        pairs = [
+            (s("label_source"), self._source_text(), "text"),
+            (s("label_core"), f"{s('core_shell')}{sep}{s('label_required')}", "text"),
+            (s("method"), method_label(s, self.system.method), "secondary"),
+            (s("label_apps"), ", ".join(apps) if apps else s("review_apps_none"), "text"),
+            (s("opt_lockscreen"), s("on") if self.opts.lockscreen else s("off"), "text"),
+            (s("opt_spatial"), s("on") if self.opts.spatial else s("off"), "text"),
+            (s("opt_start"), s("on") if self.opts.start else s("off"), "text"),
+        ]
         proxy = proxy_url()
         if proxy:
-            self._put(stdscr, y, x, f"{self.s('opt_proxy')}: {proxy.split('://')[-1]}",
-                      self._attr(_DIM), width)
-
-    def _system(self, stdscr, top: int, bottom: int, x: int, width: int) -> None:
-        y = top + 1
-        self._put(stdscr, y, x, self.s("system_title"), self._attr(_CYAN, True), width)
-        y += 2
-        probes = self.system.probes
-        self.sys_row = min(self.sys_row, max(0, len(probes) - 1))
-        cols = self._columns(width)
-        left_w = cols[0] if cols else width
-        value_col = min(28, max((_width(f"  {self.s(probe.key)}") for probe in probes),
-                               default=0) + 3)
-        for index, probe in enumerate(probes):
-            selected = index == self.sys_row
-            color = {"PASS": _GREEN, "WARN": _YELLOW, "FAIL": _RED}.get(probe.status, 0)
-            glyph = {"PASS": "✔", "WARN": "⚠", "FAIL": "✖"}.get(probe.status, "·")
-            prefix = "❯ " if selected else "  "
-            line = f"{prefix}{glyph} {self.s(probe.key)}"
-            pad = 2 if _width(line) >= value_col else value_col - _width(line)
-            attr = self._attr(_CYAN, True) if selected else self._attr(color)
-            self._put(stdscr, y, x, f"{line}{' ' * pad}{probe.detail}", attr, left_w - 1)
-            y += 1
-
-        if not cols:
-            return
-        _left, right_x, right_w = cols
-        try:
-            stdscr.vline(top, right_x - 2, curses.ACS_VLINE, max(0, bottom - top))
-        except curses.error:
-            pass
-        # Upper half: why the focused check matters.
-        ry = top + 3
-        probe = probes[self.sys_row] if probes else None
-        if probe is not None:
-            for chunk in _wrap(self.s(f"why_{probe.key}"), max(10, right_w - 2)):
-                if ry >= bottom - 10:
-                    break
-                self._put(stdscr, ry, right_x, chunk, self._attr(_DIM), right_w)
-                ry += 1
-            if probe.remedy and probe.status != "PASS":
-                for chunk in _wrap(probe.remedy, max(10, right_w - 2)):
-                    if ry >= bottom - 10:
-                        break
-                    self._put(stdscr, ry, right_x, chunk, self._attr(_YELLOW), right_w)
-                    ry += 1
-        # Rule between the two halves.
-        try:
-            stdscr.hline(ry + 1, right_x, curses.ACS_HLINE, max(1, right_w - 1))
-        except curses.error:
-            pass
-        ry += 2
-        data = self.deps_data
-        if not data or not data.packages:
-            self._put(stdscr, ry, right_x, self.s("deps_empty"), self._attr(_YELLOW), right_w)
-            return
-        ok = sum(1 for _name, good in data.packages if good)
-        self._put(stdscr, ry, right_x,
-                  f"{self.s('deps_title') % data.family}  "
-                  f"{self.s('deps_summary') % (ok, len(data.packages))}",
-                  self._attr(_CYAN, True), right_w)
-        ry += 1
-        height = max(1, bottom - ry - 1)
-        start = min(self.deps_row, max(0, len(data.packages) - height))
-        for name, good in data.packages[start:start + height]:
-            self._put(stdscr, ry, right_x, f"{'✔' if good else '✖'} {name}",
-                      self._attr(_GREEN if good else _RED), right_w)
-            ry += 1
-        if len(data.packages) > height:
-            self._put(stdscr, bottom - 1, right_x, self.s("deps_scroll_hint"),
-                      self._attr(_DIM), right_w)
-
-    def _review(self, stdscr, top: int, bottom: int, x: int, width: int) -> None:
-        y = top + 1
-        self._put(stdscr, y, x, self.s("review_title"), self._attr(_CYAN, True), width)
-        y += 2
-        if self.opts.apps:
-            if self.app_deps:
-                self._put(stdscr, y, x, f"{self.s('review_apps_missing')}: {', '.join(self.app_deps)}",
-                          self._attr(_YELLOW), width)
-            else:
-                self._put(stdscr, y, x, self.s("review_apps_ok"), self._attr(_DIM), width)
-            y += 1
-        missing = [name for name, good in (self.deps_data.packages if self.deps_data else [])
-                   if not good]
+            pairs.append((s("opt_proxy"), proxy.split("://")[-1], "secondary"))
+        missing = self._missing_deps()
         if missing:
             listed = ", ".join(missing[:6]) + (f" +{len(missing) - 6}" if len(missing) > 6 else "")
-            self._put(stdscr, y, x, self.s("review_deps_missing") % listed, self._attr(_RED), width)
-            y += 1
-            self._put(stdscr, y, x, self.s("review_deps_hint"), self._attr(_CYAN), width)
-            y += 1
-        elif self.deps_data and self.deps_data.packages:
-            self._put(stdscr, y, x, self.s("review_deps_ok"), self._attr(_DIM), width)
-            y += 1
-        if not self.steps:
-            self._put(stdscr, y, x, self.s("review_none"), self._attr(_YELLOW), width)
-            return
-        if self.system.blocked:
-            self._put(stdscr, y, x, self.s("review_blocked"), self._attr(_RED, True), width)
-            y += 1
-        self._put(stdscr, y, x, self.s("review_warn"), 0, width)
-        y += 1
-        for index, step in enumerate(self.steps, 1):
-            if y >= bottom - 1:
-                break
-            self._put(stdscr, y, x, f"{index}. {step.title}", 0, width)
-            y += 1
-            if step.argv:
-                self._put(stdscr, y, x + 3, "$ " + " ".join(step.argv), self._attr(_DIM),
-                          max(10, width - 3))
-                y += 1
-            elif step.note:
-                self._put(stdscr, y, x + 3, self.s(step.note), self._attr(_YELLOW),
-                          max(10, width - 3))
-                y += 1
-        y += 1
-        self._put(stdscr, y, x, self.s("review_takeover_short"), self._attr(_DIM), width)
-
-    def _installation(self, stdscr, top: int, bottom: int, x: int, width: int) -> None:
-        work = [step for step in self.steps if step.argv]
-        total = len(work)
-        done = sum(1 for step in self.steps[: self.step_index] if step.argv)
-        fraction = (done + self.current_progress) / total if total else 0.0
-        task = self.current.title if self.current else self.s("phase_idle")
-        self._put(stdscr, top, x, self.s("install_title"), self._attr(_CYAN, True), width)
-        self._put(stdscr, top, x + max(20, width - 8), f"{done}/{total}", self._attr(_DIM), 8)
-        self._put(stdscr, top + 1, x, task, 0, width)
-        if self.phase:
-            self._put(stdscr, top + 1, x + _width(task) + 2, f"· {self.phase}",
-                      self._attr(_DIM), max(6, width - _width(task) - 3))
-        bar_w = max(10, min(width - 8, 48))
-        filled = int(bar_w * fraction)
-        self._put(stdscr, top + 2, x, "█" * filled + "░" * (bar_w - filled),
-                  self._attr(_CYAN), bar_w + 1)
-        self._put(stdscr, top + 2, x + bar_w + 2, f"{int(100 * fraction):>3}%", self._attr(_DIM), 6)
-        log_top = top + 5
-        height = max(3, bottom - log_top)
-        for offset, (level, text) in enumerate(self.log_lines[-height:]):
-            color = {"ERROR": _RED, "WARN": _YELLOW, "OK": _GREEN}.get(level, 0)
-            self._put(stdscr, log_top + offset, x, text, self._attr(color), width)
-        if self.cancel_requested:
-            self._put(stdscr, bottom - 1, x, self.s("cancel_confirm") + " [y/N]",
-                      self._attr(_YELLOW, True), width)
-
-    def _result(self, stdscr, top: int, bottom: int, x: int, width: int) -> None:
-        ok = self.result == "ok"
-        title = self.s("success_title") if ok else self.s("failure_title")
-        self._put(stdscr, top + 1, x, ("✅ " if ok else "❌ ") + title,
-                  self._attr(_GREEN if ok else _RED, True), width)
-        y = top + 3
-        self._put(stdscr, y, x, self.s("log_hint") + str(self.log_path), self._attr(_DIM), width)
-        y += 2
-        if ok:
-            self._put(stdscr, y, x, self.s("next_steps"), 0, width)
-            y += 2
-            self._put(stdscr, y, x, "./tools/kosctl start", self._attr(_CYAN), width)
-            y += 1
-            self._put(stdscr, y, x, "./tools/kosctl version", 0, width)
-            y += 2
-            self._put(stdscr, y, x, "[m] manage  [l] log  [Enter] quit", self._attr(_CYAN), width)
+            pairs.append((s("label_deps"), s("review_deps_missing") % listed, "fail"))
         else:
-            if self.failed:
-                self._put(stdscr, y, x, f"{self.s('failed')}: {self.failed.title}",
-                          self._attr(_RED), width)
-                y += 1
-                self._put(stdscr, y, x + 2, "$ " + " ".join(self.failed.argv), self._attr(_DIM),
-                          width)
-                y += 1
-            self._put(stdscr, y + 1, x, f"[r] {self.s('retry')}  [l] log  [m] manage  [Enter] {self.s('quit')}",
-                      self._attr(_CYAN), width)
-        y += 2
-        for line in [line for _level, line in self.log_lines[-5:]]:
-            if y < bottom:
-                self._put(stdscr, y, x, line, self._attr(_DIM), width)
-                y += 1
+            pairs.append((s("label_deps"), s("review_deps_ok"), "secondary"))
+        rows = [Row(s("review_summary"), "brand", True), Row("")]
+        rows += self._pairs(pairs, width)
+        return rows
 
-    def _manage(self, stdscr, top: int, bottom: int, x: int, width: int) -> None:
-        y = top + 1
-        self._put(stdscr, y, x, self.s("row_manage"), self._attr(_CYAN, True), width)
-        y += 2
-        if not self.units:
-            self._put(stdscr, y, x, self.s("manage_empty"), self._attr(_YELLOW), width)
-            y += 2
-        rows = self._manage_rows()
-        for index, (_key, label) in enumerate(rows):
-            selected = index == self.row
-            attr = self._attr(_CYAN, True) if selected else 0
-            prefix = "❯ " if selected else "  "
-            value = ""
-            if _key == "units":
-                value = f"{len(self.units)}"
-            elif _key == "snapshots":
-                value = f"{len(self.snapshots)}"
-            line = f"{prefix}{label}"
-            if value:
-                panel = min(width, 78)
-                pad = max(2, panel - _width(line) - _width(value) - 2)
-                line = f"{line}{' ' * pad}{value}"
-            self._put(stdscr, y, x, line, attr, width)
-            y += 1
+    def _review_side(self, width: int) -> list[Row]:
+        s = self.s
+        warnings: list[tuple[str, str]] = []
+        if self.system.blocked:
+            warnings.append((s("review_blocked"), "fail"))
+        blocked_options = unsupported(self.system.family, self.opts)
+        if blocked_options:
+            warnings.append((s("review_unsupported") % ", ".join(blocked_options), "fail"))
+        warnings.append((s("review_side_takeover"), "warn"))
+        if self.opts.start:
+            warnings.append((s("review_side_session"), "warn"))
+        warnings.append((s("review_side_userpath"), "secondary"))
+        warnings.append((s("review_side_log"), "secondary"))
+        if self._missing_deps():
+            warnings.append((s("review_skip_missing"), "warn"))
+        glyphs = self.theme.glyphs
+        rows = [Row(s("review_side"), "brand", True), Row("")]
+        for text, role in warnings:
+            mark = glyphs.info if role == "secondary" else glyphs.warn
+            chunks = _wrap(text, max(8, width - 4))
+            rows.append(Row(f"{mark} {chunks[0]}", role))
+            rows += [Row(f"  {chunk}", role) for chunk in chunks[1:]]
+        return rows
 
-    def _units(self, stdscr, top: int, bottom: int, x: int, width: int) -> None:
-        y = top + 1
-        cols = self._columns(width)
-        self._put(stdscr, y, x, self.s("units_title"), self._attr(_CYAN, True), width)
-        y += 2
-        if not self.units:
-            self._put(stdscr, y, x, self.s("units_none"), self._attr(_YELLOW), width)
+    def _review_steps(self, width: int) -> list[Row]:
+        s = self.s
+        rows = [Row(s("review_steps"), "brand", True)]
+        if not self.steps:
+            rows.append(Row(s("review_no_steps"), "warn"))
+            return rows
+        rows.append(Row(s("step_count") % len(self.steps), "secondary"))
+        for index, step in enumerate(self.steps, 1):
+            rows.append(Row(f"{index}. {step.title}", "text", True))
+            if step.argv and self.review_details:
+                for chunk in _wrap("$ " + " ".join(step.argv), max(10, width - 4)):
+                    rows.append(Row(f"    {chunk}", "secondary"))
+            elif step.argv:
+                rows.append(Row(f"    {s('review_cmd')}: {step.argv[0]} "
+                                f"+{max(0, len(step.argv) - 1)}", "secondary"))
+            elif step.note:
+                rows += [Row(f"    {chunk}", "warn")
+                         for chunk in _wrap(s(step.note), max(10, width - 4))]
+        return rows
+
+    # -- installation ----------------------------------------------------
+    def _stage_state(self, index: int) -> str:
+        step = self.steps[index]
+        if index == self.failed_index and self.result in ("failed", "cancelled"):
+            return "failed"
+        if index in self.skipped_steps or not step.argv:
+            return "skipped"
+        if index < self.step_index:
+            return "done"
+        if index == self.step_index and self.current is not None:
+            return "running"
+        return "waiting"
+
+    def _stage_rows(self) -> list[Row]:
+        glyphs = self.theme.glyphs
+        marks = {"done": (glyphs.ok, "ok", "stage_done"),
+                 "running": (glyphs.running, "brand", "stage_running"),
+                 "failed": (glyphs.fail, "fail", "stage_failed"),
+                 "skipped": (glyphs.info, "secondary", "stage_skipped"),
+                 "waiting": (glyphs.info, "secondary", "stage_waiting")}
+        rows = []
+        for index, step in enumerate(self.steps):
+            state = self._stage_state(index)
+            mark, role, word = marks[state]
+            rows.append(Row(f"{mark} {index + 1}. {step.title}  [{self.s(word)}]",
+                            role, bold=state == "running"))
+        return rows
+
+    def _install_state(self) -> tuple[str, str]:
+        if self.cancel_requested:
+            return self.s("install_cancelling"), "warn"
+        if self.result == "ok":
+            return self.s("install_done"), "ok"
+        if self.result in ("failed", "cancelled"):
+            return self.s("install_failed"), "fail"
+        return self.s("install_running"), "brand"
+
+    def _installation(self, c: Canvas, box: Box, side: Box | None = None) -> None:
+        self._heading(c, box, self.s("install_head"), 4)
+        state, role = self._install_state()
+        work = [index for index, step in enumerate(self.steps) if step.argv]
+        done = sum(1 for index in work if self._stage_state(index) == "done")
+        task = self.current.title if self.current else ""
+        line = f"{state}{' ' + self.theme.glyphs.sep + ' ' + task}" if task else state
+        c.put(box.y + 1, box.x, line, role, True, box.w)
+        if self.install_started:
+            elapsed = self.s("install_elapsed") % _clock(time.monotonic() - self.install_started)
+            if _width(elapsed) + 4 < box.w:
+                c.put(box.y + 1, box.x + box.w - _width(elapsed) - 1, elapsed,
+                      "secondary", False, _width(elapsed) + 1)
+        fraction: float | None = None
+        label = self.s("install_no_progress")
+        if work:
+            if self.current is None:
+                fraction = done / len(work)
+                label = f"{int(fraction * 100):3d}%"
+            elif self.current_progress is not None:
+                # The build prints "[12/206]": that is real progress.
+                fraction = (done + self.current_progress) / len(work)
+                label = f"{int(fraction * 100):3d}%"
+            else:
+                # The step reports nothing measurable; the bar still shows the
+                # steps that really finished, and says so.
+                fraction = done / len(work)
+                label = self.s("install_step_progress") % (done, len(work))
+        bar_w = max(10, min(40, box.w - 16))
+        c.bar(box.y + 2, box.x, bar_w, fraction)
+        c.put(box.y + 2, box.x + bar_w + 2, label, "text" if fraction else "secondary",
+              False, max(6, box.w - bar_w - 2))
+        states = [self._stage_state(index) for index in range(len(self.steps))]
+        # Only the states that occur, so the line fits a 50-column pane.
+        counts = f" {self.theme.glyphs.sep} ".join(f"{self.s('stage_' + state)} {states.count(state)}"
+                            for state in ("done", "running", "waiting", "skipped", "failed")
+                            if states.count(state))
+        c.put(box.y + 3, box.x, counts, "secondary", False, box.w)
+        phase = ""
+        if self.phase:
+            phase = f"{self.s('install_stage')}: {self.phase}"
+        c.put(box.y + 4, box.x, phase, "secondary", False, box.w)
+        c.rule(box.y + 5, box.x, box.w)
+        body = Box(box.x, box.y + 6, box.w, max(0, box.bottom - box.y - 6))
+        if self.steps:
+            if side is not None:
+                self._stage_panel(c, body)
+                self._log_panel(c, side)
+            else:
+                stage_h = max(2, min(len(self.steps), body.h // 3))
+                stage_box, rest = split_rows(body, stage_h)
+                log_box = Box(rest.x, rest.y + 1, rest.w, max(0, rest.h - 1))
+                self._stage_panel(c, stage_box)
+                c.rule(rest.y, rest.x, rest.w)
+                self._log_panel(c, log_box)
+        elif side is None:
+            self._log_panel(c, body)
+        else:
+            self._log_panel(c, side)
+
+    def _stage_panel(self, c: Canvas, box: Box) -> None:
+        if box.h <= 0:
             return
-        left_w = cols[0] if cols else min(width, 60)
-        for index, unit in enumerate(self.units):
-            selected = index == self.row
-            attr = self._attr(_CYAN, True) if selected else 0
-            prefix = "❯ " if selected else "  "
-            state = self.s("on") if unit.installed else self.s("off")
-            version = unit.version if unit.installed else "-"
-            line = (f"{prefix}{unit.name:<12} {state:<4} {version:<12} {unit.paths:>3} paths")
-            self._put(stdscr, y, x, line, attr, left_w)
-            y += 1
-        if cols:
-            _left, right_x, right_w = cols
-            unit = self.units[self.row]
-            detail = [f"{unit.name}", ""]
-            detail.append(f"{self.s('on') if unit.installed else self.s('off')}"
-                          + (f" · {unit.installed_at}" if unit.installed else ""))
-            if unit.installed:
-                detail.append(f"{unit.mode} · {unit.paths} paths")
-                if unit.name == "core":
-                    detail.append("")
-                    detail.append("core cannot be switched off; use uninstall.")
-                else:
-                    detail.append("")
-                    detail.append("Space: off removes exactly the recorded paths.")
-            self._detail(stdscr, top + 4, bottom - 2, right_x, right_w, detail)
+        rows = self._stage_rows()
+        focus = self.step_index if self.current is not None else 0
+        c.rows(box, rows, None, scroll_start(focus, len(rows), box.h), pointer=False)
 
-    def _snapshots(self, stdscr, top: int, bottom: int, x: int, width: int) -> None:
-        y = top + 1
-        cols = self._columns(width)
-        self._put(stdscr, y, x, self.s("snapshots_title"), self._attr(_CYAN, True), width)
-        y += 2
-        self._put(stdscr, y, x, f"[Space] {self.s('snapshots_create')}", self._attr(_DIM), width)
+    def _log_panel(self, c: Canvas, box: Box) -> None:
+        if box.h <= 1:
+            return
+        c.put(box.y, box.x, self.s("log_title"), "brand", False, box.w)
+        status = (self.s("install_log_paused") if self.log_paused
+                  else self.s("install_log_live"))
+        offset = _width(self.s("log_title")) + 2
+        c.put(box.y, box.x + offset, status,
+              "warn" if self.log_paused else "secondary", False,
+              max(4, box.w - offset))
+        path_y = box.bottom - 1
+        c.put(path_y, box.x, self.s("log_path") + str(self.log_path), "secondary",
+              False, box.w)
+        height = path_y - (box.y + 1)
+        if height <= 0 or not self.log_lines:
+            return
+        if self.log_paused:
+            start = min(self.log_scroll, max(0, len(self.log_lines) - 1))
+        else:
+            start = max(0, len(self.log_lines) - height)
+        for offset, (level, text) in enumerate(self.log_lines[start:start + height]):
+            color = {"ERROR": "fail", "WARN": "warn", "OK": "ok"}.get(level, "text")
+            c.put(box.y + 1 + offset, box.x, _printable(text), color, False, box.w)
+
+    # -- result ----------------------------------------------------------
+    def _result(self, c: Canvas, box: Box, side: Box | None = None) -> None:
+        ok = self.result == "ok"
+        cancelled = self.result == "cancelled"
+        role = "ok" if ok else "warn" if cancelled else "fail"
+        if ok:
+            title, status = self.s("success_title"), "PASS"
+        elif cancelled:
+            title, status = self.s("cancelled"), "WARN"
+        else:
+            title, status = self.s("failure_title"), "FAIL"
+        c.put(box.y, box.x, f"{self.theme.glyph(status)} {title}", role, True, box.w)
+        y = box.y + 2
+        body = Box(box.x, y, box.w, max(0, box.bottom - y))
+        rows = self._result_ok() if ok else self._result_failed()
+        # The failure screen carries its log tail; success points at the file.
+        tail = self._log_tail_rows(True) if not ok else []
+        if side is not None and side.h > 0:
+            c.rows(body, self._wrap_rows(rows, body.w), None, 0, pointer=False)
+            c.rows(side, self._wrap_rows(tail, side.w), None, 0, pointer=False)
+            return
+        rows = self._wrap_rows(rows + [Row("")] + tail, body.w)
+        c.rows(body, rows, None, 0, pointer=False)
+
+    def _result_ok(self) -> list[Row]:
+        s = self.s
+        out: list[Row] = [Row(s("result_ran"), "brand", True)]
+        skipped = [step.title for index, step in enumerate(self.steps)
+                   if step.argv and self._stage_state(index) == "skipped"]
+        for index, step in enumerate(self.steps):
+            if not step.argv:
+                continue
+            state = self._stage_state(index)
+            mark = self.theme.glyphs.ok if state == "done" else self.theme.glyphs.info
+            out.append(Row(f"{mark} {step.title}",
+                           "ok" if state == "done" else "secondary"))
+        if skipped:
+            out.append(Row(s("result_skipped") % ", ".join(skipped), "warn"))
+        out.append(Row(""))
+        out.append(Row(s("result_components"), "brand", True))
+        installed = [unit for unit in self.result_units if unit.installed]
+        if installed:
+            out += [Row(f"  {unit.name} {unit.version}") for unit in installed]
+        else:
+            out.append(Row(s("result_units_none"), "secondary"))
+        out.append(Row(""))
+        out.append(Row(s("next_steps"), "warn"))
+        out.append(Row(""))
+        out.append(Row(s("log_path") + str(self.log_path), "secondary"))
+        return out
+
+    def _result_failed(self) -> list[Row]:
+        s = self.s
+        out: list[Row] = []
+        if self.result == "cancelled":
+            out.append(Row(s("result_cancelled"), "warn", True))
+            if self.failed:
+                out.append(Row(f"{s('cancelled')}: {self.failed.title}", "secondary"))
+        elif self.failed:
+            out.append(Row(f"{s('failed')}: {self.failed.title}", "fail", True))
+            if self.failed_rc is not None:
+                out.append(Row(f"{s('result_exit_code')}: {self.failed_rc}"))
+            if self.failed.argv:
+                out.append(Row(f"$ {' '.join(self.failed.argv)}", "secondary"))
+            out.append(Row(f"{s('result_error')}: {self._error_summary()}", "fail"))
+        out.append(Row(""))
+        out.append(Row(s("result_retry_safe"), "secondary"))
+        out.append(Row(s("log_path") + str(self.log_path), "secondary"))
+        return out
+
+    def _error_summary(self) -> str:
+        for level, text in reversed(self.log_lines):
+            if level == "ERROR":
+                return text
+        return self.s("result_none_logged")
+
+    def _log_tail_rows(self, failure: bool) -> list[Row]:
+        rows = [Row(self.s("result_tail") if failure else self.s("log_title"), "brand", True)]
+        tail = [line for _level, line in self.log_lines[-8:]]
+        if not tail:
+            rows.append(Row(self.s("result_none_logged"), "secondary"))
+        rows += [Row(_printable(line), "secondary") for line in tail]
+        return rows
+
+    def _wrap_rows(self, rows: list[Row], width: int) -> list[Row]:
+        out: list[Row] = []
+        for row in rows:
+            if not row.text:
+                out.append(Row(""))
+                continue
+            chunks = _wrap(row.text, max(10, width - 2))
+            out.append(Row(chunks[0], row.role, row.bold))
+            out += [Row("  " + chunk, row.role) for chunk in chunks[1:]]
+        return out
+
+    # -- manage ----------------------------------------------------------
+    def _manage(self, c: Canvas, box: Box, side: Box | None = None) -> None:
+        y = box.y + 2
+        if not self.units:
+            c.put(y, box.x, self.s("manage_empty"), "warn", False, box.w)
+            y += 2
+        values = self._manage_values()
+        rows = [Row(f"{label}{' ' * max(1, 24 - _width(label))}{values[key]}"
+                    if key in values else label)
+                for key, label in self._manage_rows()]
+        list_box = Box(box.x, y, box.w, max(1, box.bottom - y))
+        start = scroll_start(self.row, len(rows), list_box.h)
+        self._heading(c, box, self.s("row_manage"), None,
+                      self._range_hint(start, list_box.h, len(rows)))
+        c.rows(list_box, rows, self.row, start)
+        if side is not None and side.h > 2:
+            c.rows(side, [Row(chunk, "secondary")
+                          for chunk in _wrap(self.s("detail_manage"), max(10, side.w))],
+                   None, 0, pointer=False)
+
+    def _units(self, c: Canvas, box: Box, side: Box | None = None) -> None:
+        y = box.y + 2
+        if not self.units:
+            self._heading(c, box, self.s("units_title"))
+            c.put(y, box.x, self.s("units_none"), "warn", False, box.w)
+            return
+        rows = [Row(f"{unit.name:<12} {self.s('on') if unit.installed else self.s('off'):<4} "
+                    f"{unit.version:<12} {unit.paths:>3} paths")
+                for unit in self.units]
+        list_box = Box(box.x, y, box.w, max(1, box.bottom - y))
+        start = scroll_start(self.row, len(rows), list_box.h)
+        self._heading(c, box, self.s("units_title"), None,
+                      self._range_hint(start, list_box.h, len(rows)))
+        c.rows(list_box, rows, self.row, start)
+        detail = side if side is not None else None
+        if detail is None:
+            return
+        unit = self.units[self.row]
+        lines = [Row(unit.name, "brand", True), Row("")]
+        state = self.s("on") if unit.installed else self.s("off")
+        if unit.installed:
+            state += f" {self.theme.glyphs.sep} {unit.installed_at}"
+        lines.append(Row(state, "text"))
+        if unit.installed:
+            lines.append(Row(f"{unit.mode} {self.theme.glyphs.sep} "
+                             f"{unit.paths} paths", "secondary"))
+        if unit.name == "core":
+            lines.append(Row(""))
+            lines += [Row(chunk, "warn") for chunk in
+                      _wrap("core cannot be switched off; use uninstall.", max(10, detail.w))]
+        c.rows(detail, lines, None, 0, pointer=False)
+
+    def _snapshots(self, c: Canvas, box: Box, side: Box | None = None) -> None:
+        y = box.y + 2
+        c.put(y, box.x, f"[Space] {self.s('snapshots_create')}", "secondary", False, box.w)
         y += 2
         if not self.snapshots:
-            self._put(stdscr, y, x, self.s("snapshots_none"), self._attr(_YELLOW), width)
+            self._heading(c, box, self.s("snapshots_title"))
+            c.put(y, box.x, self.s("snapshots_none"), "warn", False, box.w)
             return
-        left_w = cols[0] if cols else min(width, 60)
-        for index, snap in enumerate(self.snapshots):
-            selected = index == self.row
-            attr = self._attr(_CYAN, True) if selected else 0
-            prefix = "❯ " if selected else "  "
-            self._put(stdscr, y, x, f"{prefix}{snap.id}", attr, left_w)
-            y += 1
-        if cols:
-            _left, right_x, right_w = cols
-            snap = self.snapshots[self.row]
-            detail = [snap.id, "", snap.created_at]
-            if snap.note:
-                detail += ["", snap.note]
-            if snap.trees:
-                detail += ["", snap.trees]
-            self._detail(stdscr, top + 4, bottom - 2, right_x, right_w, detail)
+        list_box = Box(box.x, y, box.w, max(1, box.bottom - y))
+        rows = [Row(snap.id) for snap in self.snapshots]
+        start = scroll_start(self.row, len(rows), list_box.h)
+        self._heading(c, box, self.s("snapshots_title"), None,
+                      self._range_hint(start, list_box.h, len(rows)))
+        c.rows(list_box, rows, self.row, start)
+        if side is None or side.h <= 2:
+            return
+        snap = self.snapshots[self.row]
+        lines = [Row(snap.id, "brand", True), Row(snap.created_at, "secondary"), Row("")]
+        for text in (snap.note, snap.trees):
+            if text:
+                lines += [Row(chunk, "secondary") for chunk in _wrap(text, max(10, side.w))]
+                lines.append(Row(""))
+        c.rows(side, lines, None, 0, pointer=False)
 
-    def _action(self, stdscr, top: int, bottom: int, x: int, width: int) -> None:
-        y = top + 1
-        state = {"running": "…", "done": "✅", "failed": "❌"}.get(self.action_state, "")
-        color = {"done": _GREEN, "failed": _RED}.get(self.action_state, _CYAN)
-        self._put(stdscr, y, x, f"{state} {self.action_title}", self._attr(color, True), width)
-        y += 2
-        height = max(3, bottom - y)
-        for offset, (level, text) in enumerate(self.log_lines[-height:]):
-            line_color = {"ERROR": _RED, "WARN": _YELLOW, "OK": _GREEN}.get(level, 0)
-            self._put(stdscr, y + offset, x, text, self._attr(line_color), width)
+    def _action(self, c: Canvas, box: Box, side: Box | None = None) -> None:
+        state = {"running": self.theme.glyphs.running, "done": self.theme.glyphs.ok,
+                 "failed": self.theme.glyphs.fail}.get(self.action_state, "")
+        role = {"done": "ok", "failed": "fail"}.get(self.action_state, "brand")
+        c.put(box.y, box.x, f"{state} {self.action_title}", role, True, box.w)
+        y = box.y + 2
+        height = max(0, box.bottom - y)
+        for offset, (level, text) in enumerate(self.log_lines[-height:] if height else []):
+            color = {"ERROR": "fail", "WARN": "warn", "OK": "ok"}.get(level, "text")
+            c.put(y + offset, box.x, _printable(text), color, False, box.w)
 
-    def _log(self, stdscr, top: int, bottom: int, x: int, width: int) -> None:
-        y = top + 1
+    def _log(self, c: Canvas, box: Box, side: Box | None = None) -> None:
         if self.picker:
-            self._put(stdscr, y, x, self.s("log_title"), self._attr(_CYAN, True), width)
-            y += 2
-            for index, (_path, name) in enumerate(self.picker):
-                selected = index == self.row
-                attr = self._attr(_CYAN, True) if selected else 0
-                self._put(stdscr, y, x, ("▶ " if selected else "  ") + name, attr, width)
-                y += 1
+            list_box = Box(box.x, box.y + 2, box.w, max(1, box.h - 2))
+            rows = [Row(name) for _path, name in self.picker]
+            start = scroll_start(self.row, len(rows), list_box.h)
+            self._heading(c, box, self.s("log_title"), None,
+                          self._range_hint(start, list_box.h, len(rows)))
+            c.rows(list_box, rows, self.row, start)
             return
-        self._put(stdscr, y, x, self.s("log_title"), self._attr(_CYAN, True), width)
-        y += 2
-        height = max(3, bottom - y)
-        for offset, line in enumerate(self.log_text[self.log_scroll:self.log_scroll + height]):
-            self._put(stdscr, y + offset, x, line, 0, width)
+        path = getattr(self, "log_text_path", self.log_path)
+        title = self.s("log_title")
+        self._heading(c, box, title)
+        c.put(box.y, box.x + _width(title) + 2, str(path), "secondary", False,
+              max(4, box.w - _width(title) - 2))
+        y = box.y + 2
+        height = max(0, box.bottom - y)
+        for offset, line in enumerate(self.log_text[self.log_scroll_view:
+                                                    self.log_scroll_view + height]):
+            c.put(y + offset, box.x, _printable(line), "text", False, box.w)
 
     # -- install execution ------------------------------------------------
     def _install_loop(self, stdscr) -> None:
@@ -1206,11 +1462,29 @@ class UI:
         finally:
             stdscr.nodelay(False)
 
+    def _toggle_pause(self) -> None:
+        self.log_paused = not self.log_paused
+        if self.log_paused:
+            self.log_scroll = max(0, len(self.log_lines) - 1)
+
+    def _scroll_log(self, delta: int) -> None:
+        if not self.log_paused:
+            self.log_paused = True
+            self.log_scroll = max(0, len(self.log_lines) - 1)
+        self.log_scroll = max(0, min(self.log_scroll + delta,
+                                     max(0, len(self.log_lines) - 1)))
+
     def _install_body(self, stdscr) -> None:
         self.steps = build_plan(self.system.family, self.opts, self.root)
         self.result = ""
         self.failed = None
+        self.failed_rc = None
+        self.failed_index = None
+        self.skipped_steps = set()
         self.log_lines = []
+        self.log_paused = False
+        self.log_scroll = 0
+        self.install_started = time.monotonic()
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self.log_path = self.log_dir / time.strftime("install-%Y%m%d-%H%M%S.log")
         with self.log_path.open("w", encoding="utf-8") as log:
@@ -1221,10 +1495,11 @@ class UI:
                 self.current = step
                 self.step_index = index
                 self.phase = ""
-                self.current_progress = 0.0
+                self.current_progress = None
                 if not step.argv:
                     note = self.s(step.note) if step.note else "-"
                     self.log_lines.append(("WARN", f"{step.title}: {note}"))
+                    self.skipped_steps.add(index)
                     index += 1
                     continue
                 runner = StepRunner(step, self.root, log)
@@ -1238,16 +1513,27 @@ class UI:
                             del self.log_lines[:400]
                         line = runner.readline(0.0)
                     self.phase = runner.phase
-                    self.current_progress = runner.progress or 0.0
+                    self.current_progress = runner.progress
                     now = time.monotonic()
                     if now - last_draw > 0.1:
                         self._draw(stdscr)
                         last_draw = now
                     ch = stdscr.getch()
                     if ch == curses.KEY_RESIZE:
+                        self._draw(stdscr)
                         continue
                     if ch == 3:
                         self.cancel_requested = True
+                    elif ch in (ord("p"), ord("P")):
+                        self._toggle_pause()
+                    elif ch in UP:
+                        self._scroll_log(-1)
+                    elif ch in DOWN:
+                        self._scroll_log(1)
+                    elif ch == curses.KEY_PPAGE:
+                        self._scroll_log(-10)
+                    elif ch == curses.KEY_NPAGE:
+                        self._scroll_log(10)
                     if self.cancel_requested:
                         stdscr.nodelay(False)
                         answer = stdscr.getch()
@@ -1264,6 +1550,9 @@ class UI:
                 self.cancel_requested = False
                 if runner.cancelled:
                     self.result = "cancelled"
+                    self.failed_index = index
+                    if self.failed is None:
+                        self.failed = step
                     self.log_lines.append(("ERROR", self.s("cancelled")))
                     return
                 if rc != 0:
@@ -1272,10 +1561,13 @@ class UI:
                     if action == "retry":
                         continue
                     if action == "skip":
+                        self.skipped_steps.add(index)
                         index += 1
                         continue
                     self.result = "failed"
                     self.failed = step
+                    self.failed_rc = rc
+                    self.failed_index = index
                     return
                 index += 1
         self.current = None
@@ -1292,10 +1584,12 @@ class UI:
     def _ask_failure_blocking(self, stdscr, step: Step, rc: int) -> str:
         while True:
             self._draw(stdscr)
-            h, w = stdscr.getmaxyx()
-            prompt = (f"[{self.s('failed')}] {step.title} (exit {rc})  "
-                      f"[r] {self.s('retry')}  [s] {self.s('skip')}  [a] {self.s('abort')}")
-            self._put(stdscr, h - 3, 1, prompt, self._attr(_RED, True), w - 2)
+            keys = (f"[r] {self.s('retry')}  [s] {self.s('skip')}  "
+                    f"[a] {self.s('abort')}")
+            c = Canvas(stdscr, self.theme)
+            c.dialog(self.s("failure_title"),
+                     [f"{step.title} ({self.s('result_exit_code')} {rc})",
+                      self._error_summary()], keys)
             stdscr.noutrefresh()
             curses.doupdate()
             ch = stdscr.getch()
