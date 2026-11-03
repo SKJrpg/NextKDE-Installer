@@ -34,7 +34,7 @@ class SnapshotsScreen(ManageScreen):
 
     def _row(self, snapshot) -> Text:
         text = Text(f"{snapshot.id:<24}")
-        text.append(f"{snapshot.created_at:<20}", style="dim")
+        text.append(f"{snapshot.created_at:<20}", style=self.app.secondary_style)
         text.append(snapshot.note)
         return text
 

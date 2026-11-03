@@ -81,8 +81,9 @@ class ManageScreen(ChromeScreen):
         if options:
             list_.highlighted = min(index, len(options) - 1)
 
-    def note(self, text: str, style: str = "dim") -> None:
-        self.query_one("#action_status", Static).update(Text(text, style=style))
+    def note(self, text: str, style: str | None = None) -> None:
+        self.query_one("#action_status", Static).update(
+            Text(text, style=style or self.app.secondary_style))
 
     # -- one action at a time --------------------------------------------
     def start_action(self, title: str, step) -> None:

@@ -32,8 +32,14 @@ The interactive UI is Textual, vendored under `vendor/` and put on `PYTHONPATH` 
 and you picked that source.
 
 Flags: `--check` report only, `--plain` no interactive UI, `--yes`, `--config FILE`,
-`--source stable|main|local`, `--apps [LIST]`, `--lockscreen`, `--all`,
-`--start`, `--no-proxy`, `--lang zh|en`.
+`--source stable|main|local`, `--theme system|dark|light`, `--apps [LIST]`,
+`--lockscreen`, `--all`, `--start`, `--no-proxy`, `--lang zh|en`.
+
+`--theme` picks how the wizard draws secondary text: `dark` dims the terminal's own
+foreground, `light` uses its ANSI 8 grey. `system` (the default) detects the terminal:
+the flag (`theme` in the JSON config) wins, then `KOS_THEME=dark|light`, then the
+background index in `COLORFGBG`; a terminal that reports neither is treated as dark, so
+pass the flag there. The palette itself is always the terminal's own.
 
 ### Command line
 
@@ -47,6 +53,7 @@ product source, choose the distro path and check the backend — everything afte
 | `./install.sh --check` | probes + the plan, read-only, exit 2 when blocked or unsupported |
 | `./install.sh --plain --yes` | the same plan without a UI, for scripts and CI |
 | `./install.sh --source stable --apps todo --start` | pre-selects the wizard, or seeds `--plain` |
+| `./install.sh --theme light` | the wizard for a light terminal that does not report its background |
 
 Exit codes: `0` success, `1` a step failed, `2` blocked / unsupported / incompatible backend,
 `130` cancelled.

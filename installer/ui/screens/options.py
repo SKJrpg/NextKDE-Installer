@@ -99,7 +99,7 @@ class OptionsScreen(WizardScreen):
         for index, part in enumerate(parts):
             if index:
                 text.append("\n")
-            text.append(part, style="dim")
+            text.append(part, style=self.app.secondary_style)
         return text
 
     def _show_detail(self, ident: str | None = None) -> None:

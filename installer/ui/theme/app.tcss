@@ -300,7 +300,6 @@ ConfirmDialog {
 #confirm_hint {
     height: auto;
     margin-top: 1;
-    color: $text-muted;
 }
 
 #confirm_word {

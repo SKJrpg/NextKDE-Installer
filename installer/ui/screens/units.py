@@ -34,10 +34,10 @@ class UnitsScreen(ManageScreen):
         glyphs = ("+", "-") if self.strings.ascii else ("✔", "·")
         text = Text(f"{glyphs[0] if unit.installed else glyphs[1]} ")
         text.append(f"{unit.name:<12}")
-        text.append(f"{unit.version:<10}", style="dim")
-        text.append(f"{unit.mode:<8}", style="dim")
+        text.append(f"{unit.version:<10}", style=self.app.secondary_style)
+        text.append(f"{unit.mode:<8}", style=self.app.secondary_style)
         text.append(self.strings("on" if unit.installed else "off"),
-                    style="green" if unit.installed else "dim")
+                    style="green" if unit.installed else self.app.secondary_style)
         return text
 
     def current(self):

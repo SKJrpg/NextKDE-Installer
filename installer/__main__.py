@@ -23,7 +23,8 @@ from .plan import ALL_APPS, Options, build_plan, unsupported
 from .render import plain
 from .strings import Strings, choose_language
 
-CONFIG_KEYS = ("source", "apps", "lockscreen", "start", "all", "proxy", "spatial")
+CONFIG_KEYS = ("source", "apps", "lockscreen", "start", "all", "proxy", "spatial",
+               "theme")
 
 
 def _load_config(path: str) -> dict:
@@ -93,6 +94,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--lang", choices=("zh", "en"))
     parser.add_argument("--source", choices=("stable", "main", "local"),
                         help="source release to install; local keeps this checkout untouched")
+    parser.add_argument("--theme", choices=("system", "dark", "light"),
+                        help="terminal appearance; system detects it (default), "
+                             "dark/light override a terminal that does not report it")
     parser.add_argument("--apps", nargs="?", const="all", metavar="LIST",
                         help="also install the standalone apps; LIST narrows it (calendar,todo)")
     parser.add_argument("--lockscreen", action="store_true", help="also install the lock screen theme")
@@ -113,6 +117,8 @@ def main(argv: list[str] | None = None) -> int:
     config = _load_config(args.config) if args.config else {}
     if config.get("source") not in (None, "stable", "main", "local"):
         parser.error("config source must be 'stable', 'main' or 'local'")
+    if config.get("theme") not in (None, "system", "dark", "light"):
+        parser.error("config theme must be 'system', 'dark' or 'light'")
     opts = _options(args, config)
     unknown = opts.app_set - set(ALL_APPS)
     if unknown:
@@ -199,8 +205,13 @@ def main(argv: list[str] | None = None) -> int:
     from .ui.app import KosApp
 
     # The screen starts from the same Options the flags and config made, so
-    # `--source local --apps todo` is already selected when it opens.
-    return int(KosApp(opts=opts, paths=paths, lang=lang, system=system).run() or 0)
+    # `--source local --apps todo` is already selected when it opens. The theme
+    # defaults to system: the flag wins over the config, both over detection.
+    from .ui.theme import resolve_mode
+
+    mode = resolve_mode(args.theme or config.get("theme"))
+    return int(KosApp(opts=opts, paths=paths, lang=lang, system=system,
+                      mode=mode).run() or 0)
 
 
 if __name__ == "__main__":

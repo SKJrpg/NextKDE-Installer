@@ -49,6 +49,7 @@ class ResultScreen(WizardScreen):
 
     def _body(self) -> Text:
         s = self.strings
+        quiet = self.app.secondary_style
         text = Text()
         if self.result == "ok":
             text.append(s("result_ran") + "\n", style="bold")
@@ -60,21 +61,21 @@ class ResultScreen(WizardScreen):
         elif self.result == "cancelled":
             text.append(s("result_cancelled") + "\n", style="yellow")
             if self.failed_title:
-                text.append(f"{s('cancelled')}: {self.failed_title}\n", style="dim")
+                text.append(f"{s('cancelled')}: {self.failed_title}\n", style=quiet)
         else:
             if self.failed_title:
                 text.append(f"{s('failed')}: {self.failed_title}\n", style="bold red")
             text.append(f"{s('result_exit_code')}: {self.exit_code}\n")
-            text.append(s("result_retry_safe") + "\n", style="dim")
+            text.append(s("result_retry_safe") + "\n", style=quiet)
         text.append("\n")
-        text.append(s("log_path") + str(self.log_path or "") + "\n", style="dim")
+        text.append(s("log_path") + str(self.log_path or "") + "\n", style=quiet)
         if self.result != "ok":
             text.append("\n" + s("result_tail") + "\n", style="bold")
             if self.log_tail:
                 for line in self.log_tail:
-                    text.append(f"  {line}\n", style="dim")
+                    text.append(f"  {line}\n", style=quiet)
             else:
-                text.append(f"  {s('result_none_logged')}\n", style="dim")
+                text.append(f"  {s('result_none_logged')}\n", style=quiet)
         return text
 
     def action_retry(self) -> None:

@@ -79,8 +79,8 @@ class WizardScreen(ChromeScreen):
             if index == self.STEP:
                 text.append(f"▸ {label}", style="bold")
             elif index < self.STEP:
-                text.append(f"✔ {label}", style="dim")
+                text.append(f"✔ {label}", style=self.app.secondary_style)
             else:
-                text.append(f"  {label}", style="dim")
+                text.append(f"  {label}", style=self.app.secondary_style)
             text.append("\n" if index < len(STEPS) - 1 else "")
         return text

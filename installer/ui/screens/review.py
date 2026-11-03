@@ -49,9 +49,11 @@ class ReviewScreen(WizardScreen):
 
     def _pairs(self, pairs) -> Text:
         width = max(cell_len(str(label)) for label, _ in pairs) + 2
+        quiet = self.app.secondary_style
         text = Text()
         for index, (label, value) in enumerate(pairs):
-            text.append(str(label) + " " * (width - cell_len(str(label))), style="dim")
+            text.append(str(label) + " " * (width - cell_len(str(label))),
+                        style=quiet)
             text.append(str(value))
             if index < len(pairs) - 1:
                 text.append("\n")
@@ -109,24 +111,26 @@ class ReviewScreen(WizardScreen):
 
     def _steps(self) -> Text:
         s = self.strings
+        quiet = self.app.secondary_style
         steps = self._plan_steps()
         text = Text(s("review_steps"), style="bold")
         if not steps:
             text.append("\n")
             text.append(s("review_no_steps"), style="yellow")
             return text
-        text.append(f"  ({s('step_count') % len(steps)})\n", style="dim")
+        text.append(f"  ({s('step_count') % len(steps)})\n", style=quiet)
         for index, step in enumerate(steps, 1):
             text.append(f"{index}. {step.title}\n", style="bold")
             if step.argv and self.details:
-                text.append(f"    $ {' '.join(step.argv)}\n", style="dim")
+                text.append(f"    $ {' '.join(step.argv)}\n", style=quiet)
             elif step.argv:
                 rest = max(0, len(step.argv) - 1)
-                text.append(f"    {s('review_cmd')}: {step.argv[0]} +{rest}\n", style="dim")
+                text.append(f"    {s('review_cmd')}: {step.argv[0]} +{rest}\n",
+                            style=quiet)
             elif step.note:
                 text.append(f"    {s(step.note)}\n", style="yellow")
         text.append(s("review_details_on" if self.details else "review_details"),
-                    style="dim")
+                    style=quiet)
         return text
 
     def _side(self) -> Text:
@@ -142,11 +146,12 @@ class ReviewScreen(WizardScreen):
         warnings.append((s("review_side_takeover"), "yellow"))
         if self.app.opts.start:
             warnings.append((s("review_side_session"), "yellow"))
-        warnings.append((s("review_side_userpath"), "dim"))
-        warnings.append((s("review_side_log"), "dim"))
+        quiet = self.app.secondary_style
+        warnings.append((s("review_side_userpath"), quiet))
+        warnings.append((s("review_side_log"), quiet))
         text.append("\n\n")
         for line, style in warnings:
-            text.append("! " if style != "dim" else "· ", style=style)
+            text.append("! " if style != quiet else "· ", style=style)
             text.append(line + "\n", style=style)
         return text
 

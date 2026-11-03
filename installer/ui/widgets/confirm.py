@@ -6,6 +6,7 @@ a destructive action cannot be started by a stray Enter.
 
 from __future__ import annotations
 
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
@@ -29,7 +30,10 @@ class ConfirmDialog(ModalScreen[bool]):
             yield Static(self.heading, id="confirm_title")
             yield Static(self.body_text, id="confirm_body")
             if self.word:
-                yield Static(s("confirm_uninstall_word"), id="confirm_hint")
+                # The installer app sets it from its mode; a plain App (tests) has none.
+                quiet = getattr(self.app, "secondary_style", "dim")
+                yield Static(Text(s("confirm_uninstall_word"), style=quiet),
+                             id="confirm_hint")
                 yield Input(id="confirm_word")
             with Horizontal(id="confirm_buttons"):
                 yield Button(s("cancel"), id="confirm_cancel")

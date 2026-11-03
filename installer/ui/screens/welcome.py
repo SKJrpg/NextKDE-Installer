@@ -24,7 +24,7 @@ class WelcomeScreen(WizardScreen):
         s = self.strings
         on, off = ("(*)", "( )") if s.ascii else ("(•)", "( )")
         text = Text()
-        text.append(s("label_language"), style="dim")
+        text.append(s("label_language"), style=self.app.secondary_style)
         text.append("  ")
         for index, (code, name) in enumerate((("zh", "中文"), ("en", "English"))):
             if index:
@@ -46,7 +46,7 @@ class WelcomeScreen(WizardScreen):
         )
         text = Text()
         for index, (label, value) in enumerate(pairs):
-            text.append(f"{label:<16}", style="dim")
+            text.append(f"{label:<16}", style=self.app.secondary_style)
             text.append(value)
             if index < len(pairs) - 1:
                 text.append("\n")

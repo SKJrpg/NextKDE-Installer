@@ -67,7 +67,7 @@ class SystemScreen(WizardScreen):
                        for status in ("PASS", "WARN", "FAIL"))
         text = Text(self.strings("system_head"), style="bold")
         text.append("\n")
-        text.append(self.strings("system_counts") % counts, style="dim")
+        text.append(self.strings("system_counts") % counts, style=self.app.secondary_style)
         return text
 
     def _name_width(self) -> int:
@@ -90,6 +90,7 @@ class SystemScreen(WizardScreen):
     def _row_text(self, probe: Probe, index: int) -> Text:
         word = self._status_word(probe.status)
         name = self.strings(probe.key)
+        quiet = self.app.secondary_style
         text = Text()
         text.append(POINTER[1 if self.strings.ascii else 0] if index == self.row else "  ",
                     style="bold")
@@ -97,8 +98,8 @@ class SystemScreen(WizardScreen):
         text.append(word + " " * max(1, 6 - cell_len(word)), style="bold")
         text.append(name + " " * max(2, self._name_width() - cell_len(name)))
         # The full value lives in the detail pane; the row must stay one line.
-        text.append(self._clip(probe.detail,
-                               self._list_width() - cell_len(text.plain)), style="dim")
+        text.append(self._clip(probe.detail, self._list_width() - cell_len(text.plain)),
+                    style=quiet)
         return text
 
     def _detail(self, probe: Probe) -> Text:
@@ -121,7 +122,7 @@ class SystemScreen(WizardScreen):
                               probe.remedy if text.startswith("remedy_") else text))
         text = Text()
         for index, (label, value) in enumerate(pairs):
-            text.append(f"{label}: ", style="dim")
+            text.append(f"{label}: ", style=self.app.secondary_style)
             text.append(value)
             if index < len(pairs) - 1:
                 text.append("\n")
@@ -146,7 +147,7 @@ class SystemScreen(WizardScreen):
     def _show_detail(self) -> None:
         probes = self.app.system.probes
         text = self._detail(probes[self.row]) if probes else Text(
-            self.strings("check_none"), style="dim")
+            self.strings("check_none"), style=self.app.secondary_style)
         self.query_one("#probe_detail_text", Static).update(text)
 
     def action_move(self, step: int) -> None:

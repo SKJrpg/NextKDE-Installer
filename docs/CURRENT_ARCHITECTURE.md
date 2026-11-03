@@ -39,13 +39,14 @@ installer/
   ui/
     app.py              KosApp: wizard state (Options, prepared source, steps),
                         thread workers, cancel/quit
+    theme.py            resolve_mode: --theme / KOS_THEME / COLORFGBG → dark|light
     theme/app.tcss      the stylesheet: chrome, sidebar, lists, dialogs
     screens/            welcome, system, options, review, installation, result,
                         and the management area (units, snapshots, logs, management)
     widgets/confirm.py  modal confirmation used by the destructive actions
   render/
     plain.py            the same plan without a TTY; NO_COLOR aware
-tests/                  133 offline unit tests (tests/, tests/core/, tests/ui/)
+tests/                  152 offline unit tests (tests/, tests/core/, tests/ui/)
 vendor/                 pinned Textual 8.2.8 + rich and its dependencies
 docs/design.md          the independent-installer architecture proposal
 docs/BACKEND_CONTRACT.md  capability names, contract shapes, probe fallback
@@ -127,6 +128,15 @@ Two front ends, one plan:
   snapshots, logs, management); `widgets/confirm.py` is the modal confirmation; every
   style lives in `theme/app.tcss`. The step sidebar and the localized footer come from
   `screens/__init__.py`, so a screen only declares its body and its extra keys.
+- **Appearance**: the palette is the terminal's own (`ansi_color=True` and `ansi_default`
+  in the stylesheet), so only the mode is resolved: `--theme`, then `theme` in the JSON
+  config, then `KOS_THEME=dark|light`, then the background index of `COLORFGBG`
+  (`0-6,8` dark, `7,9-15` light), otherwise dark. `theme.py` holds that; `KosApp` keeps
+  it as `theme_mode`/`dark` and every screen takes its secondary text from
+  `app.secondary_style` — `dim` on dark (the terminal dims its own foreground) and ANSI 8
+  on light (a readable grey rather than a foreground faded towards white). Terminals that
+  export no `COLORFGBG` (Konsole does not) fall back to dark; pass `--theme` there.
+  Status colours, the modal's own surface and the focused row keep their styling.
 - **Workers**: preparation, the install and management actions run in
   `@work(thread=True)`. Every line they produce is a `core.events.Event` handed to the
   event loop with `call_from_thread`, so nothing blocks and a screen only ever shows what

@@ -152,7 +152,7 @@ class InstallationScreen(WizardScreen):
         self.query_one("#install_head", Static).update(self._head())
         self.query_one("#stages", Static).update(self._stage_text())
         self.query_one("#log_path", Static).update(
-            Text(s("log_path") + str(self.log_path or ""), style="dim"))
+            Text(s("log_path") + str(self.log_path or ""), style=self.app.secondary_style))
 
     def _head(self) -> Text:
         s = self.strings
@@ -179,9 +179,9 @@ class InstallationScreen(WizardScreen):
             state = self.states[index]
             text.append(f"{glyphs[state]} {index + 1}. {step.title}", style=(
                 "bold" if state == "current" else "red" if state == "failed"
-                else "green" if state == "done" else "dim"))
+                else "green" if state == "done" else self.app.secondary_style))
             text.append(f"  [{s('stage_' + ('running' if state == 'current' else state))}]",
-                        style="dim")
+                        style=self.app.secondary_style)
             if index < len(self.steps) - 1:
                 text.append("\n")
         return text

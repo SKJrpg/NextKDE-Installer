@@ -30,6 +30,7 @@ from .screens.installation import InstallationScreen
 from .screens.result import ResultScreen
 from .screens.review import ReviewScreen
 from .screens.welcome import WelcomeScreen
+from .theme import resolve_mode
 
 
 class KosApp(App):
@@ -40,10 +41,19 @@ class KosApp(App):
     def __init__(self, lang: str | None = None, system: System | None = None,
                  paths: Paths | None = None, *, opts: Options | None = None,
                  backend: BackendInfo | None = None,
-                 prepare=None, session_factory=None, **kwargs) -> None:
+                 prepare=None, session_factory=None, mode: str | None = None,
+                 **kwargs) -> None:
         # Native ANSI so the terminal's own background and palette show through
         # instead of Textual painting its theme's colours over them.
         super().__init__(ansi_color=True, **kwargs)
+        # "system" (or None) follows the terminal; --theme / KOS_THEME / COLORFGBG
+        # decide which. Textual's own theme stays out of it: ansi_default is the
+        # terminal's background either way.
+        self.theme_mode = resolve_mode(mode)
+        self.dark = self.theme_mode == "dark"
+        # Secondary text: dim is quieter on a dark terminal, but on a light one it
+        # only fades towards white; ANSI 8 stays a readable grey there.
+        self.secondary_style = "dim" if self.dark else "bright_black"
         self.lang, _ = choose_language(lang)
         self.strings = Strings(self.lang)
         self.paths = paths or Paths.resolve()
