@@ -206,6 +206,7 @@ _TEXT = {
     "review_cmd": ("命令", "command"),
     "review_dirty": ("有未提交修改，会一起构建", "uncommitted changes are built too"),
     "review_clean": ("干净", "clean"),
+    "prepare_running": ("正在准备源码…", "preparing source…"),
     "prepare_failed": ("源码准备失败", "Source preparation failed"),
     "review_prepare_failed": ("源码准备失败：%s", "Source preparation failed: %s"),
     "step_count": ("%d 个步骤", "%d steps"),

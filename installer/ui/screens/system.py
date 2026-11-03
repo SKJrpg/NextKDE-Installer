@@ -16,7 +16,8 @@ ASCII_GLYPHS = {"PASS": "+", "WARN": "!", "FAIL": "x"}
 
 class SystemScreen(WizardScreen):
     STEP = 1
-    KEYS = (("f5", "refresh", "key_refresh"), ("escape", "back", "key_back"))
+    KEYS = (("enter", "open_options", "key_continue"),
+            ("f5", "refresh", "key_refresh"), ("escape", "back", "key_back"))
 
     def body(self) -> ComposeResult:
         yield Static(self._summary(), id="summary")
@@ -58,6 +59,11 @@ class SystemScreen(WizardScreen):
         await container.remove_children()
         await container.mount_all([self._row(p) for p in self.app.system.probes])
         self.query_one("#summary", Static).update(self._summary())
+
+    def action_open_options(self) -> None:
+        from .options import OptionsScreen
+
+        self.app.push_screen(OptionsScreen(self.strings))
 
     def action_back(self) -> None:
         self.app.pop_screen()

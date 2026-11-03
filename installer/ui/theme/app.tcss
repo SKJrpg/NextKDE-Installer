@@ -33,3 +33,72 @@
 #probes {
     height: 1fr;
 }
+
+/* Options and Review scroll as one column; the panes keep their own height. */
+#options, #review {
+    height: 1fr;
+}
+
+#options_head, #status, #steps, #side, #hint,
+#install_head, #progress_state, #log_path {
+    height: auto;
+}
+
+#install_head {
+    padding-bottom: 1;
+}
+
+.group {
+    text-style: bold;
+    padding-top: 1;
+}
+
+#sources {
+    height: auto;
+    border: none;
+}
+
+#stages_box {
+    height: auto;
+    max-height: 6;
+    margin-bottom: 1;
+}
+
+#stages {
+    height: auto;
+}
+
+#log {
+    height: 1fr;
+    min-height: 5;
+    border: none;
+}
+
+#cancel {
+    height: 3;
+    width: auto;
+    min-width: 12;
+    margin-top: 1;
+}
+
+#result_head {
+    height: auto;
+    padding-bottom: 1;
+}
+
+#result_body {
+    height: 1fr;
+}
+
+#result_text {
+    height: auto;
+}
+
+#actions {
+    height: 3;
+}
+
+#actions Button {
+    min-width: 12;
+    margin-right: 1;
+}
