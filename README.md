@@ -35,6 +35,27 @@ Flags: `--check` report only, `--plain` no interactive UI, `--yes`, `--config FI
 `--source stable|main|local`, `--apps [LIST]`, `--lockscreen`, `--all`,
 `--start`, `--no-proxy`, `--lang zh|en`.
 
+### Command line
+
+There are no subcommands, and that is deliberate: the installer's job is to obtain the
+product source, choose the distro path and check the backend — everything after that is
+`kosctl`'s. Flags are the whole interface:
+
+| Invocation | What runs |
+|---|---|
+| `./install.sh` | the Textual wizard |
+| `./install.sh --check` | probes + the plan, read-only, exit 2 when blocked or unsupported |
+| `./install.sh --plain --yes` | the same plan without a UI, for scripts and CI |
+| `./install.sh --source stable --apps todo --start` | pre-selects the wizard, or seeds `--plain` |
+
+Exit codes: `0` success, `1` a step failed, `2` blocked / unsupported / incompatible backend,
+`130` cancelled.
+
+For the product itself use `kosctl` directly: `kosctl install`, `kosctl install apps --only`,
+`kosctl start`, `kosctl uninstall`, `kosctl doctor`, `kosctl update`, `kosctl on|off`,
+`kosctl snapshot`, `kosctl rollback`. The installer never re-implements them and does not
+wrap them in a second command tree.
+
 ## Layout
 
 ```

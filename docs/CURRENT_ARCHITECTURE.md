@@ -181,7 +181,7 @@ empty. This is a product-side gap, not an installer bug.
   ships neither `packaging/installer-contract.json` nor `kosctl installer-info`, so
   `--check` reports `Backend: probe · N capabilities`. The probe is honest but narrow;
   the declared path (and its tests) exist and take over once the product ships a file.
-- No CLI subcommands (`check`, `install`, `manage`): `__main__.py` is still one flow.
+- No subcommands by design: the interface is flags (`--check`, `--plain`, `--yes`, `--source`, …); product operations stay in `kosctl` and are not wrapped again.
 - No release artefact, self-update or CI; `pyproject.toml` exists and declares the console
   script only.
 - `kosctl deps` and the `kos-state.py` verbs are missing upstream, so the dependency probe

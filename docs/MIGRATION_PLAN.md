@@ -20,7 +20,7 @@ Textual-based installer described in `design.md` and the implementation prompt.
 
 | Today | Target | Action |
 |---|---|---|
-| `installer/__main__.py` | `installer/cli.py` + `installer/__main__.py` | split argparse/subcommands from flow |
+| `installer/__main__.py` | unchanged | no subcommands: flags stay the interface |
 | `installer/plan.py` | `installer/core/plan.py` | move; no behaviour change |
 | `installer/runner.py` | `installer/runner/process.py` (+ `events.py`, `cancellation.py`) | split; keep the argv contract |
 | `installer/detect.py` | `installer/system/detect.py` | move |
