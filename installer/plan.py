@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .paths import Paths
+from .source.resolver import CANONICAL_REPO
 
 
 ALL_APPS = ("calendar", "todo", "weather", "calculator")
@@ -53,9 +54,6 @@ def git_state(root: Path) -> tuple[str, bool]:
     except (OSError, subprocess.SubprocessError):
         return "", True
     return branch.stdout.strip(), bool(dirty.stdout.strip())
-
-
-CANONICAL_REPO = "https://github.com/NextKde/NextKde.git"
 
 
 def latest_release(root: Path, max_age: float = 6 * 3600) -> str:

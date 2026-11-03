@@ -34,8 +34,16 @@ class Paths:
 
     @property
     def installer_runtime(self) -> Path:
-        data = self.data_home or _xdg(os.environ, "XDG_DATA_HOME", ".local/share")
-        return data / "nextkde-installer"
+        return self._data_home / "nextkde-installer"
+
+    @property
+    def sources_root(self) -> Path:
+        """Managed product workspaces, one directory per repository and commit."""
+        return self._data_home / "nextkde" / "sources"
+
+    @property
+    def _data_home(self) -> Path:
+        return self.data_home or _xdg(os.environ, "XDG_DATA_HOME", ".local/share")
 
     @classmethod
     def resolve(cls, source_root=None, env=None, installer_root=None) -> "Paths":
