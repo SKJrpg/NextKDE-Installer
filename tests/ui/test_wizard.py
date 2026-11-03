@@ -66,6 +66,11 @@ def fake_identity(mode, opts, paths) -> "PreparedSource":
     return fake_source(mode)
 
 
+def radio_on(app) -> str:
+    """The marker the Options rows use for a selected radio, per terminal."""
+    return "(*)" if app.strings.ascii else "(•)"
+
+
 class FakeSession:
     """A session with the real interface: emits events, honours the cancel flag."""
 
@@ -128,9 +133,11 @@ class WizardTest(unittest.IsolatedAsyncioTestCase):
         async with app.run_test(size=(100, 30)) as pilot:
             await self.to_options(pilot)
             self.assertIsInstance(app.screen, OptionsScreen)
+            self.assertIn("[ ]", app.screen.query_one("#app_todo", Checkbox).label.plain)
             app.screen.query_one("#app_todo", Checkbox).value = True
             await pilot.pause()
             self.assertIn("todo", app.opts.app_set)
+            self.assertIn("[x]", app.screen.query_one("#app_todo", Checkbox).label.plain)
 
             await pilot.press("escape")
             await pilot.pause()
@@ -139,8 +146,8 @@ class WizardTest(unittest.IsolatedAsyncioTestCase):
             await pilot.press("enter")
             await pilot.pause()
             self.assertIsInstance(app.screen, OptionsScreen)
-            self.assertTrue(app.screen.query_one("#app_todo", Checkbox).value)
-            self.assertTrue(app.screen.query_one("#core", Checkbox).value)
+            self.assertIn("[x]", app.screen.query_one("#app_todo", Checkbox).label.plain)
+            self.assertIn("[x]", app.screen.query_one("#core", Checkbox).label.plain)
             self.assertTrue(app.screen.query_one("#core", Checkbox).disabled)
 
     async def test_seeded_options_are_shown(self) -> None:
@@ -150,9 +157,35 @@ class WizardTest(unittest.IsolatedAsyncioTestCase):
                      opts=Options(source="local", apps=True, app_set={"todo"}))
         async with app.run_test(size=(100, 30)) as pilot:
             await self.to_options(pilot)
-            self.assertTrue(app.screen.query_one("#source_local", RadioButton).value)
-            self.assertTrue(app.screen.query_one("#app_todo", Checkbox).value)
-            self.assertFalse(app.screen.query_one("#app_calendar", Checkbox).value)
+            self.assertTrue(app.screen.query_one("#source_local", RadioButton)
+                            .label.plain.startswith(radio_on(app)))
+            self.assertTrue(app.screen.query_one("#app_todo", Checkbox)
+                            .label.plain.startswith("[x] "))
+            self.assertTrue(app.screen.query_one("#app_calendar", Checkbox)
+                            .label.plain.startswith("[ ] "))
+
+    async def test_selected_rows_carry_different_text_markers(self) -> None:
+        app = KosApp(lang="en", system=fake_system(),
+                     paths=Paths.resolve(source_root=ROOT),
+                     opts=Options(source="local", apps=True, app_set={"todo"}))
+        async with app.run_test(size=(66, 20)) as pilot:
+            await self.to_options(pilot)
+
+            def label(ident: str) -> str:
+                return app.screen.query_one("#" + ident).label.plain
+
+            self.assertTrue(label("app_todo").startswith("[x] "))
+            self.assertTrue(label("app_calendar").startswith("[ ] "))
+            self.assertTrue(label("source_local").startswith(radio_on(app) + " "))
+            self.assertTrue(label("source_main").startswith("( ) "))
+            self.assertNotEqual(label("app_todo")[:3], label("source_local")[:3])
+
+            app.screen.query_one("#source_main", RadioButton).value = True
+            app.screen.query_one("#app_calendar", Checkbox).value = True
+            await pilot.pause()
+            self.assertTrue(label("source_main").startswith(radio_on(app) + " "))
+            self.assertTrue(label("source_local").startswith("( ) "))
+            self.assertTrue(label("app_calendar").startswith("[x] "))
 
     async def test_review_lists_the_real_plan(self) -> None:
         app = self.make_app()
