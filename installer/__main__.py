@@ -1,13 +1,15 @@
-"""KOS installer UI shell — entry module.
+"""NextKDE Installer — entry module.
 
-The shell detects the distribution, picks the install path that already exists
-for it, and runs it. See docs/superpowers/specs/2026-11-01-installer-tui-design.md.
+The installer is independent of the product checkout: it detects the system,
+lets the user pick a product source and options, and runs the product's own
+install path. ``--root`` (or ``KOS_ROOT``) names that checkout.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -78,6 +80,8 @@ def main(argv: list[str] | None = None) -> int:
         prog="tools/install.sh",
         description="KOS installer UI shell: detect the distribution and run the matching install path.",
     )
+    parser.add_argument("--root", metavar="DIR",
+                        help="NextKDE checkout to install (default: $KOS_ROOT or ~/NextKde)")
     parser.add_argument("--check", action="store_true", help="report only; change nothing")
     parser.add_argument("--yes", action="store_true", help="non-interactive, accept the plan")
     parser.add_argument("--plain", action="store_true", help="force the plain renderer")
@@ -99,7 +103,9 @@ def main(argv: list[str] | None = None) -> int:
     if no_cjk:
         # Say why the interface is English; otherwise it looks like a missing translation.
         print(strings("note_no_cjk"), file=sys.stderr)
-    root = Path(__file__).resolve().parents[2]
+    # The installer is its own repository: the product checkout is an input,
+    # never something inferred from __file__.
+    root = Path(args.root or os.environ.get("KOS_ROOT") or Path.home() / "NextKde").resolve()
     config = _load_config(args.config) if args.config else {}
     if config.get("source") not in (None, "stable", "main", "local"):
         parser.error("config source must be 'stable', 'main' or 'local'")
