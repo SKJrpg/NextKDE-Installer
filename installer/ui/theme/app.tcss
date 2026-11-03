@@ -1,4 +1,102 @@
-/* Layout only: colours stay the terminal's own. */
+/* The terminal's own background shows through, and text is the terminal's
+   default colour, so light and dark terminals both stay readable. Only the
+   focused row, the modal surface, the scrollbar thumb and the progress fill
+   keep a colour of their own.
+   `ansi_default` is what Textual must render for the terminal palette to
+   show: a transparent root is painted black by the compositor. */
+App, Screen {
+    background: ansi_default;
+    color: ansi_default;
+}
+
+Header, Footer {
+    background: transparent;
+    color: ansi_default;
+}
+
+FooterKey, FooterLabel,
+FooterKey > .footer-key--key,
+FooterKey > .footer-key--description {
+    background: transparent;
+    color: ansi_default;
+}
+
+FooterKey:hover {
+    background: transparent;
+    text-style: underline;
+}
+
+/* One line tall. Focus reads without colour: bold reverse is the terminal's
+   own swap, and the hover cue is an underline. */
+Button {
+    height: 1;
+    min-width: 8;
+    padding: 0 1;
+    border: none;
+    background: transparent;
+    color: ansi_default;
+}
+
+Button.-primary {
+    text-style: bold;
+}
+
+Button.-error {
+    color: ansi_red;
+}
+
+Button:hover {
+    background: transparent;
+    text-style: underline;
+}
+
+Button:focus {
+    background: transparent;
+    text-style: bold reverse;
+}
+
+Button:disabled {
+    background: transparent;
+    color: ansi_default;
+    text-style: dim;
+}
+
+/* The check and radio markers are text on the terminal, not filled blocks. */
+ToggleButton, RadioSet {
+    background: transparent;
+}
+
+ToggleButton > .toggle--button {
+    background: transparent;
+    color: ansi_default;
+}
+
+ToggleButton.-on > .toggle--button {
+    background: transparent;
+    color: ansi_green;
+}
+
+#log, #action_log, #log_view, #manage_list {
+    background: transparent;
+    color: ansi_default;
+}
+
+/* The scrollbar rail must not paint a pane; its thumb is the terminal's own
+   foreground. */
+Widget {
+    scrollbar-background: transparent;
+    scrollbar-background-hover: transparent;
+    scrollbar-background-active: transparent;
+    scrollbar-color: ansi_default;
+    scrollbar-color-hover: ansi_default;
+    scrollbar-color-active: ansi_default;
+}
+
+ProgressBar Bar > .bar--bar,
+ProgressBar Bar > .bar--indeterminate,
+ProgressBar Bar > .bar--complete {
+    background: transparent;
+}
 
 #body {
     height: 1fr;
@@ -120,7 +218,6 @@
 }
 
 #cancel {
-    height: 3;
     width: auto;
     min-width: 12;
     margin-top: 1;
@@ -140,7 +237,7 @@
 }
 
 #actions {
-    height: 3;
+    height: auto;
 }
 
 #actions Button {
@@ -175,13 +272,18 @@
 
 ConfirmDialog {
     align: center middle;
+    background: transparent;
 }
 
+/* The dialog is the one surface that stands above the terminal: it separates
+   the confirmation from the list behind it. */
 #confirm_box {
     width: 62;
     height: auto;
     max-height: 80%;
     border: round $foreground;
+    background: $surface;
+    color: $text;
     padding: 1 2;
 }
 
@@ -203,14 +305,17 @@ ConfirmDialog {
 
 #confirm_word {
     margin-top: 1;
+    background: $surface;
+    color: $foreground;
 }
 
 #confirm_buttons {
-    height: 3;
+    height: auto;
     margin-top: 1;
 }
 
 #confirm_buttons Button {
     min-width: 12;
     margin-right: 1;
+    color: $text;
 }

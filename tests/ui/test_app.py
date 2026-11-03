@@ -25,7 +25,7 @@ HAS_TEXTUAL = importlib.util.find_spec("textual") is not None
 
 if HAS_TEXTUAL:
     from rich.cells import cell_len
-    from textual.widgets import Checkbox
+    from textual.widgets import Button, Checkbox
     from textual.widgets._footer import FooterKey
 
     from installer.detect import OsInfo, Probe, System
@@ -33,6 +33,7 @@ if HAS_TEXTUAL:
     from installer.strings import Strings
     from installer.ui.app import KosApp
     from installer.ui.screens.options import OptionsScreen
+    from installer.ui.screens.result import ResultScreen
     from installer.ui.screens.system import SystemScreen
     from installer.ui.screens.welcome import WelcomeScreen
 
@@ -136,6 +137,31 @@ class AppShellTest(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertEqual(app.lang, "zh")
             self.assertIn("发行版", str(app.screen.query_one("#facts").render()))
+
+    async def test_buttons_are_one_line_and_focus_is_reverse(self) -> None:
+        app = self.make_app()
+        async with app.run_test(size=(66, 20)) as pilot:
+            app.push_screen(ResultScreen(Strings("en"), "failed", exit_code=1))
+            await pilot.pause()
+            quit_button = app.screen.query_one("#quit", Button)
+            self.assertEqual(quit_button.size.height, 1)
+            self.assertEqual(app.screen.query_one("#retry", Button).size.height, 1)
+
+            quit_button.focus()
+            await pilot.pause()
+            self.assertTrue(quit_button.styles.text_style.reverse)
+            self.assertTrue(quit_button.styles.text_style.bold)
+
+    async def test_screen_uses_the_terminal_background(self) -> None:
+        app = self.make_app()
+        async with app.run_test(size=(66, 20)) as pilot:
+            await pilot.pause()
+            # ansi_default is what Textual renders for the terminal's own
+            # background; transparent at the root would be painted black.
+            self.assertEqual(app.screen.styles.background.ansi, -1)
+            self.assertEqual(app.styles.background.ansi, -1)
+            self.assertEqual(app.screen.query_one("Header").styles.background.a, 0)
+            self.assertEqual(app.screen.query_one("Footer").styles.background.a, 0)
 
     async def test_footer_offers_no_command_palette(self) -> None:
         app = self.make_app()

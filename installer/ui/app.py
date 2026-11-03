@@ -41,7 +41,9 @@ class KosApp(App):
                  paths: Paths | None = None, *, opts: Options | None = None,
                  backend: BackendInfo | None = None,
                  prepare=None, session_factory=None, **kwargs) -> None:
-        super().__init__(**kwargs)
+        # Native ANSI so the terminal's own background and palette show through
+        # instead of Textual painting its theme's colours over them.
+        super().__init__(ansi_color=True, **kwargs)
         self.lang, _ = choose_language(lang)
         self.strings = Strings(self.lang)
         self.paths = paths or Paths.resolve()
