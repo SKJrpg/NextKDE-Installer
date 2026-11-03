@@ -35,6 +35,11 @@
     width: 1fr;
 }
 
+/* A probe row is one line; its value is clipped, never wrapped into the margin. */
+#probes Static {
+    text-wrap: nowrap;
+}
+
 /* Wider terminals get the focused row's explanation beside the list; narrower
    ones stack it under the list, where it keeps its own scroll. */
 #checks_split, #options_split {
@@ -54,6 +59,7 @@
 #probe_detail.-wide, #option_detail.-wide {
     width: 40;
     height: 1fr;
+    max-height: 100%;
     margin: 0 0 0 1;
 }
 

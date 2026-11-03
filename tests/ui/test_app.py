@@ -24,6 +24,7 @@ if _VENDOR.is_dir():
 HAS_TEXTUAL = importlib.util.find_spec("textual") is not None
 
 if HAS_TEXTUAL:
+    from rich.cells import cell_len
     from textual.widgets import Checkbox
     from textual.widgets._footer import FooterKey
 
@@ -49,7 +50,10 @@ def fake_system() -> "System":
         arch="x86_64",
         probes=[Probe("probe_os", "PASS", "CachyOS"),
                 Probe("probe_disk", "WARN", "4.2 GiB free",
-                      "At least 6 GiB is needed for the build tree.")],
+                      "At least 6 GiB is needed for the build tree."),
+                Probe("probe_packages", "WARN",
+                      "10 missing: quickshell, cmake, ninja, gcc, qt6-wayland, go +4",
+                      "kosctl install adds these with the package manager.")],
     )
 
 
@@ -152,6 +156,34 @@ class AppShellTest(unittest.IsolatedAsyncioTestCase):
             self.assertIn(Strings("en")("why_probe_disk"), detail)
             self.assertIn("4.2 GiB free", detail)
             self.assertIn("WARN", detail)
+            self.assertIn(Strings("en")("check_fixable"), detail)
+
+    async def test_pass_detail_has_no_fix_or_remedy_line(self) -> None:
+        app = self.make_app()
+        async with app.run_test(size=(118, 36)) as pilot:
+            await pilot.press("enter")
+            await pilot.pause()
+            detail = str(app.screen.query_one("#probe_detail_text").render())
+            self.assertIn(Strings("en")("why_probe_os"), detail)
+            self.assertNotIn(Strings("en")("check_fixable"), detail)
+            self.assertNotIn(Strings("en")("check_remedy"), detail)
+
+    async def test_long_probe_value_is_clipped_to_the_list_width(self) -> None:
+        app = self.make_app()
+        async with app.run_test(size=(118, 36)) as pilot:
+            await pilot.press("enter")
+            await pilot.pause()
+            list_box = app.screen.query_one("#probes")
+            width = list_box.content_size.width
+            self.assertGreater(width, 0)
+            for row in list_box.children:
+                plain = str(row.render())
+                self.assertNotIn("\n", plain)
+                self.assertLessEqual(cell_len(plain), width)
+            long_row = str(list_box.children[2].render())
+            self.assertIn("10 missing", long_row)
+            self.assertTrue(long_row.endswith("…"))
+            self.assertNotIn("qt6-wayland, go +4", long_row)
 
     async def test_probe_detail_is_reachable_on_a_small_terminal(self) -> None:
         app = self.make_app()

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from rich.cells import cell_len
+from rich.cells import cell_len, set_cell_size
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Container, VerticalScroll
@@ -43,9 +43,12 @@ class SystemScreen(WizardScreen):
     def on_mount(self) -> None:
         self._apply_layout(self.app.size.width)
         self._fill()
+        self.call_after_refresh(self._paint_rows)   # the real list width exists then
 
     def on_resize(self, event) -> None:
         self._apply_layout(event.size.width)
+        if self.rows:
+            self.call_after_refresh(self._paint_rows)
 
     def _apply_layout(self, width: int) -> None:
         wide = width >= WIDE_AT
@@ -71,6 +74,19 @@ class SystemScreen(WizardScreen):
         probes = self.app.system.probes
         return min(20, max([cell_len(self.strings(p.key)) for p in probes] or [4]) + 2)
 
+    def _list_width(self) -> int:
+        """Cells the row really has; the fallback covers the first paint."""
+        width = self.query_one("#probes", VerticalScroll).content_size.width
+        return width if width > 0 else max(20, self.app.size.width - 26)
+
+    def _clip(self, value: str, width: int) -> str:
+        if width <= 0:
+            return ""
+        if cell_len(value) <= width:
+            return value
+        tail = "..." if self.strings.ascii else "…"
+        return set_cell_size(value, max(0, width - cell_len(tail))) + tail
+
     def _row_text(self, probe: Probe, index: int) -> Text:
         word = self._status_word(probe.status)
         name = self.strings(probe.key)
@@ -80,7 +96,9 @@ class SystemScreen(WizardScreen):
         text.append(f" {self._glyph(probe.status)} ", style="bold")
         text.append(word + " " * max(1, 6 - cell_len(word)), style="bold")
         text.append(name + " " * max(2, self._name_width() - cell_len(name)))
-        text.append(probe.detail, style="dim")
+        # The full value lives in the detail pane; the row must stay one line.
+        text.append(self._clip(probe.detail,
+                               self._list_width() - cell_len(text.plain)), style="dim")
         return text
 
     def _detail(self, probe: Probe) -> Text:
@@ -90,11 +108,17 @@ class SystemScreen(WizardScreen):
             (s("check_status"), self._status_word(probe.status)),
             (s("check_result"), probe.detail),
             (s("check_why"), s("why_" + probe.key)),
-            (s("check_fixable"),
-             s("check_fix_yes") if probe.key in FIXABLE else s("check_fix_no")),
         ]
-        if probe.remedy and probe.status != "PASS":
-            pairs.append((s("check_remedy"), probe.remedy))
+        if probe.status != "PASS":
+            pairs.append((s("check_fixable"),
+                          s("check_fix_yes") if probe.key in FIXABLE
+                          else s("check_fix_no")))
+            if probe.remedy:
+                # Prefer the UI-language pair; detect.py's English text is the
+                # fallback for a probe that has none.
+                text = s(f"remedy_{probe.key}")
+                pairs.append((s("check_remedy"),
+                              probe.remedy if text.startswith("remedy_") else text))
         text = Text()
         for index, (label, value) in enumerate(pairs):
             text.append(f"{label}: ", style="dim")
@@ -146,6 +170,7 @@ class SystemScreen(WizardScreen):
         await container.mount_all(self.rows)
         self.query_one("#summary", Static).update(self._summary())
         self._show_detail()
+        self.call_after_refresh(self._paint_rows)
 
     def action_open_options(self) -> None:
         from .options import OptionsScreen
