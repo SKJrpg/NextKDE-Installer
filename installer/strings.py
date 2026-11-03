@@ -126,6 +126,8 @@ _TEXT = {
     "hint_result": ("Enter 退出 · r 重试", "Enter quit · r retry"),
     "note_no_cjk": ("未找到中文字体，改用英文界面（--lang zh 可强制中文）",
                     "no CJK font found; showing English (--lang zh forces Chinese)"),
+    "note_no_textual": ("未找到 Textual（运行 python3 tools/vendor.py），改用纯文本模式。",
+                        "Textual not found (run python3 tools/vendor.py); using plain mode."),
 
     # -- wizard chrome -------------------------------------------------
     "step_welcome": ("欢迎", "Welcome"),

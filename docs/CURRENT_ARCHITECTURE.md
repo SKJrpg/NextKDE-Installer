@@ -1,6 +1,6 @@
 # Current architecture
 
-What this repository is today (branch `main`, commit at the time of writing: `7981afe`).
+What this repository is today (branch `main`).
 It is written from the code, not from intent: every claim below is something the tree does.
 
 ## 1. What the installer is
@@ -17,9 +17,10 @@ from `__file__`.
 
 ```
 install.sh              python3 >= 3.10 check, then `python3 -m installer`
+tools/vendor.py         unpacks the pinned wheels (Textual, rich, deps) into vendor/
 installer/
   __init__.py           VERSION
-  __main__.py           argparse, config file, plan, renderer choice, exit codes
+  __main__.py           argparse, config file, plan, entry-point choice, exit codes
   paths.py              Paths: installer_root, source_root, build_root, state_root,
                         log_dir, sources_root, installer_runtime
   detect.py             /etc/os-release parsing, family map, 13 probes, blocked flag
@@ -28,18 +29,25 @@ installer/
   manage.py             reads the ledger/snapshots/logs/deps through the product's tools
   strings.py            zh/en pairs, locale choice, CJK font probe
   source/               Git Source Manager (see section 5)
+  core/
+    events.py           Event: one classified line or state change from a worker
+    session.py          InstallSession: runs the plan, reports events, cancels
+  ui/
+    app.py              KosApp: wizard state (Options, prepared source, steps),
+                        thread workers, cancel/quit
+    theme/app.tcss      the stylesheet: chrome, sidebar, lists, dialogs
+    screens/            welcome, system, options, review, installation, result,
+                        and the management area (units, snapshots, logs, management)
+    widgets/confirm.py  modal confirmation used by the destructive actions
   render/
-    curses_ui.py        the wizard (screens, keys, action runner, install loop)
     plain.py            the same plan without a TTY; NO_COLOR aware
-    theme.py            semantic roles, Unicode/ASCII glyph sets
-    layout.py           narrow/standard/wide geometry, list stacking, scrolling
-    widgets.py          one Canvas per frame, rules, bars, rows, dialogs, width/clip/wrap
-tests/                  134 offline unit tests
+tests/                  113 offline unit tests (tests/, tests/core/, tests/ui/)
+vendor/                 pinned Textual 8.2.8 + rich and its dependencies
 docs/design.md          the independent-installer architecture proposal
 ```
 
-`installer/render/curses_ui.py` is the only module that owns terminal state; everything it
-shows comes from `detect`, `plan`, `manage` and `runner`.
+`installer/ui/` is the only module that owns terminal state; everything it shows comes from
+`detect`, `plan`, `manage` and `runner`.
 
 ## 3. Startup and flow
 
@@ -50,7 +58,8 @@ install.sh
        ├─ detect(root=source_root)          # runs `kosctl doctor`, reads the guide
        ├─ Options from CLI + JSON config
        ├─ build_plan(family, opts, paths)   # argv steps, nothing executed
-       └─ curses UI (TTY) | plain (no TTY, --plain, --yes)
+       └─ Textual UI (TTY and vendor/ has textual) | plain (no TTY, --plain, --yes,
+          or textual missing — it says so on stderr)
             └─ on confirm: workflow.begin() -> stream the clone -> finish()
                -> build_plan(..., prepared=...) -> run
 ```
@@ -101,13 +110,25 @@ commands. Today's steps:
 
 ## 6. Rendering
 
-- One `Canvas` per frame, so two writers cannot share a cell (asserted by a test).
-- `layout_for(w, h)` returns narrow (<80) / standard (80–109) / wide (110+) / tiny geometry.
-- Unicode glyphs with an ASCII set chosen from terminal capability; status is text
-  (`通过/注意/失败`, `PASS/WARN/FAIL`) plus colour, never colour alone.
-- Install screen: stage list (done/current/waiting/failed/skipped), measured counters when the
-  runner reports them, otherwise an explicit indeterminate bar; `p` pauses the log.
-- Plain mode shares `strings`, `plan`, `detect`, and the same exit codes.
+Two front ends, one plan:
+
+- **Textual** (`installer/ui/`), vendored under `vendor/` and put on `PYTHONPATH` by
+  `install.sh`. `KosApp` owns the wizard state (`opts`, prepared source, steps, cancel
+  event) and holds the fixed chrome; `screens/` holds one `Screen` per step (welcome,
+  system, options, review, installation, result) plus the management area (units,
+  snapshots, logs, management); `widgets/confirm.py` is the modal confirmation; every
+  style lives in `theme/app.tcss`. The step sidebar and the localized footer come from
+  `screens/__init__.py`, so a screen only declares its body and its extra keys.
+- **Workers**: preparation, the install and management actions run in
+  `@work(thread=True)`. Every line they produce is a `core.events.Event` handed to the
+  event loop with `call_from_thread`, so nothing blocks and a screen only ever shows what
+  the runner reported. `action_quit` and `on_unmount` wait for the workers, so no install
+  child outlives the UI.
+- Install screen: stage list (done/current/waiting/failed/skipped), measured counters when
+  the runner reports them, otherwise an explicit indeterminate bar; `p` pauses the log.
+- `render/plain.py` is the non-TTY path (`--check`, `--yes`, `--plain`, no Textual): the
+  same `strings`, `plan`, `detect` and exit codes, NO_COLOR aware.
+- Status is text (`通过/注意/失败`, `PASS/WARN/FAIL`) plus colour, never colour alone.
 
 ## 7. Process execution
 
@@ -131,8 +152,12 @@ empty. This is a product-side gap, not an installer bug.
 
 ## 9. Verified state
 
-- `python3 -m unittest discover -s tests` → 134 tests, offline (bare repositories, `file://`).
-- Host: `./install.sh --root <checkout> --check` → `KOS Installer — CachyOS (x86_64)`, exit 0.
+- `PYTHONPATH=$PWD/vendor python3 -m unittest discover -s tests` → 113 tests, offline
+  (bare repositories, `file://`); the Textual tests skip when `vendor/` is missing.
+- Host: `./install.sh --root <checkout> --check` and `… --plain --check` →
+  `KOS Installer — CachyOS (x86_64)`, exit 0, nothing cloned.
+- Textual wizard captured in tmux at 100×30: Welcome and Options render inside the fixed
+  chrome, Options shows the source, apps and advanced toggles.
 - VM `arch-clean` (fresh Arch + Plasma 6.8/Wayland): installer cloned from GitHub and ran;
   `--check` and the TUI rendered; `kosctl deps` reported 10 missing packages;
   `kos-state.py list --json` → `{"schema":1,"units":{}}`;
@@ -140,7 +165,11 @@ empty. This is a product-side gap, not an installer bug.
 
 ## 10. Known gaps
 
-- No Textual UI, no `core/` or `backend/` layer, no backend contract, no CLI subcommands.
-- No `pyproject.toml`, no release artefact, no self-update, no CI.
-- Preparation is not wired into the flow (Phase 3b in progress).
-- The curses UI is one 1600-line module; `render/screens/` was deliberately not split.
+- No `backend/` layer and no backend contract: `plan.unsupported()` filters a selection after
+  the fact instead of the option never being offered.
+- No CLI subcommands (`check`, `install`, `manage`): `__main__.py` is still one flow.
+- No release artefact, self-update or CI; `pyproject.toml` exists and declares the console
+  script only.
+- `kosctl deps` and the `kos-state.py` verbs are missing upstream, so the dependency probe
+  and the management screens are empty against `main`.
+- `paths.build_root` is still not passed to the backend (`KOS_BUILD_DIR` unverified).

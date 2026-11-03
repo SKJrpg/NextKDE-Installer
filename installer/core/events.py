@@ -1,7 +1,7 @@
 """What a running install reports to whatever is drawing it.
 
-Nothing here imports a renderer: the curses UI, the Textual wizard and a test
-all consume the same values.
+Nothing here imports a renderer: the Textual wizard and the plain renderer
+consume the same values.
 """
 
 from __future__ import annotations

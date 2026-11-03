@@ -14,3 +14,6 @@ include = ["installer*"]
 
 [tool.setuptools.dynamic]
 version = {attr = "installer.VERSION"}
+
+[project.scripts]
+nextkde-installer = "installer.__main__:main"

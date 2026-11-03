@@ -8,6 +8,7 @@ install path. ``--root`` (or ``KOS_ROOT``) names that checkout.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import subprocess
 import sys
@@ -17,7 +18,7 @@ from . import VERSION, workflow
 from .detect import detect
 from .paths import Paths
 from .plan import ALL_APPS, Options, build_plan, unsupported
-from .render import curses_ui, plain
+from .render import plain
 from .strings import Strings, choose_language
 
 CONFIG_KEYS = ("source", "apps", "lockscreen", "start", "all", "proxy", "spatial")
@@ -145,6 +146,11 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     interactive = sys.stdout.isatty() and sys.stdin.isatty() and not args.plain and not args.yes
+    if interactive and importlib.util.find_spec("textual") is None:
+        # The vendored UI is optional (tools/vendor.py builds it): without it the
+        # same plan still runs, it just cannot be shown interactively.
+        print(strings("note_no_textual"), file=sys.stderr)
+        interactive = False
     if not interactive:
         # Redirected to a file or a pipe, stdout is block-buffered: a long
         # install would show nothing until it ends.
@@ -152,7 +158,6 @@ def main(argv: list[str] | None = None) -> int:
             sys.stdout.reconfigure(line_buffering=True)
         except AttributeError:
             pass
-    if not interactive:
         # The installer owns the source: fetch the chosen commit first, then run
         # the plan built for that workspace.
         try:
@@ -164,7 +169,12 @@ def main(argv: list[str] | None = None) -> int:
             system, lambda: build_plan(system.family, opts, paths, preparation.prepared),
             paths, strings, preparation=preparation)
 
-    return curses_ui.UI(system, paths, strings, lang_explicit=bool(args.lang)).run()
+    # Imported here: the module needs Textual, which the branch above just checked.
+    from .ui.app import KosApp
+
+    # The screen starts from the same Options the flags and config made, so
+    # `--source local --apps todo` is already selected when it opens.
+    return int(KosApp(opts=opts, paths=paths, lang=lang, system=system).run() or 0)
 
 
 if __name__ == "__main__":

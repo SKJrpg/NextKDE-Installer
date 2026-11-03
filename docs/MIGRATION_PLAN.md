@@ -12,8 +12,9 @@ Textual-based installer described in `design.md` and the implementation prompt.
    no PEP 668; wheels total ≈ 2.4 MB, ≈ 8–10 MB unpacked.
 3. **curses is not kept as a fallback.** Textual replaces it; `plain` stays for non-TTY/CI.
    Two interactive renderers would double the tests and the layout work.
-4. **Order**: finish Phase 3b (wire the source manager) first, then extract `core/`, then
-   Textual. Source logic is UI-agnostic, so nothing built now is thrown away.
+4. **Order**: Phase 3b (wire the source manager) first, then Textual (T1–T4, done), then the
+   rest of `core/`/`backend/`. Source logic is UI-agnostic, so nothing built so far is thrown
+   away.
 
 ## Target layout and where today's files go
 
@@ -41,13 +42,25 @@ Textual-based installer described in `design.md` and the implementation prompt.
 |---|---|---|
 | 3b (done, `77f816d`) | `workflow.begin()/finish()`, prepared source in the plan, Review shows identity, `--check` stays read-only | done: 146 tests; `arch-clean` prepared `development` at `d7b34a8e` with one streamed clone and reused it with zero steps |
 | 4 (done, logic) | stable/development/local resolution, managed workspaces, manifest | local never written; reuse verified; 19 offline tests |
-| 2 | extract `core/` (workflow, plan, session, events, errors), `system/`, `backend/` | curses UI still runs on the extracted core; no test loss |
+| 2 | extract `core/` (workflow, plan, session, events, errors), `system/`, `backend/` | `events` and `session` exist; plan/system/backend still to move |
 | 5 | backend contract: static `packaging/installer-contract.json` + `kosctl installer-info --json`; adapter checks capabilities before showing options | unsupported option never shown; incompatible backend stops with a clear error |
-| 6 | Textual: `ui/app.py`, 8 screens, 6 widgets, `app.tcss`; workers for git/probes/install; Pilot tests | no blocking call in the event loop; cancel reaps the process group; narrow layout works at 66×20 |
+| 6 (done, T1–T4) | Textual: `ui/app.py`, 10 screens, confirm dialog, `app.tcss`; workers for git/install/manage; Pilot tests | no blocking call in the event loop; cancel reaps the process group; narrow layout works at 66×20 |
 | 7 | vendor build + versioned releases + SHA256 + `current` symlink + self-update | release installs offline; update never overwrites a running version; rollback works |
-| 8 | delete `render/curses_ui.py` and its tests | full suite green; `--plain` unchanged |
+| 8 (done, T4) | delete `render/curses_ui.py`, `theme`, `layout`, `widgets` and their tests | full suite green; `--plain` unchanged |
 
 Textual work is estimated at 2–3 weeks for one developer, split across the phases above.
+
+### Textual stages (done)
+
+| Stage | Work | Commit |
+|---|---|---|
+| T1 | vendored Textual, `KosApp` shell, wizard chrome, first Pilot tests | `b6c4d54` |
+| T2 | checks → options → review → installation → result, real `InstallSession` | `b900741`, `71a4101` |
+| T3 | management area: units, snapshots, logs, one-shot actions | `5705cd9` |
+| T4 | Textual is the interactive entry point, `Options` seeded from CLI/config, curses deleted | this change |
+
+Remaining: the backend contract (Phase 5), `core/`/`system/`/`backend/` extraction (Phase 2),
+vendored release + self-update (Phase 7), and the product-side items below.
 
 ## Product-side changes required (`NextKde/NextKde`)
 

@@ -6,7 +6,7 @@ front end gets the same thing: a :class:`Preparation` that is either already
 done (local checkout, or a reused workspace) or carries the one clone step to
 stream, and that ends with ``finish()``.
 
-Nothing here draws anything, so the curses and plain front ends share it.
+Nothing here draws anything, so the Textual and plain front ends share it.
 """
 
 from __future__ import annotations

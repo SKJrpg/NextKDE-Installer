@@ -33,8 +33,8 @@ class KosApp(App):
     CSS_PATH = "theme/app.tcss"
 
     def __init__(self, lang: str | None = None, system: System | None = None,
-                 paths: Paths | None = None, *, prepare=None,
-                 session_factory=None, **kwargs) -> None:
+                 paths: Paths | None = None, *, opts: Options | None = None,
+                 prepare=None, session_factory=None, **kwargs) -> None:
         super().__init__(**kwargs)
         self.lang, _ = choose_language(lang)
         self.strings = Strings(self.lang)
@@ -43,7 +43,8 @@ class KosApp(App):
         self.title = f"{self.strings('title')} · NextKDE"
         self.sub_title = f"v{VERSION}"
 
-        self.opts = Options()
+        # The CLI/config Options: the wizard opens with those already selected.
+        self.opts = opts if opts is not None else Options()
         self.prepared = None            # PreparedSource, once obtained
         self.preparation = None         # the workflow.Preparation it came from
         self.prepare_error = ""
@@ -281,5 +282,7 @@ class KosApp(App):
 
 
 def main() -> int:
-    KosApp().run()
-    return 0
+    """`python3 -m installer.ui`: the same flow and flags as `python3 -m installer`."""
+    from ..__main__ import main as cli
+
+    return cli()

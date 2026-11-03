@@ -34,7 +34,7 @@ if ! python_ok; then
 fi
 
 # Vendored Textual lives in vendor/ (tools/vendor.py builds it); it is optional,
-# so a checkout without it keeps the current plain/curses behaviour.
+# so a checkout without it falls back to the plain renderer.
 vendor_path=
 if [ -d "$here/vendor" ]; then
     vendor_path="$here/vendor:"

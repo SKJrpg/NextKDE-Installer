@@ -20,13 +20,13 @@ if _VENDOR.is_dir():
 HAS_TEXTUAL = importlib.util.find_spec("textual") is not None
 
 if HAS_TEXTUAL:
-    from textual.widgets import Checkbox
+    from textual.widgets import Checkbox, RadioButton
 
     from installer import workflow
     from installer.detect import OsInfo, Probe, System
     from installer.core.events import Event
     from installer.paths import Paths
-    from installer.plan import build_plan
+    from installer.plan import Options, build_plan
     from installer.source.models import PreparedSource
     from installer.ui.app import KosApp
     from installer.ui.screens.installation import InstallationScreen
@@ -142,6 +142,17 @@ class WizardTest(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(app.screen.query_one("#app_todo", Checkbox).value)
             self.assertTrue(app.screen.query_one("#core", Checkbox).value)
             self.assertTrue(app.screen.query_one("#core", Checkbox).disabled)
+
+    async def test_seeded_options_are_shown(self) -> None:
+        # What `--source local --apps todo` produces must be on screen already.
+        app = KosApp(lang="en", system=fake_system(),
+                     paths=Paths.resolve(source_root=ROOT),
+                     opts=Options(source="local", apps=True, app_set={"todo"}))
+        async with app.run_test(size=(100, 30)) as pilot:
+            await self.to_options(pilot)
+            self.assertTrue(app.screen.query_one("#source_local", RadioButton).value)
+            self.assertTrue(app.screen.query_one("#app_todo", Checkbox).value)
+            self.assertFalse(app.screen.query_one("#app_calendar", Checkbox).value)
 
     async def test_review_lists_the_real_plan(self) -> None:
         app = self.make_app()
