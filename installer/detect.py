@@ -80,6 +80,7 @@ class System:
     method: str
     arch: str
     probes: list[Probe] = field(default_factory=list)
+    missing_packages: list[str] = field(default_factory=list)
     blocked: bool = False
 
     @property
@@ -238,6 +239,7 @@ def detect(fixed_os_release: str | None = None, root: Path | None = None) -> Sys
         rc, doctor_out = _run(["bash", str(Path(root) / "tools" / "kosctl"), "doctor"], timeout=30)
         if doctor_out or rc == 0:
             missing = parse_missing_packages(doctor_out)
+            system.missing_packages = missing
             if missing:
                 listed = ", ".join(missing[:6]) + (f" +{len(missing) - 6}" if len(missing) > 6 else "")
                 system.probes.append(Probe(

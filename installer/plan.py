@@ -15,7 +15,7 @@ from pathlib import Path
 
 from .backend.models import (ACTIVATION_START, INSTALL_APPS, INSTALL_CORE,
                              INSTALL_DEBIAN, INSTALL_LOCKSCREEN, PLATFORM_NIX,
-                             SOURCE_UPDATE, BackendInfo)
+                             SOURCE_UPDATE, SYSTEM_DEPS, BackendInfo)
 from .paths import Paths
 from .source.models import PreparedSource
 from .source.resolver import CANONICAL_REPO
@@ -26,6 +26,7 @@ ALL_APPS = ("calendar", "todo", "weather", "calculator")
 # The capability a step needs. A backend that lacks it never receives the step.
 STEP_CAPABILITY = {
     "source": SOURCE_UPDATE,
+    "deps": SYSTEM_DEPS,
     "debian": INSTALL_DEBIAN,
     "nix": PLATFORM_NIX,
     "core": INSTALL_CORE,
@@ -224,7 +225,8 @@ def _capable(steps: list[Step], backend: BackendInfo | None) -> list[Step]:
 
 def build_plan(family: str | None, opts: Options, paths: Paths,
                prepared: PreparedSource | None = None,
-               backend: BackendInfo | None = None) -> list[Step]:
+               backend: BackendInfo | None = None,
+               deps_missing: bool = False) -> list[Step]:
     """The steps to run. With a prepared source they run inside its workspace and
     nothing fetches or switches the source any more (design §10.6)."""
     root = Path(prepared.path) if prepared is not None else Path(paths.source_root)
@@ -281,6 +283,11 @@ def build_plan(family: str | None, opts: Options, paths: Paths,
             else:
                 steps.append(Step("source", "kosctl update (skipped)", [],
                                   env, note="skipped_source"))
+        if deps_missing:
+            # Explicit first step: its own log line, its own sudo prompt, and a
+            # failure that names dependency installation rather than the build.
+            steps.append(Step("deps", "kosctl deps --install",
+                              [kosctl, "deps", "--install"], env))
         steps.append(Step("core", "kosctl install", [kosctl, "install"], env))
         steps += _component_steps(opts, root, env)
         if opts.start:

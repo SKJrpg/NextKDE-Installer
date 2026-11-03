@@ -128,7 +128,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("unknown apps: " + ", ".join(sorted(unknown)))
 
     system = detect(root=paths.source_root)
-    steps = build_plan(system.family, opts, paths)
+    steps = build_plan(system.family, opts, paths,
+                       deps_missing=bool(system.missing_packages))
     blocked_options = unsupported(system.family, opts)
 
     if args.check:
@@ -213,7 +214,9 @@ def main(argv: list[str] | None = None) -> int:
                 prepared = preparation.prepared
                 root = Path(prepared.path)
                 info = contract.read(root) or probe.detect(root)
-                return build_plan(system.family, opts, paths, prepared, backend=info)
+                return build_plan(system.family, opts, paths, prepared,
+                                  backend=info,
+                                  deps_missing=bool(system.missing_packages))
 
             try:
                 return plain.execute(system, plan_from_workspace, paths, strings,

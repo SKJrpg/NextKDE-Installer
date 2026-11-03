@@ -17,7 +17,8 @@ from ..plan import ALL_APPS
 from .models import (ACTIVATION_START, INSTALL_APPS, INSTALL_CORE, INSTALL_DEBIAN,
                      INSTALL_DEBIAN_LOCAL, INSTALL_LOCKSCREEN, INSTALLER_API,
                      MANAGEMENT_SNAPSHOTS, MANAGEMENT_UNINSTALL, PLATFORM_NIX,
-                     SOURCE_UPDATE, SYSTEM_DOCTOR, BackendInfo, product_version)
+                     SOURCE_UPDATE, SYSTEM_DOCTOR, SYSTEM_DEPS, BackendInfo,
+                     product_version)
 
 
 def root_of(prepared) -> Path:
@@ -70,6 +71,8 @@ def detect(prepared) -> BackendInfo:
         usage = usage_text(kosctl)
         if re.search(r"\bdoctor\b", usage):
             found.add(SYSTEM_DOCTOR)
+        if re.search(r"\bdeps\b", usage):
+            found.add(SYSTEM_DEPS)
         if re.search(r"(?<!un)\binstall\b", usage):
             found.add(INSTALL_CORE)
             if re.search(r"(?<!un)\binstall\b[^\n]*\bapps\b", usage):

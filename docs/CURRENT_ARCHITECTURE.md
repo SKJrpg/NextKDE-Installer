@@ -90,7 +90,7 @@ commands. Today's steps:
 |---|---|
 | debian | `install-debian13.sh --dir <root> --spatial … [--repo <origin>] [--local]`, then apps/lockscreen, then `start` |
 | nixos | `kosctl nix install`, then `start` |
-| arch / ubuntu / fedora | `kosctl update <ref>` only when nothing was prepared; otherwise `kosctl install`, `kosctl install apps [--only …]`, `kosctl install lockscreen`, `kosctl start` inside the prepared workspace |
+| arch / ubuntu / fedora | `kosctl update <ref>` only when nothing was prepared; `kosctl deps --install` first when the probe found missing packages; then `kosctl install`, `kosctl install apps [--only …]`, `kosctl install lockscreen`, `kosctl start` inside the prepared workspace |
 | opensuse / unknown | nothing; the UI reports only |
 
 `KOS_BUILD_SPATIAL=ON|OFF` and the proxy/session variables are placed in each step's env.

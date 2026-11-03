@@ -65,6 +65,10 @@ wrap them in a second command tree.
 
 ## sudo
 
+Missing build packages are installed by their own first step (`kosctl deps --install`)
+when the probe reports any; with nothing missing the plan starts at `kosctl install`.
+That is also where the first password prompt comes from.
+
 Nothing asks for a password up front. The install children run without a tty, so a
 `sudo` shim and an askpass helper are put on their `PATH`: when a step's `sudo` needs
 a password, the helper leaves a request and blocks, and the wizard shows one dialog

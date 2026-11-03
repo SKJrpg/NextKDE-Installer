@@ -14,6 +14,7 @@ from pathlib import Path
 INSTALLER_API = 1
 
 SYSTEM_DOCTOR = "system.doctor"
+SYSTEM_DEPS = "system.deps"
 INSTALL_CORE = "install.core"
 INSTALL_APPS = "install.apps"
 INSTALL_LOCKSCREEN = "install.lockscreen"
@@ -28,7 +29,7 @@ PLATFORM_NIX = "platform.nix"
 # Every name this installer understands. A contract may carry more; those are
 # kept in BackendInfo.capabilities but never acted on (design §7.4).
 CAPABILITIES = frozenset({
-    SYSTEM_DOCTOR, INSTALL_CORE, INSTALL_APPS, INSTALL_LOCKSCREEN,
+    SYSTEM_DOCTOR, SYSTEM_DEPS, INSTALL_CORE, INSTALL_APPS, INSTALL_LOCKSCREEN,
     INSTALL_DEBIAN, INSTALL_DEBIAN_LOCAL, ACTIVATION_START,
     MANAGEMENT_UNINSTALL, MANAGEMENT_SNAPSHOTS, SOURCE_UPDATE, PLATFORM_NIX,
 })

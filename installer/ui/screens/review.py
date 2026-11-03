@@ -107,7 +107,8 @@ class ReviewScreen(WizardScreen):
                 self._source = None  # unreachable ref: fall back to the raw plan
         prepared = self.app.prepared or self._source
         return build_plan(self.app.system.family, self.app.opts, self.app.paths,
-                          prepared, backend=self.app.backend)
+                          prepared, backend=self.app.backend,
+                          deps_missing=bool(self.app.system.missing_packages))
 
     def _steps(self) -> Text:
         s = self.strings

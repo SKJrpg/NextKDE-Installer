@@ -417,5 +417,38 @@ class CancelTest(unittest.TestCase):
 
 
 
+    def test_deps_step_appears_only_when_packages_are_missing(self) -> None:
+        from installer.backend.models import (INSTALL_CORE, SOURCE_UPDATE, SYSTEM_DEPS,
+                                              BackendInfo)
+
+        info = BackendInfo(product="nextkde", version="1.0.0", installer_api=1,
+                           capabilities=frozenset({INSTALL_CORE, SYSTEM_DEPS, SOURCE_UPDATE}),
+                           components=(), source="probe")
+        with_missing = build_plan("arch", Options(), paths_for(Path("/nonexistent-checkout")),
+                                  deps_missing=True, backend=info)
+        keys = [step.key for step in with_missing]
+        # Right after the source decision, before anything builds.
+        self.assertEqual(keys[:2], ["source", "deps"])
+        self.assertEqual(with_missing[1].argv[-2:], ["deps", "--install"])
+
+        complete = build_plan("arch", Options(), paths_for(Path("/nonexistent-checkout")),
+                              deps_missing=False, backend=info)
+        self.assertNotIn("deps", [step.key for step in complete])
+
+    def test_deps_step_needs_the_backend_capability(self) -> None:
+        from installer.backend.models import INSTALL_CORE, BackendInfo
+
+        info = BackendInfo(product="nextkde", version="1.0.0", installer_api=1,
+                           capabilities=frozenset({INSTALL_CORE}), components=(),
+                           source="probe")
+        steps = build_plan("arch", Options(), paths_for(Path("/nonexistent-checkout")),
+                           deps_missing=True, backend=info)
+        self.assertNotIn("deps", [step.key for step in steps])
+
+    def test_debian_keeps_its_wrapper_without_a_deps_step(self) -> None:
+        steps = build_plan("debian", Options(), paths_for(ROOT), deps_missing=True)
+        self.assertNotIn("deps", [step.key for step in steps])
+
+
 if __name__ == "__main__":
     unittest.main()

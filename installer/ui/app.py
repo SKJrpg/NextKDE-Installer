@@ -145,7 +145,8 @@ class KosApp(App):
         self._new_askpass()
         if prepared is not None:
             self.steps = build_plan(self.system.family, self.opts, self.paths,
-                                    prepared, backend=self.backend)
+                                    prepared, backend=self.backend,
+                                    deps_missing=bool(self.system.missing_packages))
             self.push_screen(InstallationScreen(self.strings, self.steps,
                                                 self.log_path))
             self.install_worker = self._run_install(str(prepared.path))
@@ -318,7 +319,8 @@ class KosApp(App):
             self._prepare_failed(self.strings("backend_incompatible") % self.backend_error)
             return
         self.steps = build_plan(self.system.family, self.opts, self.paths, prepared,
-                                backend=self.backend)
+                                backend=self.backend,
+                                deps_missing=bool(self.system.missing_packages))
         if isinstance(self.screen, InstallationScreen):
             self.screen.start_stages(self.steps, self.log_path)
         self.install_worker = self._run_install(str(prepared.path))

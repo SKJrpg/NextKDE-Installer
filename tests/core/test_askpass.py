@@ -153,24 +153,27 @@ class ShimTraceTest(unittest.TestCase):
         self.addCleanup(ask.close)
         env = {**os.environ, **ask.env}
 
-        stop = threading.Event()
-
-        def answer_loop() -> None:
-            while not stop.is_set():
+        def wait_for_token(timeout: float = 10.0) -> str:
+            deadline = time.monotonic() + timeout
+            while time.monotonic() < deadline:
                 token = ask.pending()
                 if token is not None:
-                    ask.answer(token, PASSWORD)
-                time.sleep(0.02)
+                    return token
+                time.sleep(0.01)
+            self.fail("askpass was never called")
 
-        self.addCleanup(stop.set)
-        threading.Thread(target=answer_loop, daemon=True).start()
+        outputs = []
+        for _ in range(2):
+            # One call at a time, answered from this thread: no poller to race.
+            proc = subprocess.Popen(["sudo", "-n", "true"], env=env,
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                    text=True)
+            ask.answer(wait_for_token(), PASSWORD)
+            out, err = proc.communicate(timeout=30)
+            self.assertEqual(proc.returncode, 0, err)
+            outputs.append(out)
 
-        outputs = [subprocess.run(["sudo", "-n", "true"], env=env,
-                                  capture_output=True, text=True, timeout=30,
-                                  check=True)
-                   for _ in range(2)]
-
-        self.assertEqual([out.stdout for out in outputs], [PASSWORD, PASSWORD])
+        self.assertEqual(outputs, [PASSWORD, PASSWORD])
         self.assertEqual(calls.read_text(encoding="utf-8").splitlines(),
                          ["-A -n true", "-A -n true"])
 

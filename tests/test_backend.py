@@ -17,7 +17,7 @@ HERE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(HERE))
 
 from installer.backend import contract, probe  # noqa: E402
-from installer.backend.models import (ACTIVATION_START, INSTALL_APPS,  # noqa: E402
+from installer.backend.models import (SYSTEM_DEPS, ACTIVATION_START, INSTALL_APPS,  # noqa: E402
                                       INSTALL_CORE, INSTALL_DEBIAN,
                                       INSTALL_DEBIAN_LOCAL, INSTALL_LOCKSCREEN,
                                       MANAGEMENT_SNAPSHOTS, MANAGEMENT_UNINSTALL,
@@ -57,8 +57,8 @@ class ProbeTest(unittest.TestCase):
             detected = probe.detect(root)
         self.assertEqual(detected.source, "probe")
         self.assertEqual(detected.capabilities, frozenset({
-            SYSTEM_DOCTOR, INSTALL_CORE, INSTALL_APPS, INSTALL_LOCKSCREEN,
-            MANAGEMENT_UNINSTALL}))
+            SYSTEM_DOCTOR, SYSTEM_DEPS, INSTALL_CORE, INSTALL_APPS,
+            INSTALL_LOCKSCREEN, MANAGEMENT_UNINSTALL}))
         # Nothing else is guessed: no start, update, nix or Debian wrapper.
         self.assertNotIn(ACTIVATION_START, detected.capabilities)
 
