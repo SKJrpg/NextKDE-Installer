@@ -13,12 +13,26 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .backend.models import (ACTIVATION_START, INSTALL_APPS, INSTALL_CORE,
+                             INSTALL_DEBIAN, INSTALL_LOCKSCREEN, PLATFORM_NIX,
+                             SOURCE_UPDATE, BackendInfo)
 from .paths import Paths
 from .source.models import PreparedSource
 from .source.resolver import CANONICAL_REPO
 
 
 ALL_APPS = ("calendar", "todo", "weather", "calculator")
+
+# The capability a step needs. A backend that lacks it never receives the step.
+STEP_CAPABILITY = {
+    "source": SOURCE_UPDATE,
+    "debian": INSTALL_DEBIAN,
+    "nix": PLATFORM_NIX,
+    "core": INSTALL_CORE,
+    "apps": INSTALL_APPS,
+    "lockscreen": INSTALL_LOCKSCREEN,
+    "start": ACTIVATION_START,
+}
 
 
 @dataclass
@@ -166,14 +180,22 @@ def selected_apps(opts: Options) -> list[str]:
     return [name for name in ALL_APPS if name in chosen] if opts.apps else []
 
 
-def unsupported(family: str | None, opts: Options) -> list[str]:
+def unsupported(family: str | None, opts: Options,
+                backend: BackendInfo | None = None) -> list[str]:
     """Selections the detected backend cannot honour, by option name."""
+    blocked: list[str] = []
     if family == "nixos":
         # `kosctl nix install` builds the flake and nothing else: there is no
         # app, lockscreen or spatial switch in that path.
-        return [name for name in ("apps", "lockscreen", "spatial")
-                if getattr(opts, name)]
-    return []
+        blocked = [name for name in ("apps", "lockscreen", "spatial")
+                   if getattr(opts, name)]
+    if backend is not None:
+        wanted = {"apps": INSTALL_APPS, "lockscreen": INSTALL_LOCKSCREEN,
+                  "start": ACTIVATION_START}
+        blocked += [name for name, capability in wanted.items()
+                    if getattr(opts, name) and not backend.has(capability)
+                    and name not in blocked]
+    return blocked
 
 
 def _component_steps(opts: Options, root: Path, env: dict[str, str]) -> list[Step]:
@@ -192,8 +214,17 @@ def _component_steps(opts: Options, root: Path, env: dict[str, str]) -> list[Ste
     return steps
 
 
+def _capable(steps: list[Step], backend: BackendInfo | None) -> list[Step]:
+    """Drop the steps this backend never declared it can run."""
+    if backend is None:
+        return steps
+    return [step for step in steps
+            if step.key not in STEP_CAPABILITY or backend.has(STEP_CAPABILITY[step.key])]
+
+
 def build_plan(family: str | None, opts: Options, paths: Paths,
-               prepared: PreparedSource | None = None) -> list[Step]:
+               prepared: PreparedSource | None = None,
+               backend: BackendInfo | None = None) -> list[Step]:
     """The steps to run. With a prepared source they run inside its workspace and
     nothing fetches or switches the source any more (design §10.6)."""
     root = Path(prepared.path) if prepared is not None else Path(paths.source_root)
@@ -227,13 +258,13 @@ def build_plan(family: str | None, opts: Options, paths: Paths,
         steps += _component_steps(opts, root, env)
         if opts.start:
             steps.append(Step("start", "kosctl start", [kosctl, "start"], env))
-        return steps
+        return _capable(steps, backend)
 
     if family == "nixos":
         steps = [Step("nix", "kosctl nix install", [kosctl, "nix", "install"], env)]
         if opts.start:
             steps.append(Step("start", "kosctl start", [kosctl, "start"], env))
-        return steps
+        return _capable(steps, backend)
 
     if family in ("ubuntu", "arch", "fedora"):
         steps: list[Step] = []
@@ -254,7 +285,7 @@ def build_plan(family: str | None, opts: Options, paths: Paths,
         steps += _component_steps(opts, root, env)
         if opts.start:
             steps.append(Step("start", "kosctl start", [kosctl, "start"], env))
-        return steps
+        return _capable(steps, backend)
 
     # opensuse, unknown: nothing is executed.
     return []

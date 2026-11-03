@@ -15,6 +15,8 @@ import sys
 from pathlib import Path
 
 from . import VERSION, workflow
+from .backend import contract, probe
+from .backend.models import BackendIncompatible
 from .detect import detect
 from .paths import Paths
 from .plan import ALL_APPS, Options, build_plan, unsupported
@@ -127,7 +129,21 @@ def main(argv: list[str] | None = None) -> int:
             source = workflow.identity(opts.source, opts, paths)
         except (OSError, ValueError, subprocess.SubprocessError) as error:
             print(f"{strings('prepare_failed')}: {error}", file=sys.stderr)
+        backend = None
+        try:
+            # The checkout given by --root is the product under inspection; an
+            # unresolved workspace must not be probed as if it existed.
+            root = (Path(source.path) if source is not None
+                    and Path(source.path).is_dir() else paths.source_root)
+            backend = contract.read(root) or probe.detect(root)
+        except BackendIncompatible as error:
+            print(strings("backend_incompatible") % error, file=sys.stderr)
+            return 2
         plain.print_report(system, steps, strings, source=source)
+        if backend is not None:
+            detail = ("contract v1" if backend.source == "contract"
+                      else f"probe · {len(backend.capabilities)} capabilities")
+            print(f"  Backend: {detail}")
         if blocked_options:
             print(strings("unsupported_options") % ", ".join(blocked_options), file=sys.stderr)
         return 2 if system.blocked or blocked_options else 0
@@ -165,9 +181,19 @@ def main(argv: list[str] | None = None) -> int:
         except (OSError, ValueError, subprocess.SubprocessError) as error:
             print(f"{strings('prepare_failed')}: {error}", file=sys.stderr)
             return 1
-        return plain.execute(
-            system, lambda: build_plan(system.family, opts, paths, preparation.prepared),
-            paths, strings, preparation=preparation)
+        def plan_from_workspace() -> list:
+            """The plan for the workspace that was just fetched (design §10.7)."""
+            prepared = preparation.prepared
+            root = Path(prepared.path)
+            info = contract.read(root) or probe.detect(root)
+            return build_plan(system.family, opts, paths, prepared, backend=info)
+
+        try:
+            return plain.execute(system, plan_from_workspace, paths, strings,
+                                 preparation=preparation)
+        except BackendIncompatible as error:
+            print(strings("backend_incompatible") % error, file=sys.stderr)
+            return 2
 
     # Imported here: the module needs Textual, which the branch above just checked.
     from .ui.app import KosApp

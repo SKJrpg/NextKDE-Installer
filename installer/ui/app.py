@@ -12,11 +12,14 @@ import asyncio
 import threading
 import time
 from collections import deque
+from pathlib import Path
 
 from textual import work
 from textual.app import App
 
 from .. import VERSION, workflow
+from ..backend import contract, probe
+from ..backend.models import BackendIncompatible, BackendInfo
 from ..core.events import Event
 from ..core.session import InstallSession
 from ..detect import System, detect
@@ -34,6 +37,7 @@ class KosApp(App):
 
     def __init__(self, lang: str | None = None, system: System | None = None,
                  paths: Paths | None = None, *, opts: Options | None = None,
+                 backend: BackendInfo | None = None,
                  prepare=None, session_factory=None, **kwargs) -> None:
         super().__init__(**kwargs)
         self.lang, _ = choose_language(lang)
@@ -45,6 +49,12 @@ class KosApp(App):
 
         # The CLI/config Options: the wizard opens with those already selected.
         self.opts = opts if opts is not None else Options()
+        # The backend the prepared checkout will offer: passed in by tests or a
+        # caller, otherwise read once from --root, then again after preparation.
+        self.backend = backend
+        self.backend_error = ""
+        if backend is None:
+            self._detect_backend(self.paths.source_root)
         self.prepared = None            # PreparedSource, once obtained
         self.preparation = None         # the workflow.Preparation it came from
         self.prepare_error = ""
@@ -69,6 +79,18 @@ class KosApp(App):
         self.push_screen(WelcomeScreen(self.strings))
 
     # -- wizard state ----------------------------------------------------
+    def _detect_backend(self, root) -> None:
+        """Read the contract or probe once; leave "unknown" for a non-product dir."""
+        root = Path(root)
+        if not (root / "tools" / "kosctl").is_file() and not (
+                root / "packaging" / "installer-contract.json").is_file():
+            return
+        try:
+            self.backend = contract.read(root) or probe.detect(root)
+            self.backend_error = ""
+        except BackendIncompatible as error:
+            self.backend, self.backend_error = None, str(error)
+
     def invalidate_prepared(self) -> None:
         self.prepared = None
         self.prepare_error = ""
@@ -91,7 +113,7 @@ class KosApp(App):
         self.log_path = self._new_log_path()
         if prepared is not None:
             self.steps = build_plan(self.system.family, self.opts, self.paths,
-                                    prepared)
+                                    prepared, backend=self.backend)
             self.push_screen(InstallationScreen(self.strings, self.steps,
                                                 self.log_path))
             self.install_worker = self._run_install(str(prepared.path))
@@ -205,7 +227,13 @@ class KosApp(App):
     def _prepare_ok(self, preparation, prepared) -> None:
         self.preparation = preparation
         self.prepared = prepared
-        self.steps = build_plan(self.system.family, self.opts, self.paths, prepared)
+        # The prepared workspace is the real backend, not the --root stand-in.
+        self._detect_backend(prepared.path)
+        if self.backend_error:
+            self._prepare_failed(self.strings("backend_incompatible") % self.backend_error)
+            return
+        self.steps = build_plan(self.system.family, self.opts, self.paths, prepared,
+                                backend=self.backend)
         if isinstance(self.screen, InstallationScreen):
             self.screen.start_stages(self.steps, self.log_path)
         self.install_worker = self._run_install(str(prepared.path))

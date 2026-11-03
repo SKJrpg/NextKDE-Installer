@@ -32,7 +32,7 @@ Textual-based installer described in `design.md` and the implementation prompt.
 | `installer/strings.py` | unchanged | Textual widgets read the same pairs |
 | `install.sh` | unchanged in interface | adds `vendor/` to `PYTHONPATH` |
 | `tests/test_*.py` | `tests/{core,source,backend,runner,ui}/` | move; curses render tests replaced by Pilot tests |
-| — | `backend/contract.py` | new: capability probe and compatibility check |
+| — | `backend/contract.py` | new: capability probe and compatibility check (installer side done) |
 | — | `packaging/installer-contract.json` | **in the product repo** |
 | — | `pyproject.toml`, `CHANGELOG.md`, `LICENSE`, CI | new |
 
@@ -43,7 +43,7 @@ Textual-based installer described in `design.md` and the implementation prompt.
 | 3b (done, `77f816d`) | `workflow.begin()/finish()`, prepared source in the plan, Review shows identity, `--check` stays read-only | done: 146 tests; `arch-clean` prepared `development` at `d7b34a8e` with one streamed clone and reused it with zero steps |
 | 4 (done, logic) | stable/development/local resolution, managed workspaces, manifest | local never written; reuse verified; 19 offline tests |
 | 2 | extract `core/` (workflow, plan, session, events, errors), `system/`, `backend/` | `events` and `session` exist; plan/system/backend still to move |
-| 5 | backend contract: static `packaging/installer-contract.json` + `kosctl installer-info --json`; adapter checks capabilities before showing options | unsupported option never shown; incompatible backend stops with a clear error |
+| 5 (installer side done) | backend contract: static `packaging/installer-contract.json` + `kosctl installer-info --json`; adapter checks capabilities before showing options | installer: `installer/backend/` reads/probes, plan filters steps, Options disables rows, incompatible API stops before Review. Product: contract file and `installer-info` still pending |
 | 6 (done, T1–T4) | Textual: `ui/app.py`, 10 screens, confirm dialog, `app.tcss`; workers for git/install/manage; Pilot tests | no blocking call in the event loop; cancel reaps the process group; narrow layout works at 66×20 |
 | 7 | vendor build + versioned releases + SHA256 + `current` symlink + self-update | release installs offline; update never overwrites a running version; rollback works |
 | 8 (done, T4) | delete `render/curses_ui.py`, `theme`, `layout`, `widgets` and their tests | full suite green; `--plain` unchanged |
@@ -59,8 +59,8 @@ Textual work is estimated at 2–3 weeks for one developer, split across the pha
 | T3 | management area: units, snapshots, logs, one-shot actions | `5705cd9` |
 | T4 | Textual is the interactive entry point, `Options` seeded from CLI/config, curses deleted | this change |
 
-Remaining: the backend contract (Phase 5), `core/`/`system/`/`backend/` extraction (Phase 2),
-vendored release + self-update (Phase 7), and the product-side items below.
+Remaining: the product-side contract file and `installer-info` (Phase 5), `core/`/`system/`
+(Phase 2), vendored release + self-update (Phase 7), and the product-side items below.
 
 ## Product-side changes required (`NextKde/NextKde`)
 
@@ -72,6 +72,8 @@ dependency probe and the management screens work against `main`:
 3. `install-debian13.sh --local` — keep the current checkout instead of switching.
 4. `install-apps.sh --only`, `register-default-apps.py`, `verify-apps-install.sh` — app subsets.
 5. `packaging/installer-contract.json` and `kosctl installer-info --json` (new work).
+   **Still pending**: the installer reads both when present and falls back to the
+   evidence probe otherwise (`docs/BACKEND_CONTRACT.md`).
 6. `tools/install.sh` — either keep as a shim that starts this installer, or remove it once the
    installer repo is released; decide at Phase 7.
 

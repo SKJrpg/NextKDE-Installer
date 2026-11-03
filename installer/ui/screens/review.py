@@ -105,7 +105,7 @@ class ReviewScreen(WizardScreen):
                 self._source = None  # unreachable ref: fall back to the raw plan
         prepared = self.app.prepared or self._source
         return build_plan(self.app.system.family, self.app.opts, self.app.paths,
-                          prepared)
+                          prepared, backend=self.app.backend)
 
     def _steps(self) -> Text:
         s = self.strings
@@ -133,7 +133,8 @@ class ReviewScreen(WizardScreen):
         s = self.strings
         text = Text(s("review_side"), style="bold")
         warnings = []
-        blocked = unsupported(self.app.system.family, self.app.opts)
+        blocked = unsupported(self.app.system.family, self.app.opts,
+                              self.app.backend)
         if blocked:
             warnings.append((s("review_unsupported") % ", ".join(blocked), "red"))
         if self.app.system.blocked:

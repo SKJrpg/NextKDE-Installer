@@ -216,6 +216,9 @@ _TEXT = {
     "prepare_running": ("正在准备源码…", "preparing source…"),
     "prepare_failed": ("源码准备失败", "Source preparation failed"),
     "review_prepare_failed": ("源码准备失败：%s", "Source preparation failed: %s"),
+    "backend_label": ("后端", "Backend"),
+    "backend_incompatible": ("后端不兼容：%s", "Incompatible backend: %s"),
+    "cap_unavailable": ("不可用，后端未提供 %s", "unavailable, backend lacks %s"),
     "step_count": ("%d 个步骤", "%d steps"),
 
     # -- install dashboard ---------------------------------------------

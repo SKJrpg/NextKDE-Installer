@@ -24,6 +24,7 @@ HAS_TEXTUAL = importlib.util.find_spec("textual") is not None
 from installer.__main__ import main  # noqa: E402
 from installer.detect import OsInfo, Probe, System  # noqa: E402
 from installer.plan import Step  # noqa: E402
+from installer.source.models import PreparedSource  # noqa: E402
 
 
 class Tty(io.StringIO):
@@ -96,6 +97,27 @@ class EntryTest(unittest.TestCase):
         self.assertEqual(code, 0)
         execute.assert_called_once()
         self.assertIn("Textual not found", stderr.getvalue())
+
+    def test_check_prints_the_detected_backend(self) -> None:
+        stdout = io.StringIO()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "tools").mkdir()
+            script = root / "tools" / "kosctl"
+            script.write_text("#!/usr/bin/env bash\ncat <<'EOF'\n"
+                              "Usage: ./tools/kosctl <install|doctor>\nEOF\n",
+                              encoding="utf-8")
+            script.chmod(0o755)
+            source = PreparedSource(mode="local", repository="https://example.invalid",
+                                    ref="main", commit="b" * 40, path=root,
+                                    dirty=False, managed=False)
+            with mock.patch.object(sys, "stdout", stdout), \
+                    mock.patch("installer.__main__.detect", return_value=fake_system()), \
+                    mock.patch("installer.__main__.workflow.identity",
+                               return_value=source):
+                code = main(["--root", directory, "--check"])
+        self.assertEqual(code, 0)
+        self.assertIn("Backend: probe ·", stdout.getvalue())
 
 
 if __name__ == "__main__":

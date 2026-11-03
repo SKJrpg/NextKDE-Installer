@@ -28,6 +28,10 @@ installer/
   runner.py             StepRunner: argv, process group, streamed output, cancel
   manage.py             reads the ledger/snapshots/logs/deps through the product's tools
   strings.py            zh/en pairs, locale choice, CJK font probe
+  backend/
+    models.py           capability names, BackendInfo, BackendIncompatible, require()
+    contract.py         packaging/installer-contract.json, then kosctl installer-info
+    probe.py            capabilities evidenced by the checkout's files and usage
   source/               Git Source Manager (see section 5)
   core/
     events.py           Event: one classified line or state change from a worker
@@ -41,9 +45,10 @@ installer/
     widgets/confirm.py  modal confirmation used by the destructive actions
   render/
     plain.py            the same plan without a TTY; NO_COLOR aware
-tests/                  113 offline unit tests (tests/, tests/core/, tests/ui/)
+tests/                  133 offline unit tests (tests/, tests/core/, tests/ui/)
 vendor/                 pinned Textual 8.2.8 + rich and its dependencies
 docs/design.md          the independent-installer architecture proposal
+docs/BACKEND_CONTRACT.md  capability names, contract shapes, probe fallback
 ```
 
 `installer/ui/` is the only module that owns terminal state; everything it shows comes from
@@ -56,19 +61,22 @@ install.sh
   └─ python3 -m installer [flags]
        ├─ Paths.resolve(--root)
        ├─ detect(root=source_root)          # runs `kosctl doctor`, reads the guide
+       ├─ backend contract read/probe       # contract.read(root) or probe.detect(root)
        ├─ Options from CLI + JSON config
-       ├─ build_plan(family, opts, paths)   # argv steps, nothing executed
+       ├─ build_plan(..., backend=info)     # capability-filtered argv, nothing run
        └─ Textual UI (TTY and vendor/ has textual) | plain (no TTY, --plain, --yes,
           or textual missing — it says so on stderr)
             └─ on confirm: workflow.begin() -> stream the clone -> finish()
-               -> build_plan(..., prepared=...) -> run
+               -> re-detect backend from the workspace
+               -> build_plan(..., prepared=..., backend=...)
 ```
 
 Exit codes: `--check` returns 0 when nothing is blocked, 2 when a probe fails or the backend
 cannot honour the selection; the plain executor returns the failing step's status, 130 when
 cancelled.
 
-`--check` is read-only. It runs probes (including `kosctl doctor`) and prints the plan.
+`--check` is read-only. It runs probes (including `kosctl doctor`) and prints the plan,
+then one backend line: `Backend: probe · N capabilities` or `Backend: contract v1`.
 
 ## 4. The plan
 
@@ -139,6 +147,9 @@ child is reaped. No `shell=True` anywhere.
 
 ## 8. Backend surface actually used
 
+The capability each call needs is declared in `installer/backend/models.py`; a
+backend that does not declare it never receives the step (`docs/BACKEND_CONTRACT.md`).
+
 | Call | Where | Present upstream? |
 |---|---|---|
 | `kosctl install`, `install apps [--only]`, `install lockscreen`, `start`, `update`, `doctor` | plan/manage | yes |
@@ -146,13 +157,14 @@ child is reaped. No `shell=True` anywhere.
 | `kos-state.py list/snapshots --json`, verb calls | manage | **no** (local branch only) |
 | `install-debian13.sh --local` | plan | **no** (local branch only) |
 | `source-release.py latest/select` | plan | `latest` yes, `select` yes |
+| `packaging/installer-contract.json`, `kosctl installer-info --json` | backend | **no** (new work) |
 
 Against upstream `main` the dependency probe and the management screens therefore degrade to
 empty. This is a product-side gap, not an installer bug.
 
 ## 9. Verified state
 
-- `PYTHONPATH=$PWD/vendor python3 -m unittest discover -s tests` → 113 tests, offline
+- `PYTHONPATH=$PWD/vendor python3 -m unittest discover -s tests` → 133 tests, offline
   (bare repositories, `file://`); the Textual tests skip when `vendor/` is missing.
 - Host: `./install.sh --root <checkout> --check` and `… --plain --check` →
   `KOS Installer — CachyOS (x86_64)`, exit 0, nothing cloned.
@@ -165,8 +177,10 @@ empty. This is a product-side gap, not an installer bug.
 
 ## 10. Known gaps
 
-- No `backend/` layer and no backend contract: `plan.unsupported()` filters a selection after
-  the fact instead of the option never being offered.
+- The backend contract is implemented on the installer side only: the product still
+  ships neither `packaging/installer-contract.json` nor `kosctl installer-info`, so
+  `--check` reports `Backend: probe · N capabilities`. The probe is honest but narrow;
+  the declared path (and its tests) exist and take over once the product ships a file.
 - No CLI subcommands (`check`, `install`, `manage`): `__main__.py` is still one flow.
 - No release artefact, self-update or CI; `pyproject.toml` exists and declares the console
   script only.

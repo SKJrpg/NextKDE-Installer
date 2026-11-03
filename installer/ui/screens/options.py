@@ -7,6 +7,7 @@ from textual.app import ComposeResult
 from textual.containers import VerticalScroll
 from textual.widgets import Checkbox, RadioButton, RadioSet, Static
 
+from ...backend.models import ACTIVATION_START, INSTALL_APPS, INSTALL_LOCKSCREEN
 from ...plan import ALL_APPS
 from . import WizardScreen
 
@@ -35,11 +36,18 @@ class OptionsScreen(WizardScreen):
         self._labels: dict[str, str] = {}
 
         def row(label: str, ident: str, value: bool, *,
-                radio: bool = False, disabled: bool = False) -> Checkbox | RadioButton:
+                radio: bool = False, disabled: bool = False,
+                capability: str | None = None) -> Checkbox | RadioButton:
+            reason = ""
+            if (capability is not None and self.app.backend is not None
+                    and not self.app.backend.has(capability)):
+                # design §7.4: the option is unusable, and the reason is text.
+                value, disabled = False, True
+                reason = " · " + s("cap_unavailable") % capability
             self._labels[ident] = label
             kind = SourceRow if radio else CheckRow
-            return kind(self._row(label, value, radio), id=ident, value=value,
-                        disabled=disabled, compact=True)
+            return kind(self._row(label + reason, value, radio), id=ident,
+                        value=value, disabled=disabled, compact=True)
 
         with VerticalScroll(id="options"):
             yield Static(s("options_head"), id="options_head")
@@ -53,11 +61,14 @@ class OptionsScreen(WizardScreen):
                       True, disabled=True)
             yield Static(s("group_optional"), classes="group")
             for name in ALL_APPS:
-                yield row(s("app_" + name), "app_" + name, name in opts.app_set)
+                yield row(s("app_" + name), "app_" + name, name in opts.app_set,
+                          capability=INSTALL_APPS)
             yield Static(s("group_advanced"), classes="group")
-            yield row(s("opt_lockscreen"), "lockscreen", opts.lockscreen)
+            yield row(s("opt_lockscreen"), "lockscreen", opts.lockscreen,
+                      capability=INSTALL_LOCKSCREEN)
             yield row(s("opt_spatial"), "spatial", opts.spatial)
-            yield row(s("opt_start"), "start", opts.start)
+            yield row(s("opt_start"), "start", opts.start,
+                      capability=ACTIVATION_START)
 
     def _row(self, label: str, value: bool, radio: bool = False) -> Text:
         """Label with a state marker, so the state survives without colour."""
@@ -109,6 +120,11 @@ class OptionsScreen(WizardScreen):
     def action_next(self) -> None:
         from .review import ReviewScreen
 
+        if self.app.backend_error:
+            # design §7.4: an incompatible interface stops before Review.
+            self.notify(self.strings("backend_incompatible") % self.app.backend_error,
+                        severity="error")
+            return
         self.app.push_screen(ReviewScreen(self.strings))
 
     def action_back(self) -> None:
