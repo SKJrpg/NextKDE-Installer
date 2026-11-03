@@ -208,7 +208,11 @@ class RunnerTest(unittest.TestCase):
             return rc, lines, log_path.read_text(encoding="utf-8"), runner.phase, runner.progress
 
     def test_banner_sets_phase_and_lines_reach_the_log(self) -> None:
-        rc, lines, log, phase, _progress = self._run("echo '=== build ==='\necho ok\n")
+        # The trailing sleep keeps the process alive long enough for the reader
+        # loop to consume both lines; a process that exits first has its output
+        # drained straight into the log by close(), which made this racy.
+        rc, lines, log, phase, _progress = self._run(
+            "echo '=== build ==='\necho ok\nsleep 0.3\n")
         self.assertEqual(rc, 0)
         self.assertIn("=== build ===", lines)
         self.assertEqual(phase, "build")
