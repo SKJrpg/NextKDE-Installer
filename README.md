@@ -13,6 +13,17 @@ desktop — `tools/kosctl` in the product checkout does that.
 
 ## Run
 
+One line, from a machine that only has git and Python 3.10+:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/SKJrpg/NextKDE-Installer/main/install.sh | bash
+```
+
+It clones this repository into `~/NextKde-Installer`, builds `vendor/` once, and starts the
+wizard (`KOS_INSTALLER_DIR`, `KOS_INSTALLER_REF` and `KOS_INSTALLER_REPO` override the three
+choices). From a checkout it is simply `./install.sh`.
+
+
 ```sh
 python3 tools/vendor.py          # once: unpacks the pinned wheels into vendor/
 ./install.sh --root ~/NextKde

@@ -2,11 +2,42 @@
 # NextKDE Installer — entry point.
 #
 # The installer is independent of the product: this wrapper only guarantees a
-# Python interpreter and starts the wizard. Name the product checkout with
-# `--root DIR` or KOS_ROOT; it defaults to ~/NextKde.
+# checkout, the vendored UI and a Python interpreter, then starts the wizard.
+# Name the product checkout with `--root DIR` or KOS_ROOT; it defaults to
+# ~/NextKde (only `local` mode reads it).
 set -euo pipefail
 
-here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+here=""
+if [[ -n "${BASH_SOURCE[0]:-}" ]]; then
+    here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+fi
+
+# `curl | bash` leaves no checkout around this file: fetch the installer, build
+# its vendored UI, and continue from there. One command, no manual clone.
+if [[ ! -f "$here/installer/__main__.py" ]]; then
+    repo="${KOS_INSTALLER_REPO:-https://github.com/SKJrpg/NextKDE-Installer.git}"
+    ref="${KOS_INSTALLER_REF:-main}"
+    target="${KOS_INSTALLER_DIR:-$HOME/NextKde-Installer}"
+    command -v git >/dev/null || { echo "git is required to fetch the installer." >&2; exit 2; }
+    if [[ -e "$target" && ! -f "$target/install.sh" ]]; then
+        echo "$target exists but is not an installer checkout; set KOS_INSTALLER_DIR." >&2
+        exit 2
+    fi
+    if [[ ! -d "$target/.git" ]]; then
+        echo "fetching the installer into $target" >&2
+        git clone --quiet --depth 1 --branch "$ref" "$repo" "$target" || exit 1
+    fi
+    if [[ ! -d "$target/vendor/textual" ]]; then
+        echo "fetching the vendored UI dependencies" >&2
+        python3 "$target/tools/vendor.py" >&2 \
+            || echo "vendor build failed; continuing without the interactive UI" >&2
+    fi
+    # The piped script has no terminal on stdin; hand the wizard a real one.
+    if [[ ! -t 0 ]] && { : </dev/tty; } 2>/dev/null; then
+        exec "$target/install.sh" "$@" </dev/tty
+    fi
+    exec "$target/install.sh" "$@"
+fi
 
 python_ok() {
     command -v python3 >/dev/null 2>&1 \
