@@ -51,6 +51,8 @@ install.sh
        ├─ Options from CLI + JSON config
        ├─ build_plan(family, opts, paths)   # argv steps, nothing executed
        └─ curses UI (TTY) | plain (no TTY, --plain, --yes)
+            └─ on confirm: workflow.begin() -> stream the clone -> finish()
+               -> build_plan(..., prepared=...) -> run
 ```
 
 Exit codes: `--check` returns 0 when nothing is blocked, 2 when a probe fails or the backend
@@ -68,7 +70,7 @@ commands. Today's steps:
 |---|---|
 | debian | `install-debian13.sh --dir <root> --spatial … [--repo <origin>] [--local]`, then apps/lockscreen, then `start` |
 | nixos | `kosctl nix install`, then `start` |
-| arch / ubuntu / fedora | `kosctl update <ref>` (skipped on a dirty or non-main tree), `kosctl install`, `kosctl install apps [--only …]`, `kosctl install lockscreen`, `kosctl start` |
+| arch / ubuntu / fedora | `kosctl update <ref>` only when nothing was prepared; otherwise `kosctl install`, `kosctl install apps [--only …]`, `kosctl install lockscreen`, `kosctl start` inside the prepared workspace |
 | opensuse / unknown | nothing; the UI reports only |
 
 `KOS_BUILD_SPATIAL=ON|OFF` and the proxy/session variables are placed in each step's env.
@@ -92,8 +94,10 @@ commands. Today's steps:
   renamed into place. A prepared commit is never rewritten.
 - Reuse requires the directory's HEAD and the manifest's repository to match; otherwise the
   error says to remove it.
-- Not wired into the flow yet: `plan.py` still emits `kosctl update`, and the UI does not call
-  the manager. That is Phase 3b.
+- Wired: `workflow.begin()` resolves the channel and returns a `Preparation` (already prepared
+  for local or a reused workspace, otherwise one streamable clone step); `finish()` verifies,
+  records and renames. `plan.build_plan(..., prepared=...)` runs every step inside the prepared
+  workspace and emits no `kosctl update`; `--check` resolves the identity read-only.
 
 ## 6. Rendering
 

@@ -39,7 +39,7 @@ Textual-based installer described in `design.md` and the implementation prompt.
 
 | Phase | Work | Acceptance |
 |---|---|---|
-| 3b (in progress) | `workflow.begin()/finish()`, prepared source in the plan, Review shows identity, `--check` stays read-only | no `kosctl update` step when prepared; clone streams and cancels; tests green; verified in `arch-clean` |
+| 3b (done, `77f816d`) | `workflow.begin()/finish()`, prepared source in the plan, Review shows identity, `--check` stays read-only | done: 146 tests; `arch-clean` prepared `development` at `d7b34a8e` with one streamed clone and reused it with zero steps |
 | 4 (done, logic) | stable/development/local resolution, managed workspaces, manifest | local never written; reuse verified; 19 offline tests |
 | 2 | extract `core/` (workflow, plan, session, events, errors), `system/`, `backend/` | curses UI still runs on the extracted core; no test loss |
 | 5 | backend contract: static `packaging/installer-contract.json` + `kosctl installer-info --json`; adapter checks capabilities before showing options | unsupported option never shown; incompatible backend stops with a clear error |
