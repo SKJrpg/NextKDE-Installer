@@ -53,7 +53,11 @@ class KosApp(App):
         self.session = None             # the last InstallSession
         self.install_worker = None
         self.prepare_worker = None
+        self.action_worker = None
+        self.action_event = threading.Event()
+        self.action_screen = None       # where the running action reports
         self.log_tail: deque[str] = deque(maxlen=8)
+        self._log_seq = 0               # keeps two logs from the same second apart
         self.log_path = self._new_log_path()
         self.prepare_log_path = self.paths.log_dir / "prepare.log"
         # Injected by tests: preparation and the object that runs a plan.
@@ -68,8 +72,10 @@ class KosApp(App):
         self.prepared = None
         self.prepare_error = ""
 
-    def _new_log_path(self):
-        return self.paths.log_dir / time.strftime("install-%Y%m%d-%H%M%S.log")
+    def _new_log_path(self, prefix: str = "install"):
+        self._log_seq += 1
+        return self.paths.log_dir / time.strftime(
+            f"{prefix}-%Y%m%d-%H%M%S-{self._log_seq}.log")
 
     def start_install(self) -> None:
         """Enter from Review: prepare the source if needed, then run the plan."""
@@ -99,7 +105,46 @@ class KosApp(App):
             return self._session_factory(steps, log_path, root)
         return InstallSession(self.paths, steps, log_path, root=root)
 
+    # -- management actions ----------------------------------------------
+    def start_action(self, screen, title: str, steps) -> None:
+        """One management action, off the event loop and cancellable."""
+        log_path = self._new_log_path("manage")
+        self.action_event = threading.Event()
+        self.action_screen = screen
+        screen.action_started(title, log_path)
+        self.action_worker = self._run_action(list(steps), log_path)
+
+    def _emit_action(self, event: Event) -> None:
+        try:
+            self.call_from_thread(self._action_event, event)
+        except RuntimeError:
+            pass
+
+    def _action_event(self, event: Event) -> None:
+        if self.action_screen is not None and self.action_screen.is_mounted:
+            self.action_screen.handle(event)
+
+    def _action_finished(self, session, code: int) -> None:
+        screen, self.action_screen = self.action_screen, None
+        if screen is not None and screen.is_mounted:
+            screen.handle_action_done(session, code)
+
+    def cancel_action(self) -> None:
+        self.action_event.set()
+        if self.action_screen is not None and self.action_screen.is_mounted:
+            self.action_screen.note_cancel()
+
     # -- workers ---------------------------------------------------------
+    @work(thread=True, exit_on_error=False)
+    def _run_action(self, steps, log_path) -> None:
+        session = self._new_session(steps, log_path, str(self.paths.source_root))
+        try:
+            code = session.run(self._emit_action, self.action_event)
+        except Exception as error:      # the session handles step failures itself
+            session.tail = (session.tail + [("ERROR", str(error))])[-8:]
+            code = 1
+        self._call(self._action_finished, session, code)
+
     @work(thread=True, exit_on_error=False)
     def _run_prepare(self) -> None:
         try:
@@ -214,7 +259,8 @@ class KosApp(App):
     async def action_quit(self) -> None:
         """Cancel any running worker and wait until its child is reaped."""
         self.cancel_event.set()
-        for worker in (self.install_worker, self.prepare_worker):
+        self.action_event.set()
+        for worker in (self.install_worker, self.prepare_worker, self.action_worker):
             if worker is not None and not worker.is_finished:
                 try:
                     await asyncio.wait_for(worker.wait(), timeout=10)
@@ -225,7 +271,8 @@ class KosApp(App):
     async def on_unmount(self) -> None:
         # Last resort: never leave an install child running behind a closed UI.
         self.cancel_event.set()
-        for worker in (self.install_worker, self.prepare_worker):
+        self.action_event.set()
+        for worker in (self.install_worker, self.prepare_worker, self.action_worker):
             if worker is not None and not worker.is_finished:
                 try:
                     await asyncio.wait_for(worker.wait(), timeout=10)

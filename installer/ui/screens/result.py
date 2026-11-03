@@ -12,7 +12,8 @@ from . import WizardScreen
 
 class ResultScreen(WizardScreen):
     STEP = 5
-    KEYS = (("r", "retry", "key_retry"), ("enter", "quit", "key_exit"))
+    KEYS = (("r", "retry", "key_retry"), ("m", "open_manage", "key_manage"),
+            ("enter", "quit", "key_exit"))
 
     def __init__(self, strings, result: str, exit_code: int = 0,
                  failed_title: str = "", log_path=None, log_tail=(),
@@ -79,6 +80,11 @@ class ResultScreen(WizardScreen):
     def action_retry(self) -> None:
         if self.result != "ok":
             self.dismiss("retry")
+
+    def action_open_manage(self) -> None:
+        from .management import ManagementScreen
+
+        self.app.push_screen(ManagementScreen(self.strings))
 
     def action_quit(self) -> None:
         self.dismiss("quit")

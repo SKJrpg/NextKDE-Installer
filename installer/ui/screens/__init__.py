@@ -17,10 +17,9 @@ from ...strings import Strings
 STEPS = ("step_welcome", "step_system", "step_options", "step_review", "step_install")
 
 
-class WizardScreen(Screen):
-    """One wizard step inside the fixed chrome."""
+class ChromeScreen(Screen):
+    """Header and footer with localized key labels; the management area."""
 
-    STEP = 0
     # (keys, action, string key for the footer description)
     KEYS: tuple[tuple[str, str, str], ...] = ()
 
@@ -32,15 +31,26 @@ class WizardScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)
+        yield from self.body()
+        yield Footer()
+
+    def body(self):
+        """The widgets of this screen, between header and footer."""
+        return iter(())
+
+
+class WizardScreen(ChromeScreen):
+    """One wizard step inside the fixed chrome."""
+
+    STEP = 0
+
+    def compose(self) -> ComposeResult:
+        yield Header(show_clock=False)
         with Horizontal(id="body"):
             yield Static(self._sidebar(), id="sidebar")
             with Vertical(id="main"):
                 yield from self.body()
         yield Footer()
-
-    def body(self):
-        """The widgets of this step, mounted inside #main."""
-        return iter(())
 
     def _sidebar(self) -> Text:
         text = Text()

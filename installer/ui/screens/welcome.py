@@ -11,7 +11,8 @@ from . import WizardScreen
 
 class WelcomeScreen(WizardScreen):
     STEP = 0
-    KEYS = (("enter", "open_system", "key_open"), ("q", "quit", "key_quit"))
+    KEYS = (("enter", "open_system", "key_open"), ("m", "open_manage", "key_manage"),
+            ("q", "quit", "key_quit"))
 
     def body(self) -> ComposeResult:
         yield Static(self.strings("welcome_intro"), id="intro")
@@ -39,6 +40,11 @@ class WelcomeScreen(WizardScreen):
         from .system import SystemScreen
 
         self.app.push_screen(SystemScreen(self.strings))
+
+    def action_open_manage(self) -> None:
+        from .management import ManagementScreen
+
+        self.app.push_screen(ManagementScreen(self.strings))
 
     def action_quit(self) -> None:
         self.app.exit()
