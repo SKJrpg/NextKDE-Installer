@@ -82,19 +82,25 @@ def ls_remote(repository: str, ref: str) -> str:
     raise ValueError(f"{repository} has no ref {ref}")
 
 
-def clone(repository: str, ref: str, dest: Path, depth: int | None = 1) -> Path:
-    """Clone ``repository`` at ``ref`` into ``dest`` (which must not exist).
+def clone_argv(repository: str, ref: str, dest: Path, depth: int | None = 1) -> list[str]:
+    """The complete clone command; ``dest``'s parent must already exist.
 
     Managed workspaces are immutable and keyed by commit, so history is dead
     weight: ``depth=1`` turns a 240 MB product clone into the tree that is
     actually built. Pass ``depth=None`` for a full clone.
     """
-    dest = Path(dest)
-    dest.parent.mkdir(parents=True, exist_ok=True)
     args = ["clone", "--quiet", "--branch", ref, "--single-branch"]
     if depth:
         args += ["--depth", str(depth)]
-    _check(run(dest.parent, *args, repository, dest.name), f"clone {repository}")
+    return ["git", *args, repository, str(Path(dest))]
+
+
+def clone(repository: str, ref: str, dest: Path, depth: int | None = 1) -> Path:
+    """Clone ``repository`` at ``ref`` into ``dest`` (which must not exist)."""
+    dest = Path(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    argv = clone_argv(repository, ref, dest, depth)
+    _check(run(None, *argv[1:]), f"clone {repository}")
     return dest
 
 

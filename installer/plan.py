@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .paths import Paths
+from .source.models import PreparedSource
 from .source.resolver import CANONICAL_REPO
 
 
@@ -191,8 +192,11 @@ def _component_steps(opts: Options, root: Path, env: dict[str, str]) -> list[Ste
     return steps
 
 
-def build_plan(family: str | None, opts: Options, paths: Paths) -> list[Step]:
-    root = Path(paths.source_root)
+def build_plan(family: str | None, opts: Options, paths: Paths,
+               prepared: PreparedSource | None = None) -> list[Step]:
+    """The steps to run. With a prepared source they run inside its workspace and
+    nothing fetches or switches the source any more (design §10.6)."""
+    root = Path(prepared.path) if prepared is not None else Path(paths.source_root)
     env = {**session_env(), **_proxy_env(opts.proxy),
            "KOS_BUILD_SPATIAL": "ON" if opts.spatial else "OFF"}
     # paths.build_root is not passed as KOS_BUILD_DIR/KOS_APPS_BUILD_DIR: the
@@ -204,15 +208,19 @@ def build_plan(family: str | None, opts: Options, paths: Paths) -> list[Step]:
         # lockscreen and start stay separate steps so activation runs last.
         argv = ["bash", str(root / "tools" / "install-debian13.sh"), "--dir", str(root),
                 "--spatial", "on" if opts.spatial else "off"]
-        repo = origin_url(root)
-        if repo:
-            # The same repository on both sides: the wrapper's selector must not
-            # meet an origin mismatch, and a fork must stay a fork.
-            argv += ["--repo", repo]
-        if opts.source == "local":
+        if prepared is not None:
+            # The workspace already holds the chosen commit: use it as it is.
             argv += ["--local"]
-        elif opts.source != "stable":
-            argv += ["--version", opts.source]
+        else:
+            repo = origin_url(root)
+            if repo:
+                # The same repository on both sides: the wrapper's selector must
+                # not meet an origin mismatch, and a fork must stay a fork.
+                argv += ["--repo", repo]
+            if opts.source == "local":
+                argv += ["--local"]
+            elif opts.source != "stable":
+                argv += ["--version", opts.source]
         if not opts.proxy:
             argv += ["--no-proxy"]
         steps = [Step("debian", "tools/install-debian13.sh", argv, env)]
@@ -229,16 +237,19 @@ def build_plan(family: str | None, opts: Options, paths: Paths) -> list[Step]:
 
     if family in ("ubuntu", "arch", "fedora"):
         steps: list[Step] = []
-        branch, dirty = git_state(root)
-        if opts.source == "local":
-            steps.append(Step("source", "kosctl update (skipped)", [],
-                              env, note="skipped_local"))
-        elif branch == "main" and not dirty:
-            steps.append(Step("source", f"kosctl update {opts.source}",
-                              [kosctl, "update", opts.source], env))
-        else:
-            steps.append(Step("source", "kosctl update (skipped)", [],
-                              env, note="skipped_source"))
+        if prepared is None:
+            # No prepared workspace: the product's own update step picks the
+            # source, exactly as it did before the installer owned it.
+            branch, dirty = git_state(root)
+            if opts.source == "local":
+                steps.append(Step("source", "kosctl update (skipped)", [],
+                                  env, note="skipped_local"))
+            elif branch == "main" and not dirty:
+                steps.append(Step("source", f"kosctl update {opts.source}",
+                                  [kosctl, "update", opts.source], env))
+            else:
+                steps.append(Step("source", "kosctl update (skipped)", [],
+                                  env, note="skipped_source"))
         steps.append(Step("core", "kosctl install", [kosctl, "install"], env))
         steps += _component_steps(opts, root, env)
         if opts.start:

@@ -9,6 +9,7 @@ only a bonus on a TTY, and NO_COLOR or a pipe turns it off.
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 import time
 from collections import deque
@@ -31,7 +32,8 @@ def _paint(text: str, code: str, enabled: bool) -> str:
     return f"{code}{text}\033[0m" if enabled and code else text
 
 
-def print_report(system: System, steps: list[Step], strings) -> None:
+def print_report(system: System, steps: list[Step], strings,
+                 source=None) -> None:
     colour = _colour()
     bold = "\033[1m" if colour else ""
     reset = "\033[0m" if colour else ""
@@ -40,6 +42,12 @@ def print_report(system: System, steps: list[Step], strings) -> None:
     print(f"  {strings('method')}: {system.family or 'unknown'} → "
           f"{method_label(strings, system.method)}")
     print(f"  {strings('label_path')}: {strings('review_target')}")
+    if source is not None:
+        # Which commit would be installed; --check never fetches it.
+        print(f"  {strings('label_repo')}: {source.repository}")
+        print(f"  {strings('label_ref')}: {source.ref} "
+              f"({strings('label_commit')} {source.commit[:8]})")
+        print(f"  {strings('label_workspace')}: {source.path}")
     print()
 
     print(f"{bold}{strings('system_head')}{reset}")
@@ -74,56 +82,84 @@ def print_report(system: System, steps: list[Step], strings) -> None:
         print(f"  - {_paint(strings('review_blocked'), '\033[31m', colour)}")
 
 
-def execute(system: System, steps: list[Step], paths: Paths, strings) -> int:
+def _run_all(steps: list[Step], root: Path, strings, log, log_path,
+             colour) -> int | None:
+    """Run the steps in order; None when they all succeeded, else the exit code."""
+    for index, step in enumerate(steps, 1):
+        print(f"\n=== [{index}/{len(steps)}] {step.title} ===")
+        if not step.argv:
+            print(f"  {strings(step.note) if step.note else 'skipped'}")
+            continue
+        print(f"  $ {' '.join(step.argv)}")
+        runner = StepRunner(step, root, log)
+        runner.start()
+        tail: deque[tuple[str, str]] = deque(maxlen=8)
+        try:
+            while True:
+                line = runner.readline(0.2)
+                if line is not None:
+                    level = classify(line)
+                    tail.append((level, line))
+                    if colour:
+                        print(_paint(f"  {line}", _LEVEL_CODE.get(level, ""), colour))
+                    else:
+                        print(f"  {line}")
+                if runner.poll() is not None:
+                    break
+                time.sleep(0.02)
+        except KeyboardInterrupt:
+            # The child runs in its own session, so Ctrl-C never reaches it.
+            print(f"\n  {strings('cancel_confirm')}", file=sys.stderr)
+            runner.cancel()
+            while runner.poll() is None:
+                time.sleep(0.05)
+        rc = runner.close()
+        if runner.cancelled:
+            print(f"  {strings('cancelled')}")
+            return 130
+        if rc != 0:
+            print(f"\n{strings('failure_title')}: {step.title} "
+                  f"({strings('result_exit_code')}: {rc})")
+            errors = [text for level, text in tail if level == "ERROR"]
+            summary = errors[-1] if errors else strings("result_none_logged")
+            print(f"  {strings('result_error')}: {summary}")
+            if tail:
+                print(f"  {strings('result_tail')}:")
+                for _level, text in list(tail)[-4:]:
+                    print(f"    {text}")
+            print(f"  {strings('log_path')}{log_path}")
+            return 1
+    return None
+
+
+def execute(system: System, steps, paths: Paths, strings, preparation=None) -> int:
+    """Run the plan; with a preparation, fetch the source first.
+
+    ``steps`` is called after the source is ready when the plan depends on where
+    it landed (a prepared workspace always does), and is a list otherwise.
+    """
     colour = _colour()
+    root = paths.source_root
     log_path = paths.log_dir / "install.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("w", encoding="utf-8") as log:
         log.write(f"# {system.label} {system.arch}\n")
-        for index, step in enumerate(steps, 1):
-            print(f"\n=== [{index}/{len(steps)}] {step.title} ===")
-            if not step.argv:
-                print(f"  {strings(step.note) if step.note else 'skipped'}")
-                continue
-            print(f"  $ {' '.join(step.argv)}")
-            runner = StepRunner(step, paths.source_root, log)
-            runner.start()
-            tail: deque[tuple[str, str]] = deque(maxlen=8)
+        if preparation is not None:
+            # The clone is the first thing that runs; it gets a pass of its own
+            # because the plan does not exist until the workspace does.
+            code = _run_all(preparation.steps, root, strings, log, log_path, colour)
+            if code is not None:
+                return code
             try:
-                while True:
-                    line = runner.readline(0.2)
-                    if line is not None:
-                        level = classify(line)
-                        tail.append((level, line))
-                        if colour:
-                            print(_paint(f"  {line}", _LEVEL_CODE.get(level, ""), colour))
-                        else:
-                            print(f"  {line}")
-                    if runner.poll() is not None:
-                        break
-                    time.sleep(0.02)
-            except KeyboardInterrupt:
-                # The child runs in its own session, so Ctrl-C never reaches it.
-                print(f"\n  {strings('cancel_confirm')}", file=sys.stderr)
-                runner.cancel()
-                while runner.poll() is None:
-                    time.sleep(0.05)
-            rc = runner.close()
-            if runner.cancelled:
-                print(f"  {strings('cancelled')}")
-                return 130
-            if rc != 0:
-                print(f"\n{strings('failure_title')}: {step.title} "
-                      f"({strings('result_exit_code')}: {rc})")
-                errors = [text for level, text in tail if level == "ERROR"]
-                summary = errors[-1] if errors else strings("result_none_logged")
-                print(f"  {strings('result_error')}: {summary}")
-                if tail:
-                    print(f"  {strings('result_tail')}:")
-                    for _level, text in list(tail)[-4:]:
-                        print(f"    {text}")
-                print(f"  {strings('log_path')}{log_path}")
+                root = preparation.finish().path
+            except (OSError, ValueError, subprocess.SubprocessError) as error:
+                print(f"\n{strings('prepare_failed')}: {error}")
                 return 1
+            if callable(steps):
+                steps = steps()
+        code = _run_all(steps, root, strings, log, log_path, colour)
+        if code is not None:
+            return code
     print(f"\n{strings('success_title')}")
     print(f"{strings('next_steps')}")
     print(f"{strings('log_path')}{log_path}")

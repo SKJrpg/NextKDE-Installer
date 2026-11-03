@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 from pathlib import Path
 
-from . import VERSION
+from . import VERSION, workflow
 from .detect import detect
 from .paths import Paths
 from .plan import ALL_APPS, Options, build_plan, unsupported
@@ -119,7 +120,13 @@ def main(argv: list[str] | None = None) -> int:
     blocked_options = unsupported(system.family, opts)
 
     if args.check:
-        plain.print_report(system, steps, strings)
+        # Read-only: the ref may be resolved (a network read), nothing is fetched.
+        source = None
+        try:
+            source = workflow.identity(opts.source, opts, paths)
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            print(f"{strings('prepare_failed')}: {error}", file=sys.stderr)
+        plain.print_report(system, steps, strings, source=source)
         if blocked_options:
             print(strings("unsupported_options") % ", ".join(blocked_options), file=sys.stderr)
         return 2 if system.blocked or blocked_options else 0
@@ -146,7 +153,16 @@ def main(argv: list[str] | None = None) -> int:
         except AttributeError:
             pass
     if not interactive:
-        return plain.execute(system, steps, paths, strings)
+        # The installer owns the source: fetch the chosen commit first, then run
+        # the plan built for that workspace.
+        try:
+            preparation = workflow.begin(opts.source, opts, paths)
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            print(f"{strings('prepare_failed')}: {error}", file=sys.stderr)
+            return 1
+        return plain.execute(
+            system, lambda: build_plan(system.family, opts, paths, preparation.prepared),
+            paths, strings, preparation=preparation)
 
     return curses_ui.UI(system, paths, strings, lang_explicit=bool(args.lang)).run()
 

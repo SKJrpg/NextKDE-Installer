@@ -139,6 +139,11 @@ _TEXT = {
     "label_path": ("安装位置", "Install path"),
     "label_language": ("语言", "Language"),
     "label_source": ("安装来源", "Source"),
+    "label_repo": ("源码仓库", "Repository"),
+    "label_ref": ("版本", "Ref"),
+    "label_commit": ("提交", "Commit"),
+    "label_workspace": ("源码工作区", "Workspace"),
+    "label_dirty": ("工作区状态", "Workspace state"),
     "label_apps": ("可选应用", "Optional apps"),
     "label_deps": ("依赖", "Dependencies"),
     "label_core": ("核心", "Core"),
@@ -199,6 +204,10 @@ _TEXT = {
     "review_skip_missing": ("依赖未装齐，安装可能中途失败。", "Dependencies are missing; the install may fail halfway."),
     "review_apps_none": ("无", "none"),
     "review_cmd": ("命令", "command"),
+    "review_dirty": ("有未提交修改，会一起构建", "uncommitted changes are built too"),
+    "review_clean": ("干净", "clean"),
+    "prepare_failed": ("源码准备失败", "Source preparation failed"),
+    "review_prepare_failed": ("源码准备失败：%s", "Source preparation failed: %s"),
     "step_count": ("%d 个步骤", "%d steps"),
 
     # -- install dashboard ---------------------------------------------

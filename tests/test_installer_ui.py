@@ -29,6 +29,7 @@ from installer.render import layout as layout_mod  # noqa: E402
 from installer.render.curses_ui import UI  # noqa: E402
 from installer.render.theme import ASCII, UNICODE, Theme, supports_unicode  # noqa: E402
 from installer.render.widgets import _clip, _printable, _width, _wrap  # noqa: E402
+from installer.source.models import PreparedSource  # noqa: E402
 from installer.strings import Strings  # noqa: E402
 
 
@@ -743,6 +744,10 @@ class NavigationTest(unittest.TestCase):
 
     def test_review_enter_starts_install_and_returns_to_result(self) -> None:
         ui = fill(make_ui())
+        # A prepared source is what Enter installs; obtaining it is the step
+        # before, covered by PreparationTest.
+        ui.prepared = PreparedSource("development", "/repo", "main", "0" * 40,
+                                     Path("/repo"), False, True)
         ui.screen = UI.REVIEW
         with mock.patch.object(ui, "_install_loop") as loop, \
                 mock.patch.object(ui, "_enter_result") as result:
@@ -894,6 +899,57 @@ class BannerTest(unittest.TestCase):
                 if attr & curses.A_REVERSE}
         self.assertTrue(rows)
         self.assertIn("English", "\n".join(win.text()))
+
+
+class PreparationTest(unittest.TestCase):
+    """Confirming Review fetches the source once, then shows what will be built."""
+
+    @staticmethod
+    def prepared() -> PreparedSource:
+        return PreparedSource("development", "https://example.com/NextKde.git", "main",
+                              "0123456789abcdef0123456789abcdef01234567",
+                              Path("/workspace/01234567"), False, True)
+
+    def test_confirming_review_prepares_before_installing(self) -> None:
+        ui = make_ui()
+        ui.screen = UI.REVIEW
+        preparation = curses_ui.workflow.Preparation(ui.paths, steps=[
+            Step("source", "git clone main", ["git", "clone", "main"])])
+        prepared = self.prepared()
+        preparation.finish = lambda: setattr(preparation, "prepared", prepared) or prepared
+        with mock.patch.object(curses_ui.workflow, "begin", return_value=preparation), \
+                mock.patch.object(ui, "_run_action",
+                                  side_effect=lambda *a, **k: setattr(ui, "action_state",
+                                                                      "done")) as action, \
+                mock.patch.object(ui, "_install_loop") as loop:
+            ui._review_key(None, 10)
+
+        action.assert_called_once()
+        self.assertIs(ui.prepared, prepared)
+        self.assertEqual(ui.screen, UI.REVIEW)  # identity first; install on the next Enter
+        loop.assert_not_called()
+        self.assertEqual(ui.steps[0].argv[0],
+                         str(prepared.path / "tools" / "kosctl"))
+        self.assertNotIn("source", [step.key for step in ui.steps])
+        text = "\n".join(render(ui, "review", 30, 100).text()).replace("\n", "")
+        self.assertIn("https://example.com/NextKde.git", text)
+        self.assertIn("01234567", text)
+
+    def test_a_failed_preparation_stays_on_review(self) -> None:
+        ui = make_ui()
+        ui.screen = UI.REVIEW
+        preparation = curses_ui.workflow.Preparation(ui.paths)
+        preparation.finish = mock.Mock(side_effect=ValueError("no network"))
+        with mock.patch.object(curses_ui.workflow, "begin", return_value=preparation), \
+                mock.patch.object(ui, "_install_loop") as loop:
+            ui._review_key(None, 10)
+        self.assertIsNone(ui.prepared)
+        self.assertEqual(ui.screen, UI.REVIEW)
+        self.assertEqual(ui.action_state, "failed")
+        self.assertIn("no network", ui.prepare_error)
+        loop.assert_not_called()
+        text = "\n".join(render(ui, "review", 30, 100).text()).replace("\n", "")
+        self.assertIn("no network", text)
 
 
 if __name__ == "__main__":

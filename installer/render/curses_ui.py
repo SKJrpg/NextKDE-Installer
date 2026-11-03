@@ -13,13 +13,14 @@ from __future__ import annotations
 
 import curses
 import locale
+import subprocess
 import time
 from pathlib import Path
 
-from .. import manage
+from .. import manage, workflow
 from ..detect import System, detect, method_label
 from ..paths import Paths
-from ..plan import (ALL_APPS, Options, Step, apps_missing, build_plan, git_state,
+from ..plan import (ALL_APPS, Options, Step, apps_missing, build_plan,
                     latest_release, proxy_url, selected_apps, unsupported)
 from ..runner import StepRunner, classify
 from ..strings import Strings
@@ -73,6 +74,8 @@ class UI:
         if self.opts.apps and not self.opts.app_set:
             self.opts.app_set = set(ALL_APPS)
         self.steps: list[Step] = build_plan(system.family, self.opts, self.paths)
+        self.prepared = None          # the source's identity, once obtained
+        self.prepare_error = ""
         self.screen = self.WELCOME
         self.row = 0          # list row shared by manage/units/snapshots/logs
         self.lang_row = 0 if strings.lang == "zh" else 1
@@ -121,8 +124,6 @@ class UI:
         self.confirm_action = ""
         self.log_return = self.MANAGE
         self.manage_return = self.WELCOME
-        branch, dirty = git_state(self.root)
-        self.source_applies = branch == "main" and not dirty
 
     # -- glyphs and entry ------------------------------------------------
     @staticmethod
@@ -277,6 +278,9 @@ class UI:
             options = list(SOURCES)
             step = 1 if on else -1
             self.opts.source = options[(options.index(self.opts.source) + step) % len(options)]
+            # A different channel is a different commit: prepare it again.
+            self.prepared = None
+            self.prepare_error = ""
 
     def _options_key(self, stdscr, ch) -> int | None:
         rows = self._options_rows()
@@ -301,8 +305,10 @@ class UI:
         return None
 
     def _enter_review(self) -> None:
-        self.steps = build_plan(self.system.family, self.opts, self.paths)
-        self.app_deps = apps_missing(self.root) if self.opts.apps else []
+        self.steps = build_plan(self.system.family, self.opts, self.paths, self.prepared)
+        source = self.prepared.path if self.prepared is not None else self.root
+        self.app_deps = apps_missing(source) if self.opts.apps else []
+        self.prepare_error = ""
         self.review_scroll = 0
         self.screen = self.REVIEW
 
@@ -328,12 +334,45 @@ class UI:
         elif ch in ENTER:
             if self.system.blocked:
                 return None
+            if self.prepared is None:
+                # Fetch once, then come back here: the commit that will be
+                # installed has to be visible before anything changes.
+                self._prepare_source(stdscr)
+                return None
             self.screen = self.INSTALL
             self._install_loop(stdscr)
             self._enter_result()
         elif ch in (27, ord("q")):
             self.screen = self.OPTIONS
         return None
+
+    def _prepare_source(self, stdscr) -> bool:
+        """Fetch and verify the chosen source; True once ``self.prepared`` is set.
+
+        Runs the one clone step through the ACTION screen, so its output is
+        visible, and returns to Review either way: on failure with the error.
+        """
+        self.prepare_error = ""
+        try:
+            preparation = workflow.begin(self.opts.source, self.opts, self.paths)
+            if preparation.steps:
+                self._run_action(stdscr, preparation.steps[0].title,
+                                 preparation.steps, self.REVIEW)
+                if self.action_state != "done":
+                    self.action_state = "failed"
+                    self.prepare_error = self._error_summary()
+                    self.screen = self.REVIEW
+                    return False
+            self.prepared = preparation.finish()
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            self.action_state = "failed"
+            self.prepare_error = str(error)
+            self.log_lines.append(("ERROR", str(error)))
+            self.screen = self.REVIEW
+            return False
+        self.steps = build_plan(self.system.family, self.opts, self.paths, self.prepared)
+        self.screen = self.REVIEW
+        return True
 
     def _enter_result(self) -> None:
         self.screen = self.RESULT
@@ -1024,10 +1063,6 @@ class UI:
             rows += [Row(chunk, "secondary")
                      for chunk in _wrap(s("source_" + self.opts.source + "_note"),
                                         max(10, width))]
-            if not self.source_applies and self.opts.source != "local":
-                rows.append(Row(""))
-                rows += [Row(chunk, "warn")
-                         for chunk in _wrap(s("skipped_source"), max(10, width))]
         if kind == "app":
             rows += [Row(chunk, "warn") for chunk in _wrap(s("apps_impact"), max(10, width))]
         if kind == "toggle" and key == "spatial":
@@ -1060,8 +1095,18 @@ class UI:
         # The same list the plan will install, so review cannot promise
         # something the backend will not do.
         apps = [s("app_" + name) for name in selected_apps(self.opts)]
-        pairs = [
-            (s("label_source"), self._source_text(), "text"),
+        pairs = [(s("label_source"), self._source_text(), "text")]
+        prepared = self.prepared
+        if prepared is not None:
+            # The identity the install will actually build, not the channel name.
+            pairs += [(s("label_repo"), prepared.repository, "secondary"),
+                      (s("label_ref"), prepared.ref, "secondary"),
+                      (s("label_commit"), prepared.commit[:8], "secondary"),
+                      (s("label_workspace"), str(prepared.path), "secondary"),
+                      (s("label_dirty"),
+                       s("review_dirty") if prepared.dirty else s("review_clean"),
+                       "warn" if prepared.dirty else "ok")]
+        pairs += [
             (s("label_core"), f"{s('core_shell')}{sep}{s('label_required')}", "text"),
             (s("method"), method_label(s, self.system.method), "secondary"),
             (s("label_apps"), ", ".join(apps) if apps else s("review_apps_none"), "text"),
@@ -1085,6 +1130,8 @@ class UI:
     def _review_side(self, width: int) -> list[Row]:
         s = self.s
         warnings: list[tuple[str, str]] = []
+        if self.prepare_error:
+            warnings.append((s("review_prepare_failed") % self.prepare_error, "fail"))
         if self.system.blocked:
             warnings.append((s("review_blocked"), "fail"))
         blocked_options = unsupported(self.system.family, self.opts)
@@ -1477,7 +1524,8 @@ class UI:
                                      max(0, len(self.log_lines) - 1)))
 
     def _install_body(self, stdscr) -> None:
-        self.steps = build_plan(self.system.family, self.opts, self.paths)
+        self.steps = build_plan(self.system.family, self.opts, self.paths, self.prepared)
+        root = self.prepared.path if self.prepared is not None else self.root
         self.result = ""
         self.failed = None
         self.failed_rc = None
@@ -1504,7 +1552,7 @@ class UI:
                     self.skipped_steps.add(index)
                     index += 1
                     continue
-                runner = StepRunner(step, self.root, log)
+                runner = StepRunner(step, root, log)
                 runner.start()
                 last_draw = 0.0
                 while True:
