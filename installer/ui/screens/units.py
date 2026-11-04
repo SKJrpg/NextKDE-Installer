@@ -11,8 +11,7 @@ from .management import ManageScreen
 
 
 class UnitsScreen(ManageScreen):
-    KEYS = (("space", "toggle", "key_toggle"), ("escape", "back", "key_back"),
-            ("ctrl+c", "cancel_action", "key_cancel"))
+    CONTEXT = "list.units"
 
     def __init__(self, strings, **kwargs) -> None:
         super().__init__(strings, **kwargs)
@@ -46,7 +45,10 @@ class UnitsScreen(ManageScreen):
             return None
         return next((unit for unit in self.units if unit.name == option.id), None)
 
-    def action_toggle(self) -> None:
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        self.action_unit_toggle()
+
+    def action_unit_toggle(self) -> None:
         unit = self.current()
         if unit is None or self.busy:
             return

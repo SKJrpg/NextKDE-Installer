@@ -135,7 +135,11 @@ class SudoPromptTest(unittest.IsolatedAsyncioTestCase):
         await pilot.pause()
         await pilot.press("enter")   # Options -> Review
         await pilot.pause()
-        await pilot.press("enter")   # Review -> Installation
+        await pilot.press("enter")   # Review -> confirmation page
+        await pilot.pause()
+        await pilot.press("1")       # select "start", which does not run it
+        await pilot.pause()
+        await pilot.press("enter")   # the confirmation itself
 
     async def wait_screen(self, app, kind) -> None:
         for _ in range(400):

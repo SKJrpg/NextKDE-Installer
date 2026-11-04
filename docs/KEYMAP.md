@@ -1,6 +1,6 @@
 # 键位与菜单设计（KOS 安装器 TUI）
 
-本文件是**设计稿**，不对应任何已实现的代码。现状以 `8ef49d4` 为准；第 8 节逐条列出与现有实现的冲突和最小改动。
+**已实现**（`installer/ui/keymap.py`、`installer/ui/widgets/footer.py`、`installer/ui/screens/confirm.py`）。第 8 节是当时的冲突清单，第 11 节记录实现与本稿的差异。
 
 适用范围：`installer/ui/`（Textual 8.2.8，vendored）、`installer/__main__.py` 的 `--plain`/非 TTY 分支。所有可见文案进 `installer/strings.py`，zh/en 成对。
 
@@ -347,3 +347,26 @@ def resolve(contexts, overrides=None, budget=None) -> list[tuple[str, str, str]]
 - `install_log_paused` / `key_pause` / `key_resume` 三条文案已存在但未实现（日志暂停）。若要做，动作是 `log.pause`（`p`），只在 Installation 页出现——与“进度页只留中止”冲突，建议**先不做**。
 - Result 的按钮与键位双入口（`r` 与「重试」按钮）保留；按钮文本用 `[r] 重试` 形式，让屏幕阅读与键位一致。
 - 侧栏数字删除后，`sidebar` 是否加行号仍待定；倾向不加（点击目标本来就可见），在 `?` 帮助里说明“可点击”。
+
+---
+
+## 11. 实现记录（与 §1–§10 的差异）
+
+落地后只有下面这些偏离；其余按稿执行。
+
+| 项 | 差异 | 原因 |
+|---|---|---|
+| `resolve()` | 多一个可选 `measure`：`resolve(contexts, overrides, budget, measure)` | 行宽取决于当前语言的 `strings`，注册表不引 `Strings`；屏幕传入测量函数 |
+| 窄屏裁剪 | 只裁**底栏**（`keymap.fit`），绑定永不裁剪 | 提示可以少一行，按键不能因为终端窄而失效 |
+| 方向键 | 一个 id、两个方法：`check.move` → `checks_move(±1)`，`option.move` → `option_move(±1)` | Textual 的参数化 action 需要逐键目标，id 保持给配置用 |
+| 单选组箭头 | 新增 `option.pick`（只看不绑，RadioSet 自己处理） | 单选的词是“选择”，复选的是“移动”，一行动作一个词 |
+| Result 退出 | 新增 `result.exit`（`q`），与 `app.quit` 分开 | 结果页的词是“退出 / exit”，不是“quit”；成功页把它排到第一位 |
+| 菜单数字 | `menu.item.*` 是隐藏绑定；可见的说明行是 `menu.goto`（`1–6 直达`） | 六个动作各绑一个数字，底栏只需要一行说明 |
+| 列表回车 | 表的行只提供提示，实际由 `OptionList` 的 `Enter → OptionSelected` 落到同一个方法 | 列表控件已经拥有 Enter，重复绑定没有意义 |
+| 对话框 | 不进注册表；`ConfirmDialog` 增加 `confirm_label`/`cancel_label` | 模态屏幕只活在自己的栈帧里，文案按动作命名（中止/继续运行） |
+| 焦点 | `focus.next` 绑 `app.focus_next`，Options 覆写为“跳到下一组” | 表单要按组走，其它屏仍是逐控件 |
+| 进度页 | `#stages_box`、`#log`、`#cancel` 全部不可聚焦 | 误触 Enter 不能中止；中止只走 Ctrl+C + 确认 |
+
+测试：`tests/ui/test_keymap.py`（表本身：重复键、双语标签、冲突键、覆写）与
+`tests/ui/test_navigation.py`（每屏整行底栏 100×30 / 66×20、帮助 ⊇ 底栏、禁用槽位、
+危险动作非单键、Esc 链、向导无数字、Options 的 Enter 穿透、中止确认）。

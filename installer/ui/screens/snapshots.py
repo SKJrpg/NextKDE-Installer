@@ -12,8 +12,7 @@ from .management import ManageScreen
 
 
 class SnapshotsScreen(ManageScreen):
-    KEYS = (("c", "create", "key_create"), ("escape", "back", "key_back"),
-            ("ctrl+c", "cancel_action", "key_cancel"))
+    CONTEXT = "list.snapshots"
 
     def __init__(self, strings, **kwargs) -> None:
         super().__init__(strings, **kwargs)
@@ -44,7 +43,7 @@ class SnapshotsScreen(ManageScreen):
             return None
         return next((s for s in self.snapshots if s.id == option.id), None)
 
-    def action_create(self) -> None:
+    def action_snapshot_create(self) -> None:
         if self.busy:
             return
         self.start_action(
@@ -52,6 +51,9 @@ class SnapshotsScreen(ManageScreen):
             manage.kosctl(self.app.paths.source_root, "snapshot", "from installer"))
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        self.action_snapshot_rollback()
+
+    def action_snapshot_rollback(self) -> None:
         snapshot = self.current()
         if snapshot is None or self.busy:
             return

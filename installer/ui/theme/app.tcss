@@ -14,6 +14,15 @@ Header, Footer {
     color: ansi_default;
 }
 
+/* The hint line is painted from the key table, not from Textual's footer. */
+KeyFooter {
+    height: 1;
+    padding: 0 1;
+    background: transparent;
+    color: ansi_default;
+    text-wrap: nowrap;
+}
+
 FooterKey, FooterLabel,
 FooterKey > .footer-key--key,
 FooterKey > .footer-key--description {

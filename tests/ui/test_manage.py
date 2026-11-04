@@ -121,25 +121,29 @@ class ManageTest(unittest.IsolatedAsyncioTestCase):
         await pilot.press("m")
         await self.wait_for(
             pilot, lambda: isinstance(app.screen, ManagementScreen)
-            and app.screen.query_one("#manage_list", OptionList).option_count == 5)
+            and app.screen.query_one("#manage_list", OptionList).option_count == 6)
 
     def rows(self, app, screen=None) -> list[str]:
         list_ = (screen or app.screen).query_one("#manage_list", OptionList)
         return [str(option.prompt) for option in list_.options]
 
-    async def test_management_lists_five_entries_with_counts(self) -> None:
+    async def test_management_is_a_numbered_menu_with_counts(self) -> None:
         app = self.make_app()
         async with app.run_test(size=(100, 30)) as pilot:
             await self.open_manage(pilot, app)
             rows = self.rows(app)
-            self.assertEqual(len(rows), 5)
+            self.assertEqual(len(rows), 6)
+            self.assertTrue(rows[0].startswith("[1] "), rows[0])
             self.assertIn("Units", rows[0])
             self.assertIn(str(len(UNITS)), rows[0])
+            self.assertTrue(rows[1].startswith("[2] "), rows[1])
             self.assertIn("Snapshots", rows[1])
             self.assertIn(str(len(SNAPSHOTS)), rows[1])
             self.assertIn("Doctor", rows[2])
             self.assertIn("Logs", rows[3])
             self.assertIn("Uninstall", rows[4])
+            self.assertTrue(rows[5].startswith("[6] "), rows[5])
+            self.assertIn("Back", rows[5])
 
             await pilot.press("escape")
             await pilot.pause()
@@ -203,8 +207,8 @@ class ManageTest(unittest.IsolatedAsyncioTestCase):
         app = self.make_app()
         async with app.run_test(size=(100, 30)) as pilot:
             await self.open_manage(pilot, app)
-            await pilot.press("end")              # Uninstall
-            await pilot.press("enter")
+            await pilot.press("5")                # Uninstall
+            await pilot.pause()
             await pilot.pause()
             self.assertIsInstance(app.screen, ConfirmDialog)
             self.assertTrue(app.screen.query_one("#confirm_ok", Button).disabled)
@@ -256,6 +260,18 @@ class ManageTest(unittest.IsolatedAsyncioTestCase):
             await pilot.press("space")
             await self.wait_for(pilot, lambda: bool(self.sessions))
             await pilot.press("ctrl+c")
+            await self.wait_for(pilot, lambda: isinstance(app.screen, ConfirmDialog)
+                                and bool(app.screen.query("#confirm_ok")))
+            # The safe choice is "keep running", and it is focused.
+            await pilot.press("enter")
+            await pilot.pause()
+            self.assertTrue(app.screen.busy)
+            self.assertTrue(self.sessions)
+
+            await pilot.press("ctrl+c")
+            await self.wait_for(pilot, lambda: isinstance(app.screen, ConfirmDialog)
+                                and bool(app.screen.query("#confirm_ok")))
+            await pilot.click("#confirm_ok")
             await self.wait_for(pilot, lambda: not app.screen.busy)
             status = str(app.screen.query_one("#action_status").render())
             self.assertIn("cancelled", status.lower())

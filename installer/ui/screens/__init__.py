@@ -1,35 +1,45 @@
-"""Header, step sidebar and footer shared by every wizard screen.
+"""Header, step sidebar and footer shared by every chrome screen.
 
-Screen construction happens after the app exists, so the footer labels are
-localized here instead of in a class-level ``BINDINGS`` tuple. One per-screen
-key table feeds both the footer and the help overlay, so the two cannot drift.
+A screen declares a context (``CONTEXT``); ``installer/ui/keymap.py`` turns it
+into bindings, the footer words and the help overlay, so the three cannot
+disagree. Esc only steps back; quitting goes through ``q``.
 """
 
 from __future__ import annotations
 
+from rich.cells import cell_len
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
-from textual.widgets import Footer, Header, Static
+from textual.widgets import Header, Static
 
 from ...strings import Strings
+from .. import keymap
+from ..widgets.footer import KeyFooter
 from ..widgets.help import HelpScreen
 
 STEPS = ("step_welcome", "step_system", "step_options", "step_review", "step_install")
 
-# Keys for the sidebar step of the same number: 1 is Welcome, 5 is Installation.
-JUMP_KEYS = ("1", "2", "3", "4", "5")
 
-# Every screen offers the same way to see its own keys.
-HELP_KEY = ("question_mark", "help", "key_help", "?")
+class EnterPasses:
+    """A row widget that leaves Enter to the page: only Space toggles it.
+
+    Textual's check and radio rows bind ``enter`` themselves; the binding is
+    checked before the screen's, so the key has to be dropped from the row.
+    """
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._bindings.key_to_bindings.pop("enter", None)
 
 
 class ChromeScreen(Screen):
     """Header and footer with localized key labels; the management area."""
 
-    # (keys, action, string key for the footer description[, key display[, show]])
-    KEYS: tuple[tuple, ...] = ()
+    CONTEXT = ""
+    # q leaves immediately here (nothing to lose yet, or nothing left to do).
+    QUIT_DIRECT = False
 
     def __init__(self, strings: Strings, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -37,53 +47,114 @@ class ChromeScreen(Screen):
         self._base_bindings = self._bindings.copy()
         self._bind_keys()
 
-    def keys(self) -> tuple[tuple, ...]:
-        """This screen's key rows, help included: footer and overlay share them."""
-        return (*self.KEYS, HELP_KEY)
+    # -- the table in force here -----------------------------------------
+    def contexts(self) -> set[str]:
+        """This screen's context, plus the focused widget's own row context."""
+        found = {self.CONTEXT}
+        context = getattr(self.focused, "context", None)
+        if context:
+            found.add(context)
+        return found
 
-    def _display(self, display: str | None) -> str | None:
-        if display and self.strings.ascii:
-            return (display.replace("←", "left").replace("→", "right")
-                    .replace("↑", "up").replace("↓", "down").replace("–", "-"))
-        return display
+    def key_rows(self) -> list[keymap.Row]:
+        """Every action available here; never trimmed, so no key goes dead."""
+        return keymap.resolve(self.contexts())
+
+    def _row_width(self, row: keymap.Row) -> int:
+        display = row.action.display or row.keys[0]
+        return cell_len(display) + 1 + cell_len(self.strings(row.action.label)) + 2
 
     def _bind_keys(self) -> None:
-        """(Re)bind the rows with the current language's footer words."""
+        """(Re)bind the resolved rows; the footer is painted from the same rows."""
         self._bindings = self._base_bindings.copy()
-        for entry in self.keys():
-            keys, action, label, *rest = entry
-            display = rest[0] if rest else None
-            show = rest[1] if len(rest) > 1 else True
-            for key in keys.split(","):
-                # Our binding must win over the screen's own (e.g. tab).
-                self._bindings.key_to_bindings.pop(key.strip(), None)
-            self._bindings.bind(keys, action, self.strings(label) if show else "",
-                                key_display=self._display(display))
+        self.paint_footer()
+        for row in self.key_rows():
+            if not row.targets:          # a hint for keys the widget owns
+                continue
+            for index, key in enumerate(row.keys + row.aliases):
+                target = row.targets[index]
+                if not target:
+                    continue
+                shown = index == 0 and not row.action.hidden and bool(row.action.label)
+                # Ours wins over the screen's own default for this key.
+                self._bindings.key_to_bindings.pop(key, None)
+                self._bindings.bind(
+                    key, target, self.strings(row.action.label) if shown else "",
+                    key_display=row.action.display if shown else None,
+                    priority=row.action.binding_priority)
+
+    def _available(self, row: keymap.Row) -> bool:
+        """A row the user can act on here: labelled and enabled."""
+        action = row.action
+        return bool(action.label
+                    and self.check_action(action.id.replace(".", "_"), ()) is not False)
+
+    def _offered(self, row: keymap.Row) -> bool:
+        return self._available(row) and not row.action.hidden
+
+    def footer_rows(self) -> list[keymap.Row]:
+        """What the hint line shows: the offered rows that fit the width."""
+        rows = [row for row in self.key_rows() if self._offered(row)]
+        width = self.size.width
+        if width <= 0:
+            return rows
+        return keymap.fit(rows, max(20, width - 1), self._row_width)
+
+    def paint_footer(self) -> None:
+        """Paint the hint line; a no-op until the footer widget exists."""
+        footers = self.query("#footer")
+        if footers:
+            footers.first().show(self.footer_rows(), self.strings)
 
     def help_rows(self) -> list[tuple[str, str]]:
-        """(keys, description) for the overlay: what the footer has, spelled out."""
+        """(key, description) for the overlay: every action available here."""
+        ascii_only = self.strings.ascii
         rows = []
-        for keys, action, label, *rest in self.keys():
-            display = rest[0] if rest else keys
-            show = rest[1] if len(rest) > 1 else True
-            if not show or action == "help":
+        for row in self.key_rows():
+            if not self._available(row):
                 continue
-            if self.check_action(action.split("(")[0], ()) is False:
-                continue  # the action is unavailable here, so its key is too
-            rows.append((self._display(display) or keys, self.strings(label)))
+            key = row.action.display or keymap.display_key(row.keys[0], ascii_only)
+            rows.append((keymap.display_key(key, ascii_only),
+                         self.strings(row.action.label)))
         return rows
-
-    def action_help(self) -> None:
-        self.app.push_screen(HelpScreen(self.strings, self.help_rows()))
 
     def apply_language(self, strings: Strings) -> None:
         self.strings = strings
         self._bind_keys()
 
+    # -- shared actions ---------------------------------------------------
+    def action_help_open(self) -> None:
+        self.app.push_screen(HelpScreen(self.strings, self.help_rows()))
+
+    def action_app_quit(self) -> None:
+        if self.QUIT_DIRECT:
+            self.app.exit()
+        else:
+            self.app.request_quit()
+
+    def action_run_abort(self) -> None:
+        self.app.request_abort()
+
+    def action_focus_next(self) -> None:
+        self.app.action_focus_next()
+
+    def action_focus_prev(self) -> None:
+        self.app.action_focus_previous()
+
+    # -- layout -----------------------------------------------------------
+    def on_descendant_focus(self, event) -> None:
+        # A focused row can bring its own context; the footer follows it.
+        self._bind_keys()
+        self.refresh_bindings()
+
+    def on_resize(self, event) -> None:
+        self._bind_keys()
+        self.refresh_bindings()
+
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)
         yield from self.body()
-        yield Footer()
+        yield KeyFooter(id="footer")
 
     def body(self):
         """The widgets of this screen, between header and footer."""
@@ -103,7 +174,7 @@ class WizardScreen(ChromeScreen):
             yield Static(self._sidebar(), id="sidebar")
             with Vertical(id="main"):
                 yield from self.body()
-        yield Footer()
+        yield KeyFooter(id="footer")
 
     def _sidebar(self) -> Text:
         text = Text()
@@ -123,28 +194,17 @@ class WizardScreen(ChromeScreen):
         return 0 <= index < len(STEPS) and index <= self.STEP
 
     def goto_step(self, index: int) -> None:
-        """Move to a step already done or current; a later one does nothing.
+        """Click a step already done or current; a later one does nothing.
 
-        Each pop is started, not awaited: awaiting one from inside a key handler
-        would wait for the very screen handling the key.
+        Each pop is started, not awaited: awaiting one from inside a click
+        handler would wait for the very screen handling the event.
         """
         if not self.JUMP or index == self.STEP or not self._reachable(index):
             return
         while isinstance(self.app.screen, WizardScreen) and self.app.screen.STEP > index:
             self.app.pop_screen()
 
-    async def on_key(self, event) -> None:
-        if self.JUMP and event.key in JUMP_KEYS:
-            event.stop()
-            self.goto_step(int(event.key) - 1)
-
     async def on_click(self, event) -> None:
         # The sidebar is a column of steps; row 0 sits under its top padding.
         if event.widget is not None and event.widget.id == "sidebar":
             self.goto_step(event.y - 1)
-
-    def help_rows(self) -> list[tuple[str, str]]:
-        rows = super().help_rows()
-        if self.JUMP and self.STEP:
-            rows.append((self._display("1–5") or "1-5", self.strings("key_jump")))
-        return rows

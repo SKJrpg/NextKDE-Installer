@@ -79,6 +79,43 @@ class EntryTest(unittest.TestCase):
                          Path(directory).resolve())
         self.assertIn(captured["lang"], ("en", "zh"))
 
+    @unittest.skipUnless(HAS_TEXTUAL, "textual is not vendored (run tools/vendor.py)")
+    def test_config_keys_are_applied_before_the_app_starts(self) -> None:
+        seen = {}
+
+        class FakeApp:
+            def __init__(self, **kwargs):
+                pass
+
+            def run(self) -> int:
+                return 0
+
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / "config.json"
+            config.write_text('{"keys": {"wizard.back": "b"}}', encoding="utf-8")
+            with mock.patch.object(sys, "stdout", Tty()), \
+                    mock.patch.object(sys, "stdin", Tty()), \
+                    mock.patch("installer.__main__.detect", return_value=fake_system()), \
+                    mock.patch("installer.__main__.build_plan", return_value=fake_plan()), \
+                    mock.patch("installer.ui.keymap.apply_overrides",
+                               side_effect=lambda mapping: seen.update(mapping)), \
+                    mock.patch("installer.ui.app.KosApp", FakeApp):
+                code = main(["--root", directory, "--config", str(config)])
+        self.assertEqual(code, 0)
+        self.assertEqual(seen, {"wizard.back": "b"})
+
+    @unittest.skipUnless(HAS_TEXTUAL, "textual is not vendored (run tools/vendor.py)")
+    def test_an_unknown_key_action_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / "config.json"
+            config.write_text('{"keys": {"wizard.nope": "x"}}', encoding="utf-8")
+            with mock.patch.object(sys, "stdout", Tty()), \
+                    mock.patch.object(sys, "stdin", Tty()), \
+                    mock.patch("installer.__main__.detect", return_value=fake_system()), \
+                    mock.patch("installer.__main__.build_plan", return_value=fake_plan()), \
+                    self.assertRaises(SystemExit):
+                main(["--root", directory, "--config", str(config)])
+
     def test_interactive_without_textual_falls_back_to_plain(self) -> None:
         stderr = io.StringIO()
         preparation = mock.MagicMock(steps=[], prepared=None)

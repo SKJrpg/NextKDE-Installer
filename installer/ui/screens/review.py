@@ -41,9 +41,7 @@ def advice_for(error: str) -> str:
 
 class ReviewScreen(WizardScreen):
     STEP = 3
-    KEYS = (("enter", "start", "key_start"), ("t", "details", "key_details"),
-            ("r", "retry", "key_retry"), ("l", "open_log", "key_log"),
-            ("escape", "back", "key_back"))
+    CONTEXT = "wizard.review"
 
     def __init__(self, strings, **kwargs) -> None:
         super().__init__(strings, **kwargs)
@@ -53,7 +51,7 @@ class ReviewScreen(WizardScreen):
         self._error_shown: str | None = None   # the failure the footer was built for
 
     def body(self) -> ComposeResult:
-        with VerticalScroll(id="review"):
+        with VerticalScroll(id="review", can_focus=False):
             yield Static(id="status")
             yield Static(id="summary")
             yield Static(id="steps")
@@ -76,8 +74,13 @@ class ReviewScreen(WizardScreen):
         self.query_one("#side", Static).update(self._side())
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
-        if action in ("retry", "open_log") and not self.app.prepare_error:
-            return False  # disabled and out of the footer until there is a failure
+        failed = bool(self.app.prepare_error)
+        # A failed page swaps "continue/commands" for "retry/log": the plan is
+        # not what the user can act on any more.
+        if action in ("review_retry", "log_open"):
+            return failed
+        if action in ("review_continue", "review_details"):
+            return not failed
         return True
 
     def set_status(self, text: str) -> None:
@@ -201,23 +204,26 @@ class ReviewScreen(WizardScreen):
             text.append(line + "\n", style=style)
         return text
 
-    def action_details(self) -> None:
+    def action_review_details(self) -> None:
         self.details = not self.details
         self.query_one("#steps", Static).update(self._steps())
 
-    def action_start(self) -> None:
+    def action_review_continue(self) -> None:
+        """Enter never installs: the plan page only opens the confirmation page."""
+        from .confirm import ConfirmScreen
+
+        self.app.push_screen(ConfirmScreen(self.strings, len(self._plan_steps())))
+
+    def action_review_retry(self) -> None:
+        """Same as Enter on a failed page: preparation is what failed."""
         self.app.start_install()
 
-    def action_retry(self) -> None:
-        """Same as Enter: preparation is what failed, so it runs again."""
-        self.app.start_install()
-
-    def action_open_log(self) -> None:
+    def action_log_open(self) -> None:
         """The log of the attempt that failed, in the existing viewer."""
         from .logs import LogViewerScreen
 
         self.app.push_screen(LogViewerScreen(self.strings,
                                              self.app.prepare_log_path))
 
-    def action_back(self) -> None:
+    def action_wizard_back(self) -> None:
         self.app.pop_screen()

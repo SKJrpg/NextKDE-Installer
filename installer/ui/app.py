@@ -27,11 +27,13 @@ from ..detect import System, detect
 from ..paths import Paths
 from ..plan import Options, build_plan
 from ..strings import Strings, choose_language
+from .screens.confirm import ConfirmScreen
 from .screens.installation import InstallationScreen
 from .screens.result import ResultScreen
 from .screens.review import ReviewScreen
 from .screens.welcome import WelcomeScreen
 from .theme import resolve_mode
+from .widgets.confirm import ConfirmDialog
 from .widgets.password import PasswordDialog
 
 
@@ -39,6 +41,9 @@ class KosApp(App):
     CSS_PATH = "theme/app.tcss"
     # A developer affordance; its footer hint has no place in an installer.
     ENABLE_COMMAND_PALETTE = False
+    # Textual's own ctrl+q quit conflicts with XON and is invisible: quitting
+    # goes through the screens' "q" action instead.
+    BINDINGS = []
 
     def __init__(self, lang: str | None = None, system: System | None = None,
                  paths: Paths | None = None, *, opts: Options | None = None,
@@ -329,16 +334,30 @@ class KosApp(App):
             self.screen.start_stages(self.steps, self.log_path)
         self.install_worker = self._run_install(str(prepared.path))
 
-    def _prepare_failed(self, error: str) -> None:
-        self.prepare_error = error
-        self._close_askpass()
-        if isinstance(self.screen, InstallationScreen):
+    def _back_to_review(self) -> None:
+        """Pop the run pages; a failure belongs on the plan, not the confirm page."""
+        while isinstance(self.screen, (InstallationScreen, ConfirmScreen)):
             self.pop_screen()
         if isinstance(self.screen, ReviewScreen):
             self.screen.reload()
 
+    def _prepare_failed(self, error: str) -> None:
+        if isinstance(self.screen, ConfirmDialog):
+            # The failure happened while the abort question was open: let it
+            # close first, or its pop lands on the wrong screen.
+            self.set_timer(0.1, lambda: self._prepare_failed(error))
+            return
+        self.prepare_error = error
+        self._close_askpass()
+        self._back_to_review()
+
     def _prepare_cancelled(self) -> None:
         """Cancelling the clone is a cancelled install, not a failed one."""
+        if isinstance(self.screen, ConfirmDialog):
+            # The abort question is still closing; its pop would remove the
+            # Result screen pushed underneath it. Wait for the answer.
+            self.set_timer(0.1, self._prepare_cancelled)
+            return
         self._close_askpass()
         if isinstance(self.screen, InstallationScreen):
             self.pop_screen()
@@ -349,6 +368,12 @@ class KosApp(App):
             callback=self._result_dismissed)
 
     def _install_finished(self, session, code: int) -> None:
+        if isinstance(self.screen, ConfirmDialog):
+            # A run can end while its abort question is open. dismiss() pops the
+            # dialog right after its callback, so wait for that before stacking
+            # the result, or the pop would remove the result instead.
+            self.set_timer(0.1, lambda: self._install_finished(session, code))
+            return
         self.exit_code = code
         if isinstance(self.screen, InstallationScreen):
             # A session that raises ends without a done/cancel event of its own.
@@ -372,15 +397,47 @@ class KosApp(App):
 
     def _result_dismissed(self, value: str | None) -> None:
         if value == "retry":
-            # The result screen is already popped; Installation sits on Review.
-            if isinstance(self.screen, InstallationScreen):
-                self.pop_screen()  # drop Installation, back to Review
-            if isinstance(self.screen, ReviewScreen):
-                self.screen.reload()
+            # The result screen is already popped; the run pages sit on Review.
+            self._back_to_review()
         elif value == "quit":
             self.exit(self.exit_code)
 
     # -- cancel and quit -------------------------------------------------
+    def request_quit(self) -> None:
+        """q outside the first and last page: ask, with "keep going" focused."""
+        if isinstance(self.screen, ConfirmDialog):
+            return
+        self.push_screen(
+            ConfirmDialog(self.strings, self.strings("quit_title"),
+                          self.strings("quit_confirm"),
+                          confirm_label=self.strings("quit_leave"),
+                          cancel_label=self.strings("quit_stay")),
+            callback=self._quit_answer)
+
+    def _quit_answer(self, leave: bool | None) -> None:
+        if leave:
+            self.exit(0)
+
+    def request_abort(self) -> None:
+        """Ctrl+C while something runs: stop only after an explicit yes."""
+        if isinstance(self.screen, ConfirmDialog):
+            return
+        self.push_screen(
+            ConfirmDialog(self.strings, self.strings("abort_title"),
+                          self.strings("abort_body"),
+                          confirm_label=self.strings("abort_confirm"),
+                          cancel_label=self.strings("abort_keep"),
+                          confirm_variant="error"),
+            callback=self._abort_answer)
+
+    def _abort_answer(self, stop: bool | None) -> None:
+        if not stop:
+            return
+        if self.action_screen is not None:
+            self.cancel_action()
+        else:
+            self.cancel_install()
+
     def cancel_install(self) -> None:
         self.cancel_event.set()
         if isinstance(self.screen, InstallationScreen):

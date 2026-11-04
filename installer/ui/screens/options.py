@@ -1,4 +1,9 @@
-"""Options: source channel, the required core, apps and advanced toggles."""
+"""Options: source channel, the required core, apps and advanced toggles.
+
+Focus model: Tab/Shift+Tab move between groups, arrows inside one, Space
+toggles, Enter belongs to the page. The rows therefore keep Enter for the
+screen (``EnterPasses``) instead of swallowing it with Textual's default.
+"""
 
 from __future__ import annotations
 
@@ -9,7 +14,7 @@ from textual.widgets import Checkbox, RadioButton, RadioSet, Static
 
 from ...backend.models import ACTIVATION_START, INSTALL_APPS, INSTALL_LOCKSCREEN
 from ...plan import ALL_APPS
-from . import WizardScreen
+from . import EnterPasses, WizardScreen
 
 SOURCES = ("stable", "main", "local")
 WIDE_AT = 110
@@ -18,22 +23,36 @@ WIDE_AT = 110
 DETAILS = {"core": "detail_core", "lockscreen": "detail_lockscreen",
            "spatial": "detail_spatial", "start": "detail_start"}
 
+GROUPS = (
+    ("sources", ("source_stable", "source_main", "source_local")),
+    ("apps", tuple("app_" + name for name in ALL_APPS)),
+    ("advanced", ("lockscreen", "spatial", "start")),
+)
 
-class CheckRow(Checkbox):
+
+class CheckRow(EnterPasses, Checkbox):
     """A checkbox whose state is the text marker, not a colour-only glyph."""
 
     BUTTON_LEFT = BUTTON_INNER = BUTTON_RIGHT = ""
+    context = "option.check"
 
 
-class SourceRow(RadioButton):
+class SourceRow(EnterPasses, RadioButton):
     """The same, for the source radio rows."""
 
     BUTTON_LEFT = BUTTON_INNER = BUTTON_RIGHT = ""
+    context = "option.radio"
+
+
+class SourceSet(EnterPasses, RadioSet):
+    """Arrows move the selection; Enter is the page's."""
+
+    context = "option.radio"
 
 
 class OptionsScreen(WizardScreen):
     STEP = 2
-    KEYS = (("enter", "next", "key_continue"), ("escape", "back", "key_back"))
+    CONTEXT = "wizard.options"
 
     def body(self) -> ComposeResult:
         s = self.strings
@@ -55,10 +74,10 @@ class OptionsScreen(WizardScreen):
                         value=value, disabled=disabled, compact=True)
 
         with Container(id="options_split"):
-            with VerticalScroll(id="options"):
+            with VerticalScroll(id="options", can_focus=False):
                 yield Static(s("options_head"), id="options_head")
                 yield Static(s("group_source"), classes="group")
-                with RadioSet(id="sources", compact=True):
+                with SourceSet(id="sources", compact=True):
                     for name in SOURCES:
                         yield row(s("source_" + name), "source_" + name,
                                   name == opts.source, radio=True)
@@ -75,7 +94,7 @@ class OptionsScreen(WizardScreen):
                 yield row(s("opt_spatial"), "spatial", opts.spatial)
                 yield row(s("opt_start"), "start", opts.start,
                           capability=ACTIVATION_START)
-            with VerticalScroll(id="option_detail"):
+            with VerticalScroll(id="option_detail", can_focus=False):
                 yield Static(id="option_detail_text")
 
     def _detail(self, ident: str) -> Text:
@@ -118,6 +137,7 @@ class OptionsScreen(WizardScreen):
         detail.set_class(not wide and height < 24, "-hidden")
 
     def on_descendant_focus(self, event) -> None:
+        super().on_descendant_focus(event)
         if event.widget.id:
             self._show_detail(event.widget.id)
 
@@ -140,8 +160,11 @@ class OptionsScreen(WizardScreen):
         self.query_one("#source_" + self.app.opts.source, RadioButton).value = True
         self._apply_layout(self.app.size.width, self.app.size.height)
         self._show_detail("source_" + self.app.opts.source)
+        # The form always has a row: the footer describes what it can do.
+        self.query_one("#source_" + self.app.opts.source, RadioButton).focus()
 
     def on_resize(self, event) -> None:
+        super().on_resize(event)
         self._apply_layout(event.size.width, event.size.height)
 
     def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
@@ -174,7 +197,70 @@ class OptionsScreen(WizardScreen):
         else:
             setattr(self.app.opts, box.id, box.value)
 
-    def action_next(self) -> None:
+    # -- focus: Tab between groups, arrows inside one ---------------------
+    def _widget(self, ident: str):
+        found = self.query("#" + ident)
+        return found.first() if found else None
+
+    def _usable(self, ident: str):
+        widget = self._widget(ident)
+        return widget if widget is not None and not widget.disabled else None
+
+    def _group_of(self, ident: str | None) -> str | None:
+        """The group a focused widget belongs to; the radio set is its group."""
+        for name, idents in GROUPS:
+            if ident == name or ident in idents:
+                return name
+        return None
+
+    def _focus_group(self, step: int) -> None:
+        names = [name for name, _ in GROUPS]
+        current = self._group_of(self.focused.id if self.focused else None)
+        index = names.index(current) if current in names else (-1 if step > 0 else len(names))
+        order = range(index + step, len(names), step) if step > 0 \
+            else range(index + step, -1, -1)
+        for position in order:
+            if self._focus_first(names[position]):
+                return
+
+    def _focus_first(self, group: str) -> bool:
+        for ident in dict(GROUPS)[group]:
+            widget = self._usable(ident)
+            if widget is not None:
+                widget.focus()
+                return True
+        return False
+
+    def _focus_sibling(self, step: int) -> None:
+        group = self._group_of(self.focused.id if self.focused else None)
+        if group is None or group == "sources":
+            return              # the radio set owns its own arrows
+        rows = [widget for widget in (self._usable(ident)
+                                      for ident in dict(GROUPS)[group])
+                if widget is not None]
+        if self.focused not in rows:
+            return
+        index = rows.index(self.focused) + step
+        if 0 <= index < len(rows):
+            rows[index].focus()
+
+    def action_focus_next(self) -> None:
+        self._focus_group(1)
+
+    def action_focus_prev(self) -> None:
+        self._focus_group(-1)
+
+    def action_option_move(self, step: int) -> None:
+        self._focus_sibling(step)
+
+    def action_option_toggle(self) -> None:
+        widget = self.focused
+        if isinstance(widget, Checkbox) and not widget.disabled:
+            widget.value = not widget.value
+        elif isinstance(widget, RadioButton) and not widget.disabled:
+            widget.value = True
+
+    def action_wizard_next(self) -> None:
         from .review import ReviewScreen
 
         if self.app.backend_error:
@@ -184,5 +270,5 @@ class OptionsScreen(WizardScreen):
             return
         self.app.push_screen(ReviewScreen(self.strings))
 
-    def action_back(self) -> None:
+    def action_wizard_back(self) -> None:
         self.app.pop_screen()

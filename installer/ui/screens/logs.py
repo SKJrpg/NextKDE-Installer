@@ -14,6 +14,8 @@ from .management import ManageScreen
 
 
 class LogsScreen(ManageScreen):
+    CONTEXT = "list.logs"
+
     def __init__(self, strings, **kwargs) -> None:
         super().__init__(strings, **kwargs)
         self.files = []
@@ -31,7 +33,12 @@ class LogsScreen(ManageScreen):
         self.fill_list([Option(path.name, id=str(path)) for path in self.files])
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
-        path = next((p for p in self.files if str(p) == event.option_id), None)
+        self.action_logs_open()
+
+    def action_logs_open(self) -> None:
+        option = self.query_one("#manage_list", OptionList).highlighted_option
+        path = next((p for p in self.files
+                     if option is not None and str(p) == option.id), None)
         if path is not None:
             self.app.push_screen(LogViewerScreen(self.strings, path))
 
@@ -39,7 +46,7 @@ class LogsScreen(ManageScreen):
 class LogViewerScreen(ChromeScreen):
     """One log file: the only keys are scrolling and Esc."""
 
-    KEYS = (("escape", "back", "key_back"),)
+    CONTEXT = "log.view"
 
     def __init__(self, strings, path, **kwargs) -> None:
         super().__init__(strings, **kwargs)
@@ -72,5 +79,5 @@ class LogViewerScreen(ChromeScreen):
         for line in lines:
             log.write(line)
 
-    def action_back(self) -> None:
+    def action_wizard_back(self) -> None:
         self.app.pop_screen()

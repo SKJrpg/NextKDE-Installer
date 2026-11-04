@@ -93,6 +93,7 @@ class ManageScreen(ChromeScreen):
 
     def action_started(self, title: str, log_path) -> None:
         self.busy = True
+        self.refresh_bindings()     # Ctrl+C joins the footer
         self.query_one("#action_log", RichLog).clear()
         self.note(title + "  " + str(log_path), "bold")
 
@@ -107,6 +108,7 @@ class ManageScreen(ChromeScreen):
 
     def handle_action_done(self, session, code: int) -> None:
         self.busy = False
+        self.refresh_bindings()     # and leaves it again
         if code == 0:
             self.note(self.strings("action_ok"), "green")
             self.reload()
@@ -118,57 +120,121 @@ class ManageScreen(ChromeScreen):
             for _level, text in session.tail[-4:]:
                 log.write(text)
 
-    def action_cancel_action(self) -> None:
-        if self.busy:
-            self.app.cancel_action()
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if action == "run_abort":
+            return bool(self.busy)      # Ctrl+C only while something runs
+        return True
 
-    def action_back(self) -> None:
+    def action_wizard_back(self) -> None:
         self.app.pop_screen()
 
 
 class ManagementScreen(ManageScreen):
-    KEYS = (("escape", "back", "key_back"),
-            ("ctrl+c", "cancel_action", "key_cancel"))
+    """The stacked menu: every row keeps its number, disabled or not."""
+
+    CONTEXT = "menu"
+    ENTRIES = (
+        ("units", "manage_units", "units"),
+        ("snapshots", "manage_snapshots", "snapshots"),
+        ("doctor", "manage_doctor", ""),
+        ("logs", "manage_logs", ""),
+        ("uninstall", "manage_uninstall", ""),
+        ("back", "menu_back", ""),
+    )
+
+    def __init__(self, strings, **kwargs) -> None:
+        super().__init__(strings, **kwargs)
+        self.units, self.snapshots, self.has_logs = [], [], False
 
     def fetch(self):
         paths = self.app.paths
-        return manage.units(paths.source_root), manage.snapshots(paths.source_root)
+        return (manage.units(paths.source_root), manage.snapshots(paths.source_root),
+                bool(manage.logs(paths.log_dir)))
 
     def fill(self, data) -> None:
-        self.units, self.snapshots = data
-        entries = (
-            ("units", self.strings("manage_units"), str(len(self.units))),
-            ("snapshots", self.strings("manage_snapshots"), str(len(self.snapshots))),
-            ("doctor", self.strings("manage_doctor"), ""),
-            ("logs", self.strings("manage_logs"), ""),
-            ("uninstall", self.strings("manage_uninstall"), ""),
-        )
-        self.fill_list([Option(self._row(label, value), id=key)
-                        for key, label, value in entries])
+        self.units, self.snapshots, self.has_logs = data
+        self.fill_list([Option(self._row(index, key, label), id=key)
+                        for index, (key, label, _count) in enumerate(self.ENTRIES, 1)])
 
-    def _row(self, label: str, value: str) -> Text:
-        text = Text(f"{label:<14}")
-        text.append(value, style="bold")
+    def _enabled(self, key: str) -> bool:
+        if key in ("units", "uninstall"):
+            return bool(self.units)
+        if key == "logs":
+            return self.has_logs
+        return True
+
+    def _reason(self, key: str) -> str:
+        if not self._enabled(key):
+            return self.strings("manage_need_units" if key != "logs"
+                                else "manage_need_logs")
+        return ""
+
+    def _row(self, index: int, key: str, label: str) -> Text:
+        count = {"units": len(self.units), "snapshots": len(self.snapshots)}.get(key)
+        text = Text(f"[{index}] ", style="bold")
+        text.append(f"{self.strings(label):<12}",
+                    style=None if self._enabled(key) else self.app.secondary_style)
+        if count is not None:
+            text.append(str(count), style="bold")
+        reason = self._reason(key)
+        if reason:
+            text.append("  " + reason, style=self.app.secondary_style)
         return text
 
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if action.startswith("menu_item_"):
+            return self._enabled(action.removeprefix("menu_item_"))
+        return super().check_action(action, parameters)
+
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        if event.option_id:
+            self._open(event.option_id)
+
+    def action_menu_act(self) -> None:
+        option = self.query_one("#manage_list", OptionList).highlighted_option
+        if option is not None and option.id:
+            self._open(option.id)
+
+    def action_menu_item_units(self) -> None:
+        self._open("units")
+
+    def action_menu_item_snapshots(self) -> None:
+        self._open("snapshots")
+
+    def action_menu_item_doctor(self) -> None:
+        self._open("doctor")
+
+    def action_menu_item_logs(self) -> None:
+        self._open("logs")
+
+    def action_menu_item_uninstall(self) -> None:
+        self._open("uninstall")
+
+    def action_menu_item_back(self) -> None:
+        self.app.pop_screen()
+
+    def _open(self, key: str) -> None:
         from .logs import LogsScreen
         from .snapshots import SnapshotsScreen
         from .units import UnitsScreen
 
-        if event.option_id == "units":
+        if not self._enabled(key):
+            return
+        if key == "units":
             self.app.push_screen(UnitsScreen(self.strings),
                                  callback=lambda _: self.reload())
-        elif event.option_id == "snapshots":
+        elif key == "snapshots":
             self.app.push_screen(SnapshotsScreen(self.strings),
                                  callback=lambda _: self.reload())
-        elif event.option_id == "logs":
+        elif key == "logs":
             self.app.push_screen(LogsScreen(self.strings))
-        elif event.option_id == "doctor":
+        elif key == "doctor":
             self.start_action("kosctl doctor",
                               manage.kosctl(self.app.paths.source_root, "doctor"))
-        elif event.option_id == "uninstall":
+        elif key == "uninstall":
             self.confirm_uninstall()
+        elif key == "back":
+            self.app.pop_screen()
 
     def confirm_uninstall(self) -> None:
         self.app.push_screen(

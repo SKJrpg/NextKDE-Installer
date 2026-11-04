@@ -17,12 +17,16 @@ class ConfirmDialog(ModalScreen[bool]):
     BINDINGS = [("escape", "cancel", "escape")]
 
     def __init__(self, strings, heading: str, body: str, word: str = "",
-                 confirm_variant: str = "primary", **kwargs) -> None:
+                 confirm_variant: str = "primary", confirm_label: str = "",
+                 cancel_label: str = "", **kwargs) -> None:
         super().__init__(**kwargs)
         self.strings = strings
         self.heading, self.body_text = heading, body
         self.word = word
         self.confirm_variant = confirm_variant
+        # Named after what they do, so "cancel" never means "yes".
+        self.confirm_label = confirm_label or strings("confirm")
+        self.cancel_label = cancel_label or strings("cancel")
 
     def compose(self) -> ComposeResult:
         s = self.strings
@@ -36,13 +40,14 @@ class ConfirmDialog(ModalScreen[bool]):
                              id="confirm_hint")
                 yield Input(id="confirm_word")
             with Horizontal(id="confirm_buttons"):
-                yield Button(s("cancel"), id="confirm_cancel")
-                yield Button(s("confirm"), id="confirm_ok",
+                yield Button(self.cancel_label, id="confirm_cancel")
+                yield Button(self.confirm_label, id="confirm_ok",
                              variant=self.confirm_variant, disabled=bool(self.word))
 
     def on_mount(self) -> None:
-        # Keyboard first: the word field when there is one, Confirm otherwise.
-        self.query_one("#confirm_word" if self.word else "#confirm_ok").focus()
+        # The typed word when there is one; otherwise the safe choice, so a
+        # stray Enter never confirms a destructive action.
+        self.query_one("#confirm_word" if self.word else "#confirm_cancel").focus()
 
     def on_input_changed(self, event: Input.Changed) -> None:
         if event.input.id == "confirm_word":

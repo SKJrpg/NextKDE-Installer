@@ -6,15 +6,13 @@ from rich.text import Text
 from textual.app import ComposeResult
 from textual.widgets import Static
 
-from ..widgets.confirm import ConfirmDialog
 from . import WizardScreen
 
 
 class WelcomeScreen(WizardScreen):
     STEP = 0
-    KEYS = (("left,right,tab", "cycle_language", "key_language", "←/→/Tab"),
-            ("enter", "open_system", "key_open"), ("m", "open_manage", "key_manage"),
-            ("escape,q", "ask_quit", "key_quit", "Esc"))
+    CONTEXT = "wizard.welcome"
+    QUIT_DIRECT = True      # nothing has run yet
 
     def body(self) -> ComposeResult:
         yield Static(self.strings("welcome_intro"), id="intro")
@@ -53,26 +51,15 @@ class WelcomeScreen(WizardScreen):
                 text.append("\n")
         return text
 
-    async def action_cycle_language(self) -> None:
+    async def action_welcome_language(self) -> None:
         await self.app.set_language("en" if self.app.lang == "zh" else "zh")
 
-    def action_open_system(self) -> None:
+    def action_wizard_next(self) -> None:
         from .system import SystemScreen
 
         self.app.push_screen(SystemScreen(self.strings))
 
-    def action_open_manage(self) -> None:
+    def action_app_manage(self) -> None:
         from .management import ManagementScreen
 
         self.app.push_screen(ManagementScreen(self.strings))
-
-    def action_ask_quit(self) -> None:
-        """Esc and q leave the wizard: ask first, since nothing has run yet."""
-        self.app.push_screen(
-            ConfirmDialog(self.strings, self.strings("quit_title"),
-                          self.strings("quit_confirm")),
-            callback=self._quit)
-
-    def _quit(self, yes: bool | None) -> None:
-        if yes:
-            self.app.exit()

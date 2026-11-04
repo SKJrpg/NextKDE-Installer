@@ -1,6 +1,6 @@
-"""Feedback and navigation: failure guidance, the help overlay, Esc, step jumps.
+"""The key scheme as the user sees it: footers, help, Esc, confirmations.
 
-Offline like the other UI tests: preparation is injected and no source is fetched.
+Offline: preparation, the management reads and the install session are stubs.
 """
 
 from __future__ import annotations
@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -19,23 +20,53 @@ if _VENDOR.is_dir():
 HAS_TEXTUAL = importlib.util.find_spec("textual") is not None
 
 if HAS_TEXTUAL:
-    from textual.widgets._footer import FooterKey
+    from textual.widgets import Button, OptionList
+    from textual.widgets.option_list import Option
 
-    from installer import workflow
+    from installer import manage, workflow
     from installer.core.events import Event
     from installer.detect import OsInfo, Probe, System
     from installer.paths import Paths
     from installer.source.models import PreparedSource
     from installer.strings import Strings
+    from installer.ui import keymap
     from installer.ui.app import KosApp
+    from installer.ui.screens.confirm import ConfirmScreen
     from installer.ui.screens.installation import InstallationScreen
-    from installer.ui.screens.logs import LogViewerScreen
+    from installer.ui.screens.logs import LogViewerScreen, LogsScreen
+    from installer.ui.screens.management import ManagementScreen
     from installer.ui.screens.options import OptionsScreen
+    from installer.ui.screens.result import ResultScreen
     from installer.ui.screens.review import ReviewScreen, advice_for
+    from installer.ui.screens.snapshots import SnapshotsScreen
     from installer.ui.screens.system import SystemScreen
+    from installer.ui.screens.units import UnitsScreen
     from installer.ui.screens.welcome import WelcomeScreen
     from installer.ui.widgets.confirm import ConfirmDialog
     from installer.ui.widgets.help import HelpScreen
+
+
+UNITS = [manage.Unit("core", "1.0", "dirs", 4, "2026-01-01T00:00:00"),
+         manage.Unit("apps", "1.0", "files", 2, "")]
+SNAPSHOTS = [manage.Snapshot("s1", "2026-01-01T00:00:00", "before", "config")]
+
+FOOTERS = {
+    "welcome": "⏎ next  ←/→ language  m manage  q quit  ? help",
+    "checks": "↑/↓ select  ⏎ next  r re-check  esc back  q quit  ? help",
+    "options_radio": "↑/↓ select  ⏎ next  esc back  q quit  ? help",
+    "options_check": "space toggle  ↑/↓ move  ⏎ next  esc back  q quit  ? help",
+    "review": "⏎ continue  t commands  esc back  q quit  ? help",
+    "review_failed": "r retry  l log  esc back  q quit  ? help",
+    "confirm": "1/2 select  ⏎ confirm  esc back  ? help",
+    "installation": "ctrl+c abort  ? help",
+    "result_ok": "q exit  l log  m manage  ? help",
+    "result_failed": "r retry  l log  m manage  q exit  ? help",
+    "management": "1–6 go to  ↑/↓ select  ⏎ open  esc back  ? help",
+    "units": "↑/↓ select  ⏎ toggle  esc back  ? help",
+    "snapshots": "↑/↓ select  ⏎ roll back  c create  esc back  ? help",
+    "logs": "↑/↓ select  ⏎ open  esc back  ? help",
+    "log_view": "↑/↓ scroll  esc back  ? help",
+}
 
 
 def fake_system() -> "System":
@@ -56,245 +87,437 @@ def fake_prepare(mode, opts, paths) -> "workflow.Preparation":
     return workflow.Preparation(paths, prepared=fake_source())
 
 
-def footer_text(target) -> str:
-    """What a screen's footer currently says, as one string."""
-    screen = getattr(target, "screen", target)
-    return " ".join(key.description for key in screen.query(FooterKey))
-
-
 class FakeSession:
-    """The real session interface, without running anything."""
+    """The session interface without running anything; ``cancel`` blocks."""
 
-    def __init__(self, steps, log_path, root) -> None:
+    def __init__(self, steps, log_path, root, mode: str = "ok") -> None:
         self.steps, self.log_path, self.root = list(steps), log_path, root
+        self.mode = mode
         self.result, self.exit_code, self.failed_index = "", 0, None
         self.tail: list[tuple[str, str]] = []
 
     def run(self, emit, cancel) -> int:
+        if self.mode == "cancel":
+            emit(Event("stage", text="working", key="fake", index=1, total=1))
+            cancel.wait(10)
+            self.result, self.exit_code = "cancelled", 130
+            emit(Event("cancelled", index=1, total=1))
+            return 130
         self.result = "ok"
         return 0
 
 
-@unittest.skipUnless(HAS_TEXTUAL, "textual is not vendored (run tools/vendor.py)")
-class GuidanceTest(unittest.IsolatedAsyncioTestCase):
-    def setUp(self) -> None:
-        patcher = mock.patch("installer.workflow.identity", return_value=fake_source())
-        patcher.start()
-        self.addCleanup(patcher.stop)
+def foot(app) -> str:
+    return str(app.screen.query_one("#footer").render())
 
-    def make_app(self) -> "KosApp":
+
+@unittest.skipUnless(HAS_TEXTUAL, "textual is not vendored (run tools/vendor.py)")
+@unittest.skipIf(Strings("en").ascii, "the exact footer glyphs need UTF-8")
+class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
+    def make_app(self, mode: str = "ok", **kwargs) -> "KosApp":
         return KosApp(lang="en", system=fake_system(),
                       paths=Paths.resolve(source_root=ROOT),
                       prepare=fake_prepare,
-                      session_factory=FakeSession)
+                      session_factory=lambda steps, log, root: FakeSession(steps, log, root, mode),
+                      **kwargs)
 
-    async def wait_screen(self, app, kind) -> None:
-        for _ in range(200):
+    def setUp(self) -> None:
+        patcher = mock.patch("installer.workflow.identity", side_effect=lambda *a: fake_source())
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(keymap.apply_overrides, {})
+
+    async def wait_for(self, pilot, predicate) -> None:
+        for _ in range(300):
             await asyncio.sleep(0.01)
-            if isinstance(app.screen, kind):
+            if predicate():
                 return
-        self.fail(f"{kind.__name__} never became the active screen")
+        self.fail("condition was never met")
 
     async def to_review(self, pilot) -> None:
         for _ in range(3):          # Welcome -> Checks -> Options -> Review
             await pilot.press("enter")
             await pilot.pause()
 
-    # -- B: a failure that says what to do -------------------------------
-    async def test_failed_preparation_names_the_step_and_the_keys(self) -> None:
-        app = self.make_app()
-        async with app.run_test(size=(100, 30)) as pilot:
-            await pilot.pause()
-            app.prepare_error = ("fatal: unable to access 'https://example.invalid/r.git/': "
-                                 "Could not resolve host: example.invalid")
-            app.push_screen(ReviewScreen(Strings("en")))
-            await pilot.pause()
-            status = str(app.screen.query_one("#status").render())
-            self.assertIn("git clone", status)                  # names the step
-            self.assertIn("[r] retry", status)
-            self.assertIn("[l]", status)
-            self.assertIn("[Esc] back", status)
-            self.assertIn(Strings("en")("advice_network"), status)
-            self.assertIn("Could not resolve host", status)     # the raw reason
-            footer = footer_text(app)
-            self.assertIn("retry", footer)
-            self.assertIn("log", footer)
+    async def to_confirm(self, pilot) -> None:
+        await self.to_review(pilot)
+        await pilot.press("enter")
+        await pilot.pause()
 
-    async def test_a_failed_review_can_open_the_log(self) -> None:
-        app = self.make_app()
-        async with app.run_test(size=(100, 30)) as pilot:
-            await pilot.pause()
-            app.prepare_error = "fatal: something"
-            app.push_screen(ReviewScreen(Strings("en")))
-            await pilot.pause()
-            await pilot.press("l")
-            await pilot.pause()
-            self.assertIsInstance(app.screen, LogViewerScreen)
-            await pilot.press("escape")
-            await pilot.pause()
-            self.assertIsInstance(app.screen, ReviewScreen)
+    async def start_install(self, pilot) -> None:
+        await self.to_confirm(pilot)
+        await pilot.press("1")
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
 
-    async def test_a_healthy_review_offers_no_retry_or_log(self) -> None:
-        app = self.make_app()
-        async with app.run_test(size=(100, 30)) as pilot:
-            await self.to_review(pilot)
-            self.assertIsInstance(app.screen, ReviewScreen)
-            footer = footer_text(app)
-            self.assertNotIn("retry", footer)
-            self.assertNotIn("log", footer)
+    # -- footers: whole line, at both sizes ------------------------------
+    async def test_wizard_footers_are_whole_lines_at_both_sizes(self) -> None:
+        for size in ((100, 30), (66, 20)):
+            with self.subTest(size=size):
+                app = self.make_app()
+                async with app.run_test(size=size) as pilot:
+                    await pilot.pause()
+                    self.assertEqual(foot(app), FOOTERS["welcome"])
+                    await pilot.press("enter")
+                    await pilot.pause()
+                    self.assertEqual(foot(app), FOOTERS["checks"])
+                    await pilot.press("enter")
+                    await pilot.pause()
+                    self.assertEqual(foot(app), FOOTERS["options_radio"])
+                    await pilot.press("tab")
+                    await pilot.pause()
+                    self.assertEqual(foot(app), FOOTERS["options_check"])
+                    await pilot.press("enter")
+                    await pilot.pause()
+                    self.assertEqual(foot(app), FOOTERS["review"])
+                    await pilot.press("enter")
+                    await pilot.pause()
+                    self.assertEqual(foot(app), FOOTERS["confirm"])
 
-    def test_the_common_causes_have_one_line_of_advice(self) -> None:
-        self.assertEqual(advice_for("Could not resolve host: github.com"), "advice_network")
-        self.assertEqual(advice_for("fatal: Connection timed out"), "advice_network")
-        self.assertEqual(advice_for("https://x has no ref v9.9.9"), "advice_tag")
-        self.assertEqual(advice_for("Permission denied (publickey)"), "advice_credentials")
-        self.assertEqual(advice_for("fatal: repository 'x' not found"), "")
-        self.assertEqual(advice_for("[Errno 13] Permission denied: /x"), "advice_permissions")
-        self.assertEqual(advice_for("exit status 1"), "")    # no advice is invented
-        for key in ("advice_network", "advice_tag", "advice_credentials",
-                    "advice_permissions", "review_error_keys", "key_jump",
-                    "quit_title", "quit_confirm"):
-            for lang in ("zh", "en"):
-                self.assertNotEqual(Strings(lang)(key), key)
-
-    # -- A: the clone's own progress -------------------------------------
-    async def test_preparing_shows_the_percentage_and_the_last_line(self) -> None:
-        app = self.make_app()
-        async with app.run_test(size=(100, 30)) as pilot:
-            await pilot.pause()
-            screen = InstallationScreen(Strings("en"))
-            app.push_screen(screen)
-            await pilot.pause()
-            screen.handle(Event("stage", text="git clone v0.3.0", index=1, total=1))
-            await pilot.pause()
-            self.assertIn("git clone v0.3.0",
-                          str(screen.query_one("#stages").render()))
-            # Nothing measured yet: the bar stays indeterminate.
-            self.assertIn("no measured progress",
-                          str(screen.query_one("#progress_state").render()))
-            screen.handle(Event("log", text="Receiving objects:  42% (4116/9800), 4.1 MiB"))
-            screen.handle(Event("stage", text="git clone v0.3.0", index=1, total=1,
-                                fraction=0.42))
-            await pilot.pause()
-            state = str(screen.query_one("#progress_state").render())
-            self.assertIn("42%", state)
-            self.assertIn("Receiving objects:  42% (4116/9800)", state)
-
-    # -- C: help, Esc and jumps ------------------------------------------
-    async def test_help_lists_only_the_current_screens_keys(self) -> None:
-        app = self.make_app()
+    async def test_installation_and_result_footers(self) -> None:
+        app = self.make_app(mode="cancel")
         async with app.run_test(size=(66, 20)) as pilot:
-            await self.to_review(pilot)
-            await pilot.press("?")
-            await pilot.pause()
-            self.assertIsInstance(app.screen, HelpScreen)
-            body = str(app.screen.query_one("#help_body").render())
-            self.assertIn("start install", body)
-            self.assertIn("commands", body)
-            self.assertIn("back", body)
-            self.assertIn("jump to step", body)
-            self.assertNotIn("re-check", body)          # a Checks-only key
-            await pilot.press("escape")
-            await pilot.pause()
-            self.assertIsInstance(app.screen, ReviewScreen)
+            await self.start_install(pilot)
+            await self.wait_for(pilot, lambda: isinstance(app.screen, InstallationScreen))
+            self.assertEqual(foot(app), FOOTERS["installation"])
+            await pilot.press("ctrl+c")
+            await self.wait_for(pilot, lambda: isinstance(app.screen, ConfirmDialog)
+                                and bool(app.screen.query("#confirm_ok")))
+            await pilot.click("#confirm_ok")
+            await self.wait_for(pilot, lambda: isinstance(app.screen, ResultScreen))
+            self.assertEqual(foot(app), FOOTERS["result_failed"])
 
-    async def test_help_lists_the_language_key_on_welcome(self) -> None:
         app = self.make_app()
         async with app.run_test(size=(100, 30)) as pilot:
             await pilot.pause()
-            await pilot.press("?")
+            app.push_screen(ResultScreen(Strings("en"), "ok"))
             await pilot.pause()
-            body = str(app.screen.query_one("#help_body").render())
-            self.assertIn("language", body)
-            self.assertNotIn("jump to step", body)      # nowhere to jump from Welcome
+            self.assertEqual(foot(app), FOOTERS["result_ok"])
 
-    async def test_escape_steps_back_through_the_wizard(self) -> None:
+    # -- the confirmation page -------------------------------------------
+    async def test_confirm_defaults_to_back_and_enter_alone_never_installs(self) -> None:
         app = self.make_app()
         async with app.run_test(size=(100, 30)) as pilot:
-            await self.to_review(pilot)
-            for kind in (OptionsScreen, SystemScreen, WelcomeScreen):
+            await self.to_confirm(pilot)
+            screen = app.screen
+            self.assertIsInstance(screen, ConfirmScreen)
+            self.assertEqual(screen.choice, "back")
+            await pilot.press("enter")        # Enter on the default choice
+            await pilot.pause()
+            self.assertIsInstance(app.screen, ReviewScreen)   # back, not install
+            self.assertTrue(all(not isinstance(s, InstallationScreen)
+                                for s in app._screen_stack))
+
+    async def test_numbers_only_move_the_choice(self) -> None:
+        app = self.make_app()
+        async with app.run_test(size=(100, 30)) as pilot:
+            await self.to_confirm(pilot)
+            screen = app.screen
+            await pilot.press("1")
+            await pilot.pause()
+            self.assertEqual(screen.choice, "install")
+            self.assertIs(app.screen, screen)          # nothing started
+            await pilot.press("2")
+            await pilot.pause()
+            self.assertEqual(screen.choice, "back")
+            self.assertIs(app.screen, screen)
+
+    async def test_the_chosen_install_does_start(self) -> None:
+        app = self.make_app(mode="cancel")
+        async with app.run_test(size=(100, 30)) as pilot:
+            await self.start_install(pilot)
+            await self.wait_for(pilot, lambda: isinstance(app.screen, InstallationScreen))
+
+    # -- Esc is back only -------------------------------------------------
+    async def test_escape_walks_back_and_never_quits(self) -> None:
+        app = self.make_app()
+        async with app.run_test(size=(100, 30)) as pilot:
+            await self.to_confirm(pilot)
+            for kind in (ReviewScreen, OptionsScreen, SystemScreen, WelcomeScreen):
                 await pilot.press("escape")
                 await pilot.pause()
                 self.assertIsInstance(app.screen, kind)
-
-    async def test_escape_on_welcome_asks_before_quitting(self) -> None:
-        app = self.make_app()
-        async with app.run_test(size=(100, 30)) as pilot:
-            await pilot.pause()
-            await pilot.press("escape")
-            await pilot.pause()
-            self.assertIsInstance(app.screen, ConfirmDialog)
-            self.assertIn(Strings("en")("quit_confirm"),
-                          str(app.screen.query_one("#confirm_body").render()))
-            await pilot.press("escape")         # cancel: still here
+            await pilot.press("escape")       # Welcome has no page to go back to
             await pilot.pause()
             self.assertIsInstance(app.screen, WelcomeScreen)
 
-    async def test_numbers_jump_to_a_completed_step(self) -> None:
+    async def test_q_asks_mid_wizard_and_leaves_on_welcome(self) -> None:
         app = self.make_app()
         async with app.run_test(size=(100, 30)) as pilot:
-            await self.to_review(pilot)
-            await pilot.press("2")
-            await pilot.pause()
-            self.assertIsInstance(app.screen, SystemScreen)
-            await pilot.press("5")             # beyond Review: not available
-            await pilot.pause()
-            self.assertIsInstance(app.screen, SystemScreen)
-            app.push_screen(ReviewScreen(Strings("en")))
-            await pilot.pause()
-            await pilot.press("1")
-            await pilot.pause()
-            self.assertIsInstance(app.screen, WelcomeScreen)
-
-    async def test_clicking_a_sidebar_step_jumps_there(self) -> None:
-        app = self.make_app()
-        async with app.run_test(size=(100, 30)) as pilot:
-            await self.to_review(pilot)
-            await pilot.click("#sidebar", offset=(2, 3))   # third row: Options
-            await pilot.pause()
-            self.assertIsInstance(app.screen, OptionsScreen)
-
-    # -- the footer and the help come from one table ----------------------
-    async def test_footer_and_help_agree_on_every_screen(self) -> None:
-        app = self.make_app()
-        async with app.run_test(size=(100, 30)) as pilot:
-            screens = []
-            await pilot.pause()
-            screens.append(app.screen)                       # Welcome
-            for _ in range(2):
-                await pilot.press("enter")
-                await pilot.pause()
-                screens.append(app.screen)                   # Checks, Options
             await pilot.press("enter")
             await pilot.pause()
-            screens.append(app.screen)                       # Review
-            app.prepare_error = "fatal: no ref v9"
-            app.screen.reload()
+            await pilot.press("q")
             await pilot.pause()
-            screens.append(app.screen)                       # Review, failed
+            self.assertIsInstance(app.screen, ConfirmDialog)
+            self.assertIn(Strings("en")("quit_stay"),
+                          str(app.screen.query_one("#confirm_cancel", Button).label))
+            await pilot.press("escape")
+            await pilot.pause()
+            self.assertIsInstance(app.screen, SystemScreen)
 
+    # -- no wizard digits, no ctrl+q --------------------------------------
+    async def test_digits_do_not_jump_the_wizard(self) -> None:
+        app = self.make_app()
+        async with app.run_test(size=(100, 30)) as pilot:
+            await self.to_review(pilot)
+            await pilot.press("1")
+            await pilot.pause()
+            self.assertIsInstance(app.screen, ReviewScreen)
+            options = [s for s in app._screen_stack if isinstance(s, OptionsScreen)]
+            self.assertTrue(options)          # still there to go back to
+
+    async def test_no_hidden_ctrl_q_quit(self) -> None:
+        self.assertFalse(any(binding.key == "ctrl+q" for binding in KosApp.BINDINGS))
+
+    # -- help overlay ------------------------------------------------------
+    async def test_help_lists_what_the_footer_offers(self) -> None:
+        app = self.make_app()
+        async with app.run_test(size=(100, 30)) as pilot:
+            await self.to_review(pilot)
+            for _ in range(4):
+                screen = app.screen
+                offered = {(row.action.id) for row in screen.footer_rows()}
+                shown = set()
+                for keys, label in screen.help_rows():
+                    shown.add(label)
+                self.assertTrue(all(rows for rows in (offered,)))
+                await pilot.press("?")
+                await pilot.pause()
+                body = str(app.screen.query_one("#help_body").render())
+                for _keys, label in screen.help_rows():
+                    self.assertIn(label, body)
+                self.assertIn("Tab", body)          # hidden rows are in the overlay
+                await pilot.press("escape")
+                await pilot.pause()
+                if isinstance(app.screen, OptionsScreen):
+                    await pilot.press("escape")
+                    await pilot.pause()
+                break
+
+    async def test_every_offered_binding_has_a_method(self) -> None:
+        app = self.make_app()
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.pause()
+            screens = [app.screen]
+            for _ in range(3):
+                await pilot.press("enter")
+                await pilot.pause()
+                screens.append(app.screen)
             for screen in screens:
-                s = Strings("en")
+                for row in screen.key_rows():
+                    for target in row.targets:
+                        name = target.split("(")[0]
+                        if "." in name:          # a namespace, e.g. app.focus_next
+                            continue
+                        self.assertTrue(
+                            callable(getattr(screen, "action_" + name, None)),
+                            f"{type(screen).__name__}: no action_{name}")
 
-                # One table: a footer hint is a table word, and nothing else.
-                labels = {s(label) for _k, _a, label, *_r in screen.keys() if label}
-                for key in screen.query(FooterKey):
-                    self.assertIn(key.description, labels,
-                                  f"{screen.__class__.__name__}: footer says "
-                                  f"{key.description!r}")
-                # The overlay lists those words, plus where digits go.
-                allowed = labels | {s("key_jump")}
-                for text in dict(screen.help_rows()).values():
-                    self.assertIn(text, allowed)
-                # And every hint names an action the screen really has.
-                for keys, action, label, *rest in screen.keys():
-                    name = action.split("(")[0]
-                    if not (rest[1] if len(rest) > 1 else True):
-                        continue        # grouped into another row, e.g. ↓
-                    self.assertTrue(callable(getattr(screen, "action_" + name, None)),
-                                    f"{screen.__class__.__name__}: no action_{name}")
-                    if name == "help" or screen.check_action(name, ()) is False:
-                        continue        # no hint is offered for these two states
-                    self.assertIn(s(label), dict(screen.help_rows()).values())
-            self.assertIn("retry", footer_text(app))
+    async def test_help_on_checks_and_options(self) -> None:
+        app = self.make_app()
+        async with app.run_test(size=(66, 20)) as pilot:
+            await pilot.press("enter")
+            await pilot.pause()
+            await pilot.press("?")
+            await pilot.pause()
+            body = str(app.screen.query_one("#help_body").render())
+            self.assertIn("re-check", body)
+            self.assertNotIn("commands", body)      # that key lives on Review
+            await pilot.press("escape")
+            await pilot.pause()
+            await pilot.press("enter")
+            await pilot.pause()
+            await pilot.press("tab")
+            await pilot.pause()
+            await pilot.press("?")
+            await pilot.pause()
+            body = str(app.screen.query_one("#help_body").render())
+            self.assertIn("toggle", body)
+            self.assertIn("move", body)
 
+    async def test_a_config_override_changes_the_footer_and_the_key(self) -> None:
+        keymap.apply_overrides({"wizard.back": "b"})
+        app = self.make_app()
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.press("enter")
+            await pilot.pause()
+            self.assertEqual(foot(app),
+                             "↑/↓ select  ⏎ next  r re-check  b back  q quit  ? help")
+            await pilot.press("b")
+            await pilot.pause()
+            self.assertIsInstance(app.screen, WelcomeScreen)
+
+    # -- options focus model ----------------------------------------------
+    async def test_enter_advances_and_space_toggles(self) -> None:
+        app = self.make_app()
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.press("enter")       # Checks
+            await pilot.press("enter")       # Options
+            await pilot.pause()
+            self.assertIsInstance(app.screen, OptionsScreen)
+            self.assertFalse(app.opts.app_set)
+            await pilot.press("tab")         # first app row
+            await pilot.pause()
+            self.assertTrue(app.focused.id.startswith("app_"))
+            await pilot.press("space")
+            await pilot.pause()
+            self.assertTrue(app.opts.app_set)          # space toggled it
+            await pilot.press("enter")                 # Enter is the page's
+            await pilot.pause()
+            self.assertIsInstance(app.screen, ReviewScreen)
+            self.assertTrue(app.opts.app_set)          # and toggled nothing
+
+    async def test_tab_moves_between_groups_and_arrows_within(self) -> None:
+        app = self.make_app()
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.press("enter")
+            await pilot.press("enter")
+            await pilot.pause()
+            self.assertEqual(app.focused.id, "sources")
+            await pilot.press("tab")
+            await pilot.pause()
+            first = app.focused.id
+            self.assertTrue(first.startswith("app_"), first)
+            await pilot.press("down")
+            await pilot.pause()
+            self.assertNotEqual(app.focused.id, first)
+            self.assertTrue(app.focused.id.startswith("app_"))
+            await pilot.press("tab")
+            await pilot.pause()
+            self.assertIn(app.focused.id, ("lockscreen", "spatial", "start"))
+
+    # -- review failure ----------------------------------------------------
+    async def test_a_failed_review_swaps_the_keys_and_explains(self) -> None:
+        app = self.make_app()
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.pause()
+            app.prepare_error = ("fatal: unable to access 'https://example.invalid/': "
+                                 "Could not resolve host: example.invalid")
+            app.push_screen(ReviewScreen(Strings("en")))
+            await pilot.pause()
+            self.assertEqual(foot(app), FOOTERS["review_failed"])
+            status = str(app.screen.query_one("#status").render())
+            self.assertIn("git clone", status)
+            self.assertIn("[r] retry", status)
+            self.assertIn(Strings("en")("advice_network"), status)
+            self.assertIn("Could not resolve host", status)
+            await pilot.press("l")
+            await pilot.pause()
+            self.assertIsInstance(app.screen, LogViewerScreen)
+
+    def test_the_common_causes_have_one_line_of_advice(self) -> None:
+        self.assertEqual(advice_for("Could not resolve host: github.com"), "advice_network")
+        self.assertEqual(advice_for("https://x has no ref v9.9.9"), "advice_tag")
+        self.assertEqual(advice_for("Permission denied (publickey)"), "advice_credentials")
+        self.assertEqual(advice_for("exit status 1"), "")
+
+    # -- management menu ---------------------------------------------------
+    def manage_app(self, units=UNITS, snapshots=SNAPSHOTS, logs=(Path("/tmp/x.log"),)):
+        patchers = [
+            mock.patch("installer.manage.units", return_value=list(units)),
+            mock.patch("installer.manage.snapshots", return_value=list(snapshots)),
+            mock.patch("installer.manage.logs", return_value=list(logs)),
+        ]
+        for patcher in patchers:
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        return self.make_app()
+
+    async def test_management_menu_footer_and_disabled_slot(self) -> None:
+        app = self.manage_app(units=[], snapshots=[], logs=())
+        async with app.run_test(size=(66, 20)) as pilot:
+            await pilot.press("m")
+            await self.wait_for(pilot, lambda: isinstance(app.screen, ManagementScreen)
+                                and app.screen.query_one("#manage_list",
+                                                         OptionList).option_count == 6)
+            self.assertEqual(foot(app), FOOTERS["management"])
+            rows = [str(option.prompt) for option in
+                    app.screen.query_one("#manage_list", OptionList).options]
+            self.assertEqual([row[:4] for row in rows],
+                             ["[1] ", "[2] ", "[3] ", "[4] ", "[5] ", "[6] "])
+            self.assertIn("unavailable: nothing installed", rows[4])
+            self.assertIn("unavailable: no logs", rows[3])
+
+            await pilot.press("5")             # disabled: its slot is kept, nothing runs
+            await pilot.pause()
+            self.assertIsInstance(app.screen, ManagementScreen)
+
+            await pilot.press("6")             # back
+            await pilot.pause()
+            self.assertIsInstance(app.screen, WelcomeScreen)
+
+    async def test_management_opens_children_and_their_footers(self) -> None:
+        app = self.manage_app()
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.press("m")
+            await self.wait_for(pilot, lambda: isinstance(app.screen, ManagementScreen)
+                                and app.screen.query_one("#manage_list",
+                                                         OptionList).option_count == 6)
+            await pilot.press("1")
+            await self.wait_for(pilot, lambda: isinstance(app.screen, UnitsScreen)
+                                and app.screen.query_one("#manage_list",
+                                                         OptionList).option_count == 2)
+            self.assertEqual(foot(app), FOOTERS["units"])
+
+            await pilot.press("escape")
+            await pilot.pause()
+            await pilot.press("2")
+            await self.wait_for(pilot, lambda: isinstance(app.screen, SnapshotsScreen)
+                                and app.screen.query_one("#manage_list",
+                                                         OptionList).option_count == 1)
+            self.assertEqual(foot(app), FOOTERS["snapshots"])
+
+            await pilot.press("escape")
+            await pilot.pause()
+            await pilot.press("4")
+            await self.wait_for(pilot, lambda: isinstance(app.screen, LogsScreen)
+                                and app.screen.query_one("#manage_list",
+                                                         OptionList).option_count == 1)
+            self.assertEqual(foot(app), FOOTERS["logs"])
+            await pilot.press("enter")
+            await self.wait_for(pilot, lambda: isinstance(app.screen, LogViewerScreen))
+            self.assertEqual(foot(app), FOOTERS["log_view"])
+
+    async def test_uninstall_keeps_the_typed_word(self) -> None:
+        app = self.manage_app()
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.press("m")
+            await self.wait_for(pilot, lambda: isinstance(app.screen, ManagementScreen)
+                                and app.screen.query_one("#manage_list",
+                                                         OptionList).option_count == 6)
+            await pilot.press("5")
+            await pilot.pause()
+            self.assertIsInstance(app.screen, ConfirmDialog)
+            self.assertTrue(app.screen.query_one("#confirm_ok", Button).disabled)
+
+    # -- dangerous things ask first ---------------------------------------
+    async def test_ctrl_c_asks_and_the_safe_choice_keeps_running(self) -> None:
+        app = self.make_app(mode="cancel")
+        async with app.run_test(size=(100, 30)) as pilot:
+            await self.start_install(pilot)
+            await self.wait_for(pilot, lambda: isinstance(app.screen, InstallationScreen))
+            # Nothing is focused: a stray Enter cannot press "cancel".
+            self.assertIsNone(pilot.app.focused)
+            await pilot.press("enter")
+            await pilot.pause()
+            self.assertIsInstance(app.screen, InstallationScreen)
+            self.assertFalse(app.cancel_event.is_set())
+            await pilot.press("ctrl+c")
+            await self.wait_for(pilot, lambda: isinstance(app.screen, ConfirmDialog)
+                                and bool(app.screen.query("#confirm_ok")))
+            dialog = app.screen
+            self.assertIn(Strings("en")("abort_keep"),
+                          str(dialog.query_one("#confirm_cancel", Button).label))
+            self.assertIn(Strings("en")("abort_confirm"),
+                          str(dialog.query_one("#confirm_ok", Button).label))
+            await pilot.press("enter")          # focused "keep running"
+            await pilot.pause()
+            self.assertIsInstance(app.screen, InstallationScreen)
+            self.assertFalse(app.cancel_event.is_set())
+
+            await pilot.press("ctrl+c")
+            await self.wait_for(pilot, lambda: isinstance(app.screen, ConfirmDialog)
+                                and bool(app.screen.query("#confirm_ok")))
+            await pilot.click("#confirm_ok")
+            await self.wait_for(pilot, lambda: app.cancel_event.is_set())

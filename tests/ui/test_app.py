@@ -26,7 +26,6 @@ HAS_TEXTUAL = importlib.util.find_spec("textual") is not None
 if HAS_TEXTUAL:
     from rich.cells import cell_len
     from textual.widgets import Button, Checkbox
-    from textual.widgets._footer import FooterKey
 
     from installer.detect import OsInfo, Probe, System
     from installer.paths import Paths
@@ -39,8 +38,8 @@ if HAS_TEXTUAL:
 
 
 def footer_text(app) -> str:
-    """What the footer currently says, as text."""
-    return " ".join(key.description for key in app.screen.query(FooterKey))
+    """What the hint line currently says, as text."""
+    return str(app.screen.query_one("#footer").render())
 
 
 def fake_system() -> "System":
@@ -100,12 +99,12 @@ class AppShellTest(unittest.IsolatedAsyncioTestCase):
             self.assertIn("通过", text)
             self.assertIn("注意", text)
 
-    async def test_f5_reprobes_without_crashing(self) -> None:
+    async def test_r_reprobes_without_crashing(self) -> None:
         app = self.make_app()
         async with app.run_test(size=(100, 30)) as pilot:
             await pilot.press("enter")
             await pilot.pause()
-            await pilot.press("f5")
+            await pilot.press("r")
             await pilot.pause()
             self.assertIsInstance(app.screen, SystemScreen)
             self.assertTrue(app.screen.query_one("#probes").children)
@@ -124,13 +123,13 @@ class AppShellTest(unittest.IsolatedAsyncioTestCase):
         async with app.run_test(size=(100, 30)) as pilot:
             await pilot.pause()
             self.assertIn("发行版", str(app.screen.query_one("#facts").render()))
-            self.assertIn("进入", footer_text(app))
+            self.assertIn("下一步", footer_text(app))
 
             await pilot.press("right")
             await pilot.pause()
             self.assertEqual(app.lang, "en")
             self.assertIn("Distribution", str(app.screen.query_one("#facts").render()))
-            self.assertIn("open", footer_text(app))
+            self.assertIn("next", footer_text(app))
             self.assertIn("Language", str(app.screen.query_one("#language").render()))
 
             await pilot.press("left")
@@ -161,7 +160,7 @@ class AppShellTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(app.screen.styles.background.ansi, -1)
             self.assertEqual(app.styles.background.ansi, -1)
             self.assertEqual(app.screen.query_one("Header").styles.background.a, 0)
-            self.assertEqual(app.screen.query_one("Footer").styles.background.a, 0)
+            self.assertEqual(app.screen.query_one("#footer").styles.background.a, 0)
 
     async def test_footer_offers_no_command_palette(self) -> None:
         app = self.make_app()

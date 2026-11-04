@@ -12,9 +12,9 @@ from . import WizardScreen
 
 class ResultScreen(WizardScreen):
     STEP = 5
-    JUMP = False   # the wizard has ended; retry and quit are the ways out
-    KEYS = (("r", "retry", "key_retry"), ("m", "open_manage", "key_manage"),
-            ("enter", "quit", "key_exit"))
+    JUMP = False       # the wizard has ended; retry and quit are the ways out
+    CONTEXT = "wizard.result"
+    QUIT_DIRECT = True  # q leaves: there is nothing left to lose here
 
     def __init__(self, strings, result: str, exit_code: int = 0,
                  failed_title: str = "", log_path=None, log_tail=(),
@@ -29,7 +29,7 @@ class ResultScreen(WizardScreen):
 
     def body(self) -> ComposeResult:
         yield Static(id="result_head")
-        with VerticalScroll(id="result_body"):
+        with VerticalScroll(id="result_body", can_focus=False):
             yield Static(id="result_text")
         with Horizontal(id="actions"):
             if self.result != "ok":
@@ -39,6 +39,20 @@ class ResultScreen(WizardScreen):
     def on_mount(self) -> None:
         self.query_one("#result_head", Static).update(self._head())
         self.query_one("#result_text", Static).update(self._body())
+        # Enter presses the safe default: retry when something failed, else quit.
+        self.query_one("#retry" if self.result != "ok" else "#quit", Button).focus()
+
+    def footer_rows(self):
+        rows = super().footer_rows()
+        if self.result == "ok":
+            # Nothing to retry: leaving is the first thing the page offers.
+            rows.sort(key=lambda row: row.action.id != "result.exit")
+        return rows
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if action == "result_retry":
+            return self.result != "ok"     # nothing to retry after a success
+        return True
 
     def _head(self) -> Text:
         s = self.strings
@@ -79,17 +93,23 @@ class ResultScreen(WizardScreen):
                 text.append(f"  {s('result_none_logged')}\n", style=quiet)
         return text
 
-    def action_retry(self) -> None:
+    def action_result_exit(self) -> None:
+        self.dismiss("quit")
+
+    def action_result_retry(self) -> None:
         if self.result != "ok":
             self.dismiss("retry")
 
-    def action_open_manage(self) -> None:
+    def action_log_open(self) -> None:
+        from .logs import LogViewerScreen
+
+        if self.log_path is not None:
+            self.app.push_screen(LogViewerScreen(self.strings, self.log_path))
+
+    def action_app_manage(self) -> None:
         from .management import ManagementScreen
 
         self.app.push_screen(ManagementScreen(self.strings))
-
-    def action_quit(self) -> None:
-        self.dismiss("quit")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "retry":

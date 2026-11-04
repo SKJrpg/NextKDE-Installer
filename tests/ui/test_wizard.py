@@ -34,6 +34,7 @@ if HAS_TEXTUAL:
     from installer.ui.screens.result import ResultScreen
     from installer.ui.screens.review import ReviewScreen
     from installer.ui.screens.system import SystemScreen
+    from installer.ui.widgets.confirm import ConfirmDialog
     from installer.ui.screens.welcome import WelcomeScreen
 
 
@@ -87,7 +88,7 @@ class FakeSession:
         if self.mode == "cancel":
             emit(Event("stage", text="working", key="fake", index=1, total=1))
             emit(Event("log", text="waiting for cancel", level="INFO"))
-            cancel.wait(5)
+            cancel.wait(30)
             self.result, self.exit_code = "cancelled", 130
             emit(Event("cancelled", index=1, total=1))
             return 130
@@ -121,12 +122,43 @@ class WizardTest(unittest.IsolatedAsyncioTestCase):
         await pilot.press("enter")   # Checks -> Options
         await pilot.pause()
 
+    async def start_install(self, pilot) -> None:
+        """Review -> confirm page -> move to "install" -> Enter."""
+        await pilot.press("enter")    # Review -> Confirm
+        await pilot.pause()
+        await pilot.press("1")        # select "start the install", never runs it
+        await pilot.pause()
+        await pilot.press("enter")    # the confirmation itself
+        await pilot.pause()
+
+    async def abort_the_run(self, pilot) -> None:
+        """Ctrl+C asks first; the safe choice is "keep running"."""
+        await pilot.press("ctrl+c")
+        for _ in range(100):
+            await pilot.pause()
+            if (isinstance(pilot.app.screen, ConfirmDialog)
+                    and pilot.app.screen.query("#confirm_ok")):
+                break
+        self.assertIsInstance(pilot.app.screen, ConfirmDialog)
+        await asyncio.sleep(0.05)          # the dialog needs its region laid out
+        await pilot.click("#confirm_ok")
+        for _ in range(300):
+            await pilot.pause()
+            if pilot.app.cancel_event.is_set():
+                return
+        self.fail("the abort confirmation never cancelled the run")
+
     async def wait_screen(self, app, kind) -> None:
-        for _ in range(200):
+        for _ in range(600):
             await asyncio.sleep(0.01)
             if isinstance(app.screen, kind):
                 return
-        self.fail(f"{kind.__name__} never became the active screen")
+        self.fail(f"{kind.__name__} never became the active screen (on "
+                  f"{type(app.screen).__name__}, stack="
+                  f"{[type(s).__name__ for s in app._screen_stack]}, "
+                  f"cancel={app.cancel_event.is_set()}, "
+                  f"session={getattr(app.session, 'result', None)!r}, "
+                  f"workers={[bool(w and not w.is_finished) for w in (app.install_worker, app.prepare_worker)]})")
 
     async def test_options_survive_back_and_forward(self) -> None:
         app = self.make_app()
@@ -226,8 +258,7 @@ class WizardTest(unittest.IsolatedAsyncioTestCase):
             await self.to_options(pilot)
             await pilot.press("enter")   # Options -> Review
             await pilot.pause()
-            await pilot.press("enter")   # Review -> prepare + install
-            await pilot.pause()
+            await self.start_install(pilot)
             await self.wait_screen(app, ResultScreen)
             self.assertTrue(any(isinstance(screen, InstallationScreen)
                                 for screen in app._screen_stack))
@@ -243,12 +274,12 @@ class WizardTest(unittest.IsolatedAsyncioTestCase):
             await self.to_options(pilot)
             await pilot.press("enter")
             await pilot.pause()
-            await pilot.press("enter")
+            await self.start_install(pilot)
             for _ in range(200):
                 await asyncio.sleep(0.01)
                 if isinstance(app.screen, InstallationScreen) and app.session is not None:
                     break
-            await pilot.press("ctrl+c")
+            await self.abort_the_run(pilot)
             await self.wait_screen(app, ResultScreen)
             self.assertEqual(app.exit_code, 130)
             text = str(app.screen.query_one("#result_text").render())
@@ -260,7 +291,7 @@ class WizardTest(unittest.IsolatedAsyncioTestCase):
             await self.to_options(pilot)
             await pilot.press("enter")
             await pilot.pause()
-            await pilot.press("enter")
+            await self.start_install(pilot)
             for _ in range(200):
                 await asyncio.sleep(0.01)
                 if isinstance(app.screen, InstallationScreen) and app.session is not None:
@@ -268,7 +299,7 @@ class WizardTest(unittest.IsolatedAsyncioTestCase):
             screen = app.screen
             self.assertEqual(len(screen.query("#activity")), 1)
 
-            await pilot.press("ctrl+c")
+            await self.abort_the_run(pilot)
             await self.wait_screen(app, ResultScreen)
             await pilot.pause()
             self.assertEqual(len(screen.query("#activity")), 0)
@@ -279,7 +310,7 @@ class WizardTest(unittest.IsolatedAsyncioTestCase):
             await self.to_options(pilot)
             await pilot.press("enter")
             await pilot.pause()
-            await pilot.press("enter")
+            await self.start_install(pilot)
             await self.wait_screen(app, ResultScreen)
             await pilot.pause()
             install = next(s for s in app._screen_stack

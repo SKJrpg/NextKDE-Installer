@@ -17,10 +17,16 @@ ASCII = {"done": "+", "current": ">", "waiting": ".", "failed": "x",
          "skipped": "."}
 
 
+class MouseOnly(Button):
+    """Drawn for the mouse; the keyboard must not be able to press it."""
+
+    can_focus = False
+
+
 class InstallationScreen(WizardScreen):
     STEP = 4
     JUMP = False   # a run is in flight behind this screen; jumping would strand it
-    KEYS = (("ctrl+c", "cancel", "key_cancel"),)
+    CONTEXT = "wizard.run"
 
     def __init__(self, strings, steps=(), log_path=None, **kwargs) -> None:
         super().__init__(strings, **kwargs)
@@ -39,13 +45,15 @@ class InstallationScreen(WizardScreen):
         with Horizontal(id="install_head_row"):
             yield Static(id="install_head")
             yield LoadingIndicator(id="activity")
-        with VerticalScroll(id="stages_box"):
+        with VerticalScroll(id="stages_box", can_focus=False):
             yield Static(id="stages")
         yield ProgressBar(id="progress", total=None)
         yield Static(id="progress_state")
-        yield RichLog(id="log", max_lines=2000, wrap=False)
+        log = RichLog(id="log", max_lines=2000, wrap=False)
+        log.can_focus = False          # the page takes no focus at all
+        yield log
         yield Static(id="log_path")
-        yield Button(self.strings("cancel"), id="cancel", variant="error")
+        yield MouseOnly(self.strings("cancel"), id="cancel", variant="error")
 
     def on_mount(self) -> None:
         self.ready = True
@@ -215,9 +223,7 @@ class InstallationScreen(WizardScreen):
         return text
 
     # -- cancel ----------------------------------------------------------
-    def action_cancel(self) -> None:
-        self.app.cancel_install()
-
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "cancel":
-            self.app.cancel_install()
+            # Mouse is deliberate, but aborting asks the same question as Ctrl+C.
+            self.app.request_abort()

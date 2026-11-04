@@ -23,10 +23,7 @@ POINTER = ("›", ">")
 
 class SystemScreen(WizardScreen):
     STEP = 1
-    KEYS = (("up", "move(-1)", "key_select", "↑/↓"),
-            ("down", "move(1)", "key_select", None, False),
-            ("enter", "open_options", "key_continue"),
-            ("f5", "refresh", "key_refresh"), ("escape", "back", "key_back"))
+    CONTEXT = "wizard.checks"
 
     def __init__(self, strings, **kwargs) -> None:
         super().__init__(strings, **kwargs)
@@ -36,8 +33,8 @@ class SystemScreen(WizardScreen):
     def body(self) -> ComposeResult:
         yield Static(self._summary(), id="summary")
         with Container(id="checks_split"):
-            yield VerticalScroll(id="probes")
-            with VerticalScroll(id="probe_detail"):
+            yield VerticalScroll(id="probes", can_focus=False)
+            with VerticalScroll(id="probe_detail", can_focus=False):
                 yield Static(id="probe_detail_text")
 
     def on_mount(self) -> None:
@@ -150,7 +147,7 @@ class SystemScreen(WizardScreen):
             self.strings("check_none"), style=self.app.secondary_style)
         self.query_one("#probe_detail_text", Static).update(text)
 
-    def action_move(self, step: int) -> None:
+    def action_checks_move(self, step: int) -> None:
         probes = self.app.system.probes
         if not probes:
             return
@@ -161,7 +158,7 @@ class SystemScreen(WizardScreen):
             self.query_one("#probes", VerticalScroll).scroll_to_widget(
                 self.rows[self.row], animate=False)
 
-    async def action_refresh(self) -> None:
+    async def action_check_refresh(self) -> None:
         self.app.system = detect(root=self.app.paths.source_root)
         container = self.query_one("#probes", VerticalScroll)
         await container.remove_children()
@@ -173,10 +170,10 @@ class SystemScreen(WizardScreen):
         self._show_detail()
         self.call_after_refresh(self._paint_rows)
 
-    def action_open_options(self) -> None:
+    def action_wizard_next(self) -> None:
         from .options import OptionsScreen
 
         self.app.push_screen(OptionsScreen(self.strings))
 
-    def action_back(self) -> None:
+    def action_wizard_back(self) -> None:
         self.app.pop_screen()

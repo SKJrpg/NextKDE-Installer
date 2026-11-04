@@ -27,7 +27,7 @@ from .render import plain
 from .strings import Strings, choose_language
 
 CONFIG_KEYS = ("source", "apps", "lockscreen", "start", "all", "proxy", "spatial",
-               "theme")
+               "theme", "keys")
 
 
 def _load_config(path: str) -> dict:
@@ -229,7 +229,14 @@ def main(argv: list[str] | None = None) -> int:
                 askpass.close()
 
     # Imported here: the module needs Textual, which the branch above just checked.
+    from .ui import keymap
     from .ui.app import KosApp
+
+    if config.get("keys"):
+        try:
+            keymap.apply_overrides(config["keys"])
+        except (TypeError, ValueError) as error:
+            parser.error(str(error))
 
     # The screen starts from the same Options the flags and config made, so
     # `--source local --apps todo` is already selected when it opens. The theme
