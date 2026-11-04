@@ -128,8 +128,9 @@ Two front ends, one plan:
   event) and holds the fixed chrome; `screens/` holds one `Screen` per step (welcome,
   system, options, review, installation, result) plus the management area (units,
   snapshots, logs, management); `widgets/confirm.py` is the modal confirmation; every
-  style lives in `theme/app.tcss`. The step sidebar and the localized footer come from
-  `screens/__init__.py`, so a screen only declares its body and its extra keys.
+  style lives in `theme/app.tcss`. The step sidebar, the localized footer and the `?`
+  overlay all come from one per-screen key table in `screens/__init__.py`, so a screen
+  only declares its body and its keys; Esc steps back and 1-5 jump to a completed step.
 - **Appearance**: the palette is the terminal's own (`ansi_color=True` and `ansi_default`
   in the stylesheet), so only the mode is resolved: `--theme`, then `theme` in the JSON
   config, then `KOS_THEME=dark|light`, then the background index of `COLORFGBG`
