@@ -21,8 +21,12 @@ _CAUSES = (
     (("could not resolve host", "timed out", "timeout", "network is unreachable",
       "connection refused", "connection reset", "failed to connect"),
      "advice_network"),
-    (("permission denied", "authentication failed"), "advice_credentials"),
-    (("no ref", "not found", "couldn't find remote ref"), "advice_tag"),
+    (("permission denied (publickey", "authentication failed",
+      "could not read username", "could not read password"), "advice_credentials"),
+    # A local EACCES is not a git credential problem.
+    (("permission denied", "errno 13", "read-only file system"), "advice_permissions"),
+    (("no ref", "couldn't find remote ref", "unknown revision", "not our ref"),
+     "advice_tag"),
 )
 
 

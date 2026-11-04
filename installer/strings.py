@@ -266,6 +266,9 @@ _TEXT = {
                    "That release tag is not published: pick the stable release or main instead."),
     "advice_credentials": ("凭据被拒绝：检查 git 的 SSH key 或凭据助手后重试。",
                            "Credentials were refused: check the git SSH key or credential helper, then retry."),
+    "advice_permissions": ("没有权限写入目标目录：检查目录所有者与权限后重试。",
+                           "No permission to write into the target directory: "
+                           "check its owner and permissions, then retry."),
     "backend_label": ("后端", "Backend"),
     "backend_incompatible": ("后端不兼容：%s", "Incompatible backend: %s"),
     "cap_unavailable": ("不可用，后端未提供 %s", "unavailable, backend lacks %s"),

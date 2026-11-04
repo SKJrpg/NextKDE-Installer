@@ -152,6 +152,10 @@ class KosApp(App):
             self.install_worker = self._run_install(str(prepared.path))
         else:
             self.steps = []
+            # Empty it first: a failure before git starts must not show the
+            # previous attempt's successful clone under "see the log".
+            self.prepare_log_path.parent.mkdir(parents=True, exist_ok=True)
+            self.prepare_log_path.write_text("", encoding="utf-8")
             self.push_screen(InstallationScreen(self.strings, (),
                                                 self.prepare_log_path))
             self.prepare_worker = self._run_prepare()

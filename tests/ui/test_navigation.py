@@ -147,11 +147,13 @@ class GuidanceTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(advice_for("Could not resolve host: github.com"), "advice_network")
         self.assertEqual(advice_for("fatal: Connection timed out"), "advice_network")
         self.assertEqual(advice_for("https://x has no ref v9.9.9"), "advice_tag")
-        self.assertEqual(advice_for("fatal: repository 'x' not found"), "advice_tag")
         self.assertEqual(advice_for("Permission denied (publickey)"), "advice_credentials")
+        self.assertEqual(advice_for("fatal: repository 'x' not found"), "")
+        self.assertEqual(advice_for("[Errno 13] Permission denied: /x"), "advice_permissions")
         self.assertEqual(advice_for("exit status 1"), "")    # no advice is invented
         for key in ("advice_network", "advice_tag", "advice_credentials",
-                    "review_error_keys", "key_jump", "quit_title", "quit_confirm"):
+                    "advice_permissions", "review_error_keys", "key_jump",
+                    "quit_title", "quit_confirm"):
             for lang in ("zh", "en"):
                 self.assertNotEqual(Strings(lang)(key), key)
 
