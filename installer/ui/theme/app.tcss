@@ -181,6 +181,11 @@ ProgressBar Bar > .bar--complete {
     padding-bottom: 1;
 }
 
+/* The clone's own line can be longer than the pane; one line, clipped. */
+#progress_state {
+    text-wrap: nowrap;
+}
+
 #install_head_row {
     height: auto;
 }
@@ -317,4 +322,37 @@ ConfirmDialog {
     min-width: 12;
     margin-right: 1;
     color: $text;
+}
+
+/* -- help overlay ---------------------------------------------------- */
+HelpScreen {
+    align: center middle;
+    background: transparent;
+}
+
+#help_box {
+    width: 46;
+    height: auto;
+    max-height: 90%;
+    border: round $foreground;
+    /* The terminal's own background: the page behind must not show through. */
+    background: ansi_default;
+    color: ansi_default;
+    padding: 1 2;
+}
+
+#help_title {
+    height: auto;
+    text-style: bold;
+}
+
+#help_body {
+    height: auto;
+    margin-top: 1;
+}
+
+#help_close {
+    height: auto;
+    margin-top: 1;
+    color: ansi_default;
 }

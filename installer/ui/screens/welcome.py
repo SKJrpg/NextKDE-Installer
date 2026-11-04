@@ -6,6 +6,7 @@ from rich.text import Text
 from textual.app import ComposeResult
 from textual.widgets import Static
 
+from ..widgets.confirm import ConfirmDialog
 from . import WizardScreen
 
 
@@ -13,7 +14,7 @@ class WelcomeScreen(WizardScreen):
     STEP = 0
     KEYS = (("left,right,tab", "cycle_language", "key_language", "←/→/Tab"),
             ("enter", "open_system", "key_open"), ("m", "open_manage", "key_manage"),
-            ("q", "quit", "key_quit"))
+            ("escape,q", "ask_quit", "key_quit", "Esc"))
 
     def body(self) -> ComposeResult:
         yield Static(self.strings("welcome_intro"), id="intro")
@@ -65,5 +66,13 @@ class WelcomeScreen(WizardScreen):
 
         self.app.push_screen(ManagementScreen(self.strings))
 
-    def action_quit(self) -> None:
-        self.app.exit()
+    def action_ask_quit(self) -> None:
+        """Esc and q leave the wizard: ask first, since nothing has run yet."""
+        self.app.push_screen(
+            ConfirmDialog(self.strings, self.strings("quit_title"),
+                          self.strings("quit_confirm")),
+            callback=self._quit)
+
+    def _quit(self, yes: bool | None) -> None:
+        if yes:
+            self.app.exit()

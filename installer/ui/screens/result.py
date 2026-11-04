@@ -12,6 +12,7 @@ from . import WizardScreen
 
 class ResultScreen(WizardScreen):
     STEP = 5
+    JUMP = False   # the wizard has ended; retry and quit are the ways out
     KEYS = (("r", "retry", "key_retry"), ("m", "open_manage", "key_manage"),
             ("enter", "quit", "key_exit"))
 

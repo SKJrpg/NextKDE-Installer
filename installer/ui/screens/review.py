@@ -15,10 +15,30 @@ from ...detect import method_label
 from ...plan import build_plan, selected_apps, unsupported
 from . import WizardScreen
 
+# A cause the user can act on, most specific first: a host that does not resolve
+# is never a permissions problem.
+_CAUSES = (
+    (("could not resolve host", "timed out", "timeout", "network is unreachable",
+      "connection refused", "connection reset", "failed to connect"),
+     "advice_network"),
+    (("permission denied", "authentication failed"), "advice_credentials"),
+    (("no ref", "not found", "couldn't find remote ref"), "advice_tag"),
+)
+
+
+def advice_for(error: str) -> str:
+    """The string key of one line of advice for a preparation failure, or ""."""
+    lowered = (error or "").lower()
+    for needles, key in _CAUSES:
+        if any(needle in lowered for needle in needles):
+            return key
+    return ""
+
 
 class ReviewScreen(WizardScreen):
     STEP = 3
     KEYS = (("enter", "start", "key_start"), ("t", "details", "key_details"),
+            ("r", "retry", "key_retry"), ("l", "open_log", "key_log"),
             ("escape", "back", "key_back"))
 
     def __init__(self, strings, **kwargs) -> None:
@@ -26,6 +46,7 @@ class ReviewScreen(WizardScreen):
         self.details = False
         self._source = None       # identity resolved for an unprepared source
         self._resolved = False
+        self._error_shown: str | None = None   # the failure the footer was built for
 
     def body(self) -> ComposeResult:
         with VerticalScroll(id="review"):
@@ -39,10 +60,21 @@ class ReviewScreen(WizardScreen):
 
     def reload(self) -> None:
         """Rebuild every pane from the app's current options and source."""
+        error = self.app.prepare_error
+        # The retry/log hints come and go with the failure, so only then does
+        # the footer have to re-read the bindings.
+        if self._error_shown is not None and self._error_shown != error:
+            self.refresh_bindings()
+        self._error_shown = error
         self.query_one("#status", Static).update(self._status())
         self.query_one("#summary", Static).update(self._summary())
         self.query_one("#steps", Static).update(self._steps())
         self.query_one("#side", Static).update(self._side())
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if action in ("retry", "open_log") and not self.app.prepare_error:
+            return False  # disabled and out of the footer until there is a failure
+        return True
 
     def set_status(self, text: str) -> None:
         self.query_one("#status", Static).update(Text(text, style="bold"))
@@ -62,9 +94,14 @@ class ReviewScreen(WizardScreen):
     def _status(self) -> Text:
         if not self.app.prepare_error:
             return Text()
-        # A sentence first, the raw reason underneath: the git text explains the
-        # cause, but it is not what the user should have to read first.
-        text = Text(self.strings("review_prepare_failed"), style="bold red")
+        # What failed, then what to do, then the raw reason: the git text
+        # explains the cause, but it is not what the user should read first.
+        s = self.strings
+        text = Text(s("review_prepare_failed"), style="bold red")
+        text.append("\n" + s("review_error_keys"), style="bold")
+        advice = advice_for(self.app.prepare_error)
+        if advice:
+            text.append("\n" + s(advice), style="yellow")
         text.append("\n")
         text.append(self.app.prepare_error, style=self.app.secondary_style)
         return text
@@ -166,6 +203,17 @@ class ReviewScreen(WizardScreen):
 
     def action_start(self) -> None:
         self.app.start_install()
+
+    def action_retry(self) -> None:
+        """Same as Enter: preparation is what failed, so it runs again."""
+        self.app.start_install()
+
+    def action_open_log(self) -> None:
+        """The log of the attempt that failed, in the existing viewer."""
+        from .logs import LogViewerScreen
+
+        self.app.push_screen(LogViewerScreen(self.strings,
+                                             self.app.prepare_log_path))
 
     def action_back(self) -> None:
         self.app.pop_screen()

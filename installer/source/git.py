@@ -97,7 +97,7 @@ def clone_argv(repository: str, ref: str, dest: Path, depth: int | None = 1) -> 
     weight: ``depth=1`` turns a 240 MB product clone into the tree that is
     actually built. Pass ``depth=None`` for a full clone.
     """
-    args = ["clone", "--quiet", "--branch", ref, "--single-branch"]
+    args = ["clone", "--progress", "--branch", ref, "--single-branch"]
     if depth:
         args += ["--depth", str(depth)]
     return ["git", *args, repository, str(Path(dest))]

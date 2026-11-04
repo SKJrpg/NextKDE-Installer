@@ -151,7 +151,13 @@ class SudoPromptTest(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
 
     async def wait_dialog(self, app) -> None:
+        """Wait for the dialog and for its field: the screen appears first."""
         await self.wait_screen(app, PasswordDialog)
+        for _ in range(100):
+            if app.screen.query("#sudo_password"):
+                return
+            await asyncio.sleep(0.01)
+        self.fail("the password dialog never composed its field")
 
     def prompts(self, app) -> list:
         return [screen for screen in app._screen_stack

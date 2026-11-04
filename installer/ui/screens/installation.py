@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from rich.cells import cell_len, set_cell_size
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Horizontal, VerticalScroll
@@ -18,6 +19,7 @@ ASCII = {"done": "+", "current": ">", "waiting": ".", "failed": "x",
 
 class InstallationScreen(WizardScreen):
     STEP = 4
+    JUMP = False   # a run is in flight behind this screen; jumping would strand it
     KEYS = (("ctrl+c", "cancel", "key_cancel"),)
 
     def __init__(self, strings, steps=(), log_path=None, **kwargs) -> None:
@@ -27,6 +29,8 @@ class InstallationScreen(WizardScreen):
         self.states: list[str] = ["waiting"] * len(self.steps)
         self.state = ""            # header word while nothing has happened
         self.current = ""          # title of the running stage
+        self.percent: int | None = None   # what the step itself reported, if anything
+        self.last_line = ""        # the running step's own last output line
         self.ready = False         # False until on_mount has filled the widgets
         self.pending: list[Event] = []
         self.pending_stages = None
@@ -66,6 +70,8 @@ class InstallationScreen(WizardScreen):
         self.states = ["waiting"] * len(self.steps)
         self.log_path = log_path
         self.current = ""
+        self.percent = None
+        self.last_line = ""
         log = self.query_one("#log", RichLog)
         log.clear()
         self._paint()
@@ -84,6 +90,10 @@ class InstallationScreen(WizardScreen):
             self._on_stage(event)
         elif event.kind == "log":
             self.query_one("#log", RichLog).write(event.text)
+            if not self.steps:
+                # While preparing: the clone's own last line, under the percentage.
+                self.last_line = event.text
+                self._paint_progress()
         elif event.kind == "failed":
             if 1 <= event.index <= len(self.states):
                 self.states[event.index - 1] = "failed"
@@ -138,13 +148,31 @@ class InstallationScreen(WizardScreen):
             self.current = event.text
             self.state = "install_running"
             self._paint()
-        if event.fraction is not None:
-            bar.update(total=100, progress=event.fraction * 100)
-            label = f"{int(event.fraction * 100):3d}%"
-        else:
+        # The step's own counter is the only progress shown; None is honest.
+        self.percent = (int(event.fraction * 100)
+                        if event.fraction is not None else None)
+        if self.percent is None:
             bar.update(total=None)
-            label = self.strings("install_no_progress")
+        else:
+            bar.update(total=100, progress=self.percent)
+        self._paint_progress()
+
+    def _paint_progress(self) -> None:
+        """The percentage the step reported and the last line it printed."""
+        parts = [f"{self.percent}%"] if self.percent is not None else []
+        if not self.steps and self.last_line:
+            parts.append(self.last_line)
+        label = self._clip(" · ".join(parts) or self.strings("install_no_progress"))
         self.query_one("#progress_state", Static).update(label)
+
+    def _clip(self, value: str) -> str:
+        """One line: the log right below has the whole of it."""
+        widget = self.query_one("#progress_state", Static)
+        width = widget.size.width or max(20, self.app.size.width - 26)
+        if cell_len(value) <= width:
+            return value
+        tail = "..." if self.strings.ascii else "…"
+        return set_cell_size(value, max(0, width - cell_len(tail))) + tail
 
     # -- drawing ---------------------------------------------------------
     def _paint(self) -> None:

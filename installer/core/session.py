@@ -64,10 +64,7 @@ class InstallSession:
                     while True:
                         line = runner.readline(_POLL)
                         while line is not None:
-                            level = classify(line)
-                            self.tail = (self.tail + [(level, line)])[-_TAIL:]
-                            emit(Event("log", text=line, level=level, key=step.key,
-                                       index=index, total=total))
+                            self._log(emit, step, index, total, line)
                             line = runner.readline(0)
                         if cancel.is_set() and not runner.cancelled:
                             runner.cancel()
@@ -77,6 +74,12 @@ class InstallSession:
                                        index=index, total=total,
                                        fraction=(done + last) / len(work)))
                         if runner.poll() is not None:
+                            # Gone, but its last lines may still be in the pipe:
+                            # the fatal one is what the user must see.
+                            line = runner.readline(0)
+                            while line is not None:
+                                self._log(emit, step, index, total, line)
+                                line = runner.readline(0)
                             break
                 finally:
                     code = runner.close()
@@ -88,6 +91,13 @@ class InstallSession:
                     return self._finish(emit, "failed", code if code > 0 else 1,
                                         index, step, error)
         return self._finish(emit, "ok", 0, total, self.steps[-1] if self.steps else None)
+
+    def _log(self, emit, step: Step, index: int, total: int, text: str) -> None:
+        """One streamed line, classified and added to the tail."""
+        level = classify(text)
+        self.tail = (self.tail + [(level, text)])[-_TAIL:]
+        emit(Event("log", text=text, level=level, key=step.key,
+                   index=index, total=total))
 
     def _finish(self, emit, result: str, code: int, index: int,
                 step: Step | None, error: str = "") -> int:

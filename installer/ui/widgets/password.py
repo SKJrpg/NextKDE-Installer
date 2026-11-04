@@ -26,7 +26,13 @@ class PasswordDialog(ModalScreen[str | None]):
                 yield Button(s("key_continue"), id="confirm_ok", variant="primary")
 
     def on_mount(self) -> None:
-        self.query_one("#sudo_password", Input).focus()
+        # The dialog's own children can still be composing when this runs, so
+        # focus after the next refresh rather than querying straight away.
+        self.call_after_refresh(self._focus_password)
+
+    def _focus_password(self) -> None:
+        for field in self.query("#sudo_password"):
+            field.focus()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         self.dismiss(event.value)
