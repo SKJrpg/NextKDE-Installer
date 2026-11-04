@@ -272,7 +272,7 @@ _TEXT = {
                            "No permission to write into the target directory: "
                            "check its owner and permissions, then retry."),
     "confirm_heading": ("确认安装", "Ready to install"),
-    "confirm_summary": ("将执行 %d 个步骤", "%d steps will run"),
+    "confirm_summary": ("将执行 %d 个步骤", "Steps to run: %d"),
     "confirm_install": ("开始安装", "Start the install"),
     "confirm_back": ("返回上一步", "Go back"),
     "backend_label": ("后端", "Backend"),
