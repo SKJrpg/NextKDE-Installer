@@ -264,6 +264,10 @@ class InstallShTest(unittest.TestCase):
         tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmp)
         shutil.copy(ROOT / "install.sh", tmp / "install.sh")
+        # A bare copy looks like the piped bootstrap; the marker makes it a
+        # checkout, which is the case this test is about.
+        (tmp / "installer").mkdir()
+        (tmp / "installer" / "__main__.py").write_text("", encoding="utf-8")
         if vendor:
             (tmp / "vendor").mkdir()
         bin_dir = tmp / "bin"

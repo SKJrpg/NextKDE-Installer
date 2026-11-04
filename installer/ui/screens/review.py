@@ -60,10 +60,14 @@ class ReviewScreen(WizardScreen):
         return text
 
     def _status(self) -> Text:
-        if self.app.prepare_error:
-            return Text(self.strings("review_prepare_failed") % self.app.prepare_error,
-                        style="bold red")
-        return Text()
+        if not self.app.prepare_error:
+            return Text()
+        # A sentence first, the raw reason underneath: the git text explains the
+        # cause, but it is not what the user should have to read first.
+        text = Text(self.strings("review_prepare_failed"), style="bold red")
+        text.append("\n")
+        text.append(self.app.prepare_error, style=self.app.secondary_style)
+        return text
 
     def _summary(self) -> Text:
         s, opts = self.strings, self.app.opts

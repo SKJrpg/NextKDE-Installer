@@ -70,17 +70,23 @@ def ls_remote(repository: str, ref: str) -> str:
     An annotated tag lists both the tag object and its peeled commit; the
     commit is the one that ends up in a workspace.
     """
-    wanted = [ref] if ref.startswith("refs/") else [f"refs/heads/{ref}", f"refs/tags/{ref}"]
+    # The glob on the tag pattern is what makes git print the peeled line of
+    # an annotated tag; asking for refs/tags/v0.1.1 exactly returns only the
+    # tag object, which is not a commit. Exact names are filtered below, so
+    # v0.1.1 does not pick up v0.1.10.
+    wanted = [ref] if ref.startswith("refs/") else [
+        f"refs/heads/{ref}", f"refs/tags/{ref}*"]
     result = _check(run(None, "ls-remote", repository, *wanted, timeout=60),
                     f"ls-remote {repository}")
     found = {}
     for line in result.stdout.splitlines():
         sha, _, name = line.partition("\t")
         found[name.strip()] = sha.strip()
-    for name in wanted:
-        for key in (f"{name}^{{}}", name):
-            if found.get(key):
-                return found[key]
+    tag = ref if ref.startswith("refs/") else f"refs/tags/{ref}"
+    branch = ref if ref.startswith("refs/") else f"refs/heads/{ref}"
+    for key in (branch, f"{tag}^{{}}", tag):
+        if found.get(key):
+            return found[key]
     raise ValueError(f"{repository} has no ref {ref}")
 
 

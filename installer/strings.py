@@ -256,7 +256,9 @@ _TEXT = {
     "review_clean": ("干净", "clean"),
     "prepare_running": ("正在准备源码…", "preparing source…"),
     "prepare_failed": ("源码准备失败", "Source preparation failed"),
-    "review_prepare_failed": ("源码准备失败：%s", "Source preparation failed: %s"),
+    "review_prepare_failed": ("源码准备失败，没有安装任何内容。按 Enter 重试，Esc 返回。",
+                               "Source preparation failed; nothing was installed. "
+                               "Enter retries, Esc goes back."),
     "backend_label": ("后端", "Backend"),
     "backend_incompatible": ("后端不兼容：%s", "Incompatible backend: %s"),
     "cap_unavailable": ("不可用，后端未提供 %s", "unavailable, backend lacks %s"),

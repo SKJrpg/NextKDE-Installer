@@ -277,5 +277,26 @@ class TimeoutTest(unittest.TestCase):
             self.assertEqual(run.call_args.kwargs["timeout"], 60)
 
 
+class AnnotatedTagTest(unittest.TestCase):
+    def test_ls_remote_returns_the_peeled_commit(self) -> None:
+        from installer.source import git as sgit
+
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp) / "work"
+            work.mkdir()
+            git(*IDENTITY, "init", "-q", "-b", "main", cwd=work)
+            (work / "file").write_text("x", encoding="utf-8")
+            git(*IDENTITY, "add", "file", cwd=work)
+            git(*IDENTITY, "commit", "-q", "-m", "one", cwd=work)
+            # An annotated tag names a tag object, not the commit.
+            git(*IDENTITY, "tag", "-a", "v9.9.9", "-m", "release", cwd=work)
+            commit = git("rev-parse", "HEAD", cwd=work).stdout.strip()
+            tag_object = git("rev-parse", "v9.9.9", cwd=work).stdout.strip()
+            self.assertNotEqual(commit, tag_object)
+            self.assertEqual(sgit.ls_remote(f"file://{work}", "v9.9.9"), commit)
+            self.assertEqual(sgit.ls_remote(f"file://{work}", "main"), commit)
+
+
+
 if __name__ == "__main__":
     unittest.main()
