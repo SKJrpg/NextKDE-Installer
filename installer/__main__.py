@@ -139,6 +139,11 @@ def main(argv: list[str] | None = None) -> int:
             source = workflow.identity(opts.source, opts, paths)
         except (OSError, ValueError, subprocess.SubprocessError) as error:
             print(f"{strings('prepare_failed')}: {error}", file=sys.stderr)
+        if source is not None:
+            # The report must name the workspace the run would use, not the
+            # --root stand-in it was built with before the ref was resolved.
+            steps = build_plan(system.family, opts, paths, source,
+                               deps_missing=bool(system.missing_packages))
         backend = None
         try:
             # The checkout given by --root is the product under inspection; an
