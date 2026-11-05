@@ -183,8 +183,13 @@ _TEXT = {
     "listing_range": ("%d–%d / %d", "%d–%d / %d"),
 
     # -- welcome -------------------------------------------------------
-    "welcome_intro": ("用 Quickshell 重写的 Plasma 6 桌面：面板、启动器、锁屏与原生特效。",
-                      "A Plasma 6 desktop rebuilt in Quickshell: panels, launcher, lock screen, native effects."),
+    "welcome_intro": ("基于 Quickshell 的 KDE Plasma 桌面，包含顶栏、浮动 Dock、启动器、搜索、通知、设置、"
+                      "桌面文件及组件。支持液态玻璃、柔光/磨砂、Material 外观，接入 KWin、"
+                      "NetworkManager、PipeWire、BlueZ、systemd。",
+                      "A KDE Plasma desktop built on Quickshell, with a top bar, floating dock, launcher, "
+                      "search, notifications, settings, desktop files and widgets. Liquid glass, "
+                      "soft/blurred and Material looks; integrates KWin, NetworkManager, PipeWire, "
+                      "BlueZ and systemd."),
     "label_distro": ("发行版", "Distribution"),
     "label_arch": ("架构", "Architecture"),
     "label_session": ("会话", "Session"),
