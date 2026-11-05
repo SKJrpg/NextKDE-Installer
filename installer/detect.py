@@ -232,7 +232,7 @@ def detect(fixed_os_release: str | None = None, root: Path | None = None) -> Sys
     git_bin = shutil.which("git")
     rc, git_out = _run([git_bin, "--version"], timeout=3.0) if git_bin else (127, "")
     system.probes.append(_probe("probe_git", bool(git_bin) and rc == 0,
-                                git_out or git_bin or "not found",
+                                _version(git_out) or git_out or git_bin or "not found",
                                 "Install git before running the installer."))
 
     py = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
