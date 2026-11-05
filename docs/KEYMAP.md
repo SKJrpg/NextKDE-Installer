@@ -133,7 +133,7 @@
 | Snapshots | 第一行快照 | `↑/↓` `j/k` 选择 · `g/G` 首末 · `Enter` 回滚（确认） · `ctrl+n` 新建 · `Esc` 返回 · `ctrl+p` 命令 · `ctrl+k` | 空列表时 `ctrl+n` 仍可用 |
 | Logs（列表） | 第一个文件 | `↑/↓` `j/k` 选择 · `g/G` 首末 · `Enter` 打开 · `Esc` 返回 · `ctrl+p` 命令 · `ctrl+k` | 无日志时列出空态文本 |
 | LogViewer | 日志区 | `↑/↓` `j/k` 滚动 · `PgUp/PgDn` · `ctrl+u/d` 翻页 · `g/G` 首末 · `Esc` 返回 · `ctrl+p` 命令 · `ctrl+k` | 只读，无单字符功能键 |
-| 命令菜单（模态） | 第一行可用命令 | `↑/↓` 或 `j/k` 移动 · `Enter` 运行 · `Esc` 关闭 | 禁用的行跳过、不运行，行内写明原因 |
+| 命令菜单（模态） | 第一行可用命令 | `↑/↓` 或 `j/k` 移动 · `←/→` 或 `h/l` 调整主题/语言 · `Enter` 运行/应用 · `Esc` 关闭 | 禁用的行跳过、不运行，行内写明原因；`←/→` 只在主题/语言行上有效 |
 
 Options 的两块模型：
 
@@ -435,7 +435,7 @@ def resolve(contexts, overrides=None, budget=None) -> list[tuple[str, str, str]]
 4. 禁用：构造“无单元/无日志”的管理区，断言 `[5]`/`[4]` 仍在行文本里、带文字标记、`check_action` 为 False、底栏不出现其主动作。
 5. 危险动作：`confirm.install`、`run.abort`、`menu.item.uninstall`、`snapshot.rollback`；`confirm.install` 只存在于确认页（`Y` 之前必须经过 Review），卸载与回滚经过 `ConfirmDialog`，`run.abort` 直接生效。
 5b. 本地源码：`tests/ui/test_local_source.py` 断言检测顺序、脏工作区、找不到时留空并提示、`ctrl+e` 只在本地源码时可开、空路径与非法路径留在对话框并给原因、`~` 展开、接受后进入 `opts.local_path` 并出现在 Review 的计划里，以及 66 列底栏裁掉提示而帮助仍列；`tests/test_source.py`（`detect_local`/`local_candidates`/`inspect_local`）与 `tests/test_workflow.py`（`local_path` 覆盖 `--root`，其它模式忽略它）补后端一半。
-5c. 命令菜单：`tests/ui/test_commands.py` 逐页打开、运行/描述/禁用原因、↑/↓/j/k/Enter/Esc、Management 的「当前页面」、运行中不开、主题/语言/帮助/关于/退出、66 列与帮助仍列 `ctrl+p 命令`；`test_keymap.py` 把 `app.commands` 当功能键。整套 266 项全绿。
+5c. 命令菜单：`tests/ui/test_commands.py` 逐页打开、运行/描述/禁用原因、↑/↓/j/k/Enter/Esc、Management 的「当前页面」、运行中不开、主题/语言/帮助/关于/退出、66 列与帮助仍列 `ctrl+p 命令`；`test_keymap.py` 把 `app.commands` 当功能键。整套 269 项全绿。
 6. 键位覆盖：`{"wizard.previous": "b"}` 后底栏出现 `b 上一步`，`esc` 不再后退。
 7. 导航链：Welcome（Esc 不动）→ Checks → Options → Review → Confirm（`N` 回 Review）→ Esc/Shift+Tab 逐层回到 Welcome。
 8. 数字：向导页没有数字绑定；管理区 `1..6` 命中对应行；禁用行按数字无状态变化。
@@ -495,7 +495,7 @@ def resolve(contexts, overrides=None, budget=None) -> list[tuple[str, str, str]]
 
 ### 12.2 Vim 是别名，不是第二套动作
 
-`j/k` 挂在 `check.move`、`option.move`、`option.pick`、`menu.move`、`log.scroll` 上；`h/l` 挂在 `welcome.language`；`g/G` 是新动作 `menu.ends` / `log.ends`（列表首末、日志顶部/底部），因为它们没有现成动作可挂。（确认页的两个选项已在 §14 改成 Y/N，`confirm.move` 不复存在。）
+`j/k` 挂在 `check.move`、`option.move`、`option.pick`、`menu.move`、`log.scroll` 上；`h/l` 挂在 `welcome.language`（§19 起也用于命令菜单里的横向选择）；`g/G` 是新动作 `menu.ends` / `log.ends`（列表首末、日志顶部/底部），因为它们没有现成动作可挂。（确认页的两个选项已在 §14 改成 Y/N，`confirm.move` 不复存在。）
 
 `h/l` **不做翻页**：向导的“上一步/下一步”仍然只有 Esc / Enter。原因：`l` 翻页会让一次误触跳过整页，而且与“`h/l` = 左/右”的 Vim 语义打架。向导页不需要横向移动，所以 `h/l` 在 Checks / Options / Review 上没有绑定。
 
@@ -623,8 +623,8 @@ def resolve(contexts, overrides=None, budget=None) -> list[tuple[str, str, str]]
 用户的指示：**Ctrl+P 变成命令菜单**，覆盖所有非运行页；Management 保留并成为第一行。
 
 - 键位：`app.manage` 删除，换成 `app.commands`（`ctrl+p`，上下文 = Welcome / Checks / Options / Review / Result / 管理区）。底栏标签 `命令` / `commands`。Installation 与 Confirm 不绑，运行中的管理动作由 `check_action` 关掉 `app_commands`，所以那两处 Ctrl+P 什么都不做。
-- 菜单：`widgets/commands.py` 的 `CommandMenu`（模态，居中、圆角框、标题「命令」）。`OptionList` 行 = `ChromeScreen.commands()` 返回的 `Command`；禁用的行留在原位，行内写原因；有键的动作在行尾写出那个键。↑/↓ 与 j/k 移动，Enter 运行，Esc 关闭；打开时落在第一行启用项上；禁用行会被光标跳过。没有搜索框。
-- 命令来源：每屏的 `context_commands()` 加在「管理」之后，其余共享（主题 ×3、语言 ×2、帮助、关于、退出）。执行时先关闭菜单，再调用屏幕自己的 `action_*` / app 方法；async 的（主题、语言、重检）交给 `run_worker`，没有第二套逻辑。
+- 菜单：`widgets/commands.py` 的 `CommandMenu`（模态，居中、圆角框、标题「命令」，标题下一行键位提示）。`OptionList` 行 = `ChromeScreen.commands()` 返回的 `Command`；禁用的行留在原位，行内写原因；有键的动作在行尾写出那个键。↑/↓ 与 j/k 移动，Enter 运行，Esc 关闭；打开时落在第一行启用项上；禁用行会被光标跳过。没有搜索框。
+- 命令来源：每屏的 `context_commands()` 加在「管理」之后，其余共享（主题、语言、帮助、关于、退出）。执行时先关闭菜单，再调用屏幕自己的 `action_*` / app 方法；async 的（主题、语言、重检）交给 `run_worker`，没有第二套逻辑。
 - 各屏的命令与禁用原因：
 
   | 命令 | 出现 | 键 | 禁用时 |
@@ -634,8 +634,8 @@ def resolve(contexts, overrides=None, budget=None) -> list[tuple[str, str, str]]
   | 重新检测 | Checks | `ctrl+r` | — |
   | 本地源码路径 | Options | `ctrl+e` | 非本地源码写「仅在本地源码时可用」 |
   | 查看计划 / 命令详情 | Review | `ctrl+e` | 准备失败页写「计划不可用」 |
-  | 主题：系统 / 深色 / 浅色 | 所有页 | — | 当前项标 `(•)`；会话内有效，不改配置文件 |
-  | 语言：中文 / English | 所有页 | — | 当前项标 `(•)`；选完关闭菜单并整页重排 |
+  | 主题（系统 / 深色 / 浅色） | 所有页 | — | §19：一行横向选择，选中项用方括号加粗；会话内有效，不改配置文件 |
+  | 语言（中文 / English） | 所有页 | — | §19：一行横向选择，选中项用方括号加粗；确定后整页重排 |
   | 帮助 | 所有页 | `ctrl+k` | — |
   | 关于 | 所有页 | — | 版本、Python、安装器 / 源码 / 状态目录；任意键关闭 |
   | 退出 | 所有页 | — | 与「退出」按钮、Ctrl+C×2 走同一条退出路径（不再二次确认） |
@@ -643,4 +643,19 @@ def resolve(contexts, overrides=None, budget=None) -> list[tuple[str, str, str]]
 - 主题：`KosApp.theme_mode` 现在存的是**选择**（`system` / `dark` / `light`），`dark` 由 `resolve_mode(choice)` 得；`set_theme()` 换选择、更新 `secondary_style`，并在明暗真的变了时重排当前页（次要文字的样式是建 Text 时写死的）。CLI 改成把原始选择传给 `KosApp`（`--theme`/config 仍是启动值）。
 - 底栏：100 列时除 Options（下方行，本地源码）的英文外都能放下 `ctrl+p 命令`；66 列只剩 Welcome 与 Result。放不下的页面帮助里仍然列出，菜单本身照常可用。
 - 影响面：`welcome.py`/`result.py` 的 `action_app_manage` 删除（管理改由菜单第一行负责）；`strings.py` 的 `key_manage` 换成 `key_commands`，新增菜单/关于文案；`theme/app.tcss` 加菜单与关于框。
-- 测试：`tests/ui/test_commands.py`（19 项）覆盖逐页开关、上下文行、禁用原因、方向/Vim/Esc、每个命令的执行、主题与语言、阻断运行中、66 列与帮助；`test_navigation.py`/`test_manage.py` 打开管理区改成「Ctrl+P → Enter」；底栏两种尺寸整行重钉；`test_keymap.py` 断言 `app.commands`。
+- 测试：`tests/ui/test_commands.py` 覆盖逐页开关、上下文行、禁用原因、方向/Vim/Esc、每个命令的执行、主题与语言、阻断运行中、66 列与帮助；`test_navigation.py`/`test_manage.py` 打开管理区改成「Ctrl+P → Enter」；底栏两种尺寸整行重钉；`test_keymap.py` 断言 `app.commands`。
+
+---
+
+## 19. 本轮变更记录（主题/语言改成横向选择）
+
+用户的指示：**这个语言和主题不能横向切换吗，非要堆在一起**。
+
+- 菜单里不再有 3 行主题、2 行语言：各留一行，行内横向列出选项：
+  `主题  [系统]  深色  浅色` / `Theme  [system]  dark  light`，
+  `语言  [中文]  English` / `Language  中文  [English]`。选中项用方括号包住并加粗，其余不加。
+- 键位：高亮在主题/语言行时，`←/→` 与 `h/l` 在该行内移动选择，到两端停住；`↑/↓` / `j/k` 仍然在行间移动；在别的行上 `←/→` 什么也不做。标题下新增一行键位提示：`↑/↓ 选择 · ←/→ 调整 · ⏎ 运行 · esc 关闭`。
+- 取值是**待定**的：箭头只改行内标记，不动 app；`Enter` 才应用并关闭，`Esc` 关闭且丢弃全部待定项。若打开菜单后同时改了主题和语言，按任意一行上的 `Enter` 会按行顺序都应用（两项都真的变了才调用），仍是在菜单关闭之后执行，重排页面一次。打开菜单时两行都从当前 `theme_mode` / `lang` 预选。
+- 实现：`Command` 增加 `choices`（`Choice(label, run)`）与 `selected`；`CommandMenu` 维护 `pending`，用 `replace_option_prompt_at_index()` 只重画那一行；返回 `tuple[run, ...]`，`ChromeScreen` 在菜单关闭后顺序 await（主题先、语言后），不再有 `current` 标记列。
+- 行数从 9 降到 6（Welcome）：管理 / 主题 / 语言 / 帮助 / 关于 / 退出，66×20 更宽松。其余行、禁用原因、底栏与帮助不变。
+- 测试：`tests/ui/test_commands.py`（22 项）新增/改写：行数与“各只有一行”、预选、`←/→` 与 `h/l` 改待定值、两端停住、普通行上无效、`Enter` 应用（单项与两项同时）、`Esc` 丢弃、语言切换、66 列标记；docs 的 §4 与本节。

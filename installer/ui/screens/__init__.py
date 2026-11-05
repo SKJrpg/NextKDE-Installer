@@ -22,7 +22,7 @@ from textual.widgets import Header, Static
 
 from ...strings import Strings
 from .. import keymap
-from ..widgets.commands import Command, CommandMenu
+from ..widgets.commands import Choice, Command, CommandMenu
 from ..widgets.footer import KeyFooter
 from ..widgets.help import HelpScreen
 
@@ -173,14 +173,17 @@ class ChromeScreen(Screen):
                         enabled=not here,
                         reason=s("cmd_here") if here else "")]
         rows += self.context_commands()
-        for choice in ("system", "dark", "light"):
-            rows.append(Command(f"theme.{choice}", s("cmd_theme") % s("theme_" + choice),
-                                partial(app.set_theme, choice),
-                                current=app.theme_mode == choice))
-        for code, name in (("zh", "中文"), ("en", "English")):
-            rows.append(Command(f"lang.{code}", s("cmd_language") % name,
-                                partial(app.set_language, code),
-                                current=app.lang == code))
+        modes = ("system", "dark", "light")
+        rows.append(Command(
+            "theme", s("cmd_theme"), choices=tuple(
+                Choice(s("theme_" + mode), partial(app.set_theme, mode))
+                for mode in modes),
+            selected=modes.index(app.theme_mode)))
+        rows.append(Command(
+            "lang", s("cmd_language"), choices=(
+                Choice("中文", partial(app.set_language, "zh")),
+                Choice("English", partial(app.set_language, "en"))),
+            selected=0 if app.lang == "zh" else 1))
         rows += [
             Command("help", s("cmd_help"), self.action_help_open, shortcut="ctrl+k"),
             Command("about", s("about_title"), self._open_about),
@@ -196,12 +199,22 @@ class ChromeScreen(Screen):
         self.app.push_screen(CommandMenu(self.strings, self.commands()),
                              callback=self._command_chosen)
 
-    def _command_chosen(self, command) -> None:
-        if command is None:
+    def _command_chosen(self, result) -> None:
+        if result is None:
             return
-        result = command.run()
-        if inspect.isawaitable(result):
-            self.app.run_worker(result)
+        if isinstance(result, tuple):
+            if result:              # a picker applies after the menu is gone
+                self.app.run_worker(self._apply_choices(result))
+            return
+        value = result.run()
+        if inspect.isawaitable(value):
+            self.app.run_worker(value)
+
+    async def _apply_choices(self, runs) -> None:
+        for run in runs:
+            value = run()
+            if inspect.isawaitable(value):
+                await value
 
     def _open_management(self) -> None:
         from .management import ManagementScreen
