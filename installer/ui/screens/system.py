@@ -9,6 +9,7 @@ from textual.containers import Container, VerticalScroll
 from textual.widgets import Static
 
 from ...detect import Probe, detect
+from ..widgets.commands import Command
 from . import WizardScreen
 
 GLYPHS = {"PASS": "✔", "WARN": "⚠", "FAIL": "✖"}
@@ -159,6 +160,10 @@ class SystemScreen(WizardScreen):
         if 0 <= self.row < len(self.rows):
             self.query_one("#probes", VerticalScroll).scroll_to_widget(
                 self.rows[self.row], animate=False)
+
+    def context_commands(self) -> list[Command]:
+        return [Command("refresh", self.strings("cmd_refresh"),
+                        self.action_check_refresh, shortcut="ctrl+r")]
 
     async def action_check_refresh(self) -> None:
         self.app.system = detect(root=self.app.paths.source_root)

@@ -14,6 +14,7 @@ from textual.widgets import Static
 from ... import workflow
 from ...detect import method_label
 from ...plan import build_plan, selected_apps, unsupported
+from ..widgets.commands import Command
 from . import WizardScreen
 
 # A cause the user can act on, most specific first: a host that does not resolve
@@ -222,6 +223,16 @@ class ReviewScreen(WizardScreen):
             text.append("! " if style != quiet else "· ", style=style)
             text.append(line + "\n", style=style)
         return text
+
+    def context_commands(self) -> list[Command]:
+        s, failed = self.strings, bool(self.app.prepare_error)
+        return [
+            Command("log", s("cmd_log"), self.action_log_open, shortcut="ctrl+l",
+                    enabled=failed, reason="" if failed else s("cmd_no_log")),
+            Command("details", s("cmd_details"), self.action_review_details,
+                    shortcut="ctrl+e", enabled=not failed,
+                    reason="" if not failed else s("cmd_plan_unavailable")),
+        ]
 
     def action_review_details(self) -> None:
         self.details = not self.details

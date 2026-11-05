@@ -134,17 +134,21 @@ Two front ends, one plan:
   `install.sh`. `KosApp` owns the wizard state (`opts`, prepared source, steps, cancel
   event) and holds the fixed chrome; `screens/` holds one `Screen` per step (welcome,
   system, options, review, confirm, installation, result) plus the management area
-  (units, snapshots, logs, management); `widgets/confirm.py` is the modal confirmation;
-  every style lives in `theme/app.tcss`. `keymap.py` is the one key table: each screen
-  declares a context, and `keymap.resolve()` feeds the Textual bindings, the one-line
-  hint bar and the `?` overlay, so the three cannot disagree (config `keys` overrides
-  it). Esc only steps back, `q` is the only quit, and installing needs the confirmation
-  page (`screens/confirm.py`) with "back" selected first.
+  (units, snapshots, logs, management); `widgets/confirm.py` is the modal confirmation,
+  `widgets/commands.py` the Ctrl+P command menu (each screen supplies its own rows) and
+  `widgets/about.py` the small about box; every style lives in `theme/app.tcss`.
+  `keymap.py` is the one key table: each screen declares a context, and
+  `keymap.resolve()` feeds the Textual bindings, the one-line hint bar and the `?`
+  overlay, so the three cannot disagree (config `keys` overrides it). Esc only steps
+  back, quitting is Ctrl+C twice (a screen guard owns it while a run is active), Ctrl+Z
+  aborts a run, and installing needs the confirmation page (`screens/confirm.py`) with
+  "back" selected first.
 - **Appearance**: the palette is the terminal's own (`ansi_color=True` and `ansi_default`
   in the stylesheet), so only the mode is resolved: `--theme`, then `theme` in the JSON
   config, then `KOS_THEME=dark|light`, then the background index of `COLORFGBG`
   (`0-6,8` dark, `7,9-15` light), otherwise dark. `theme.py` holds that; `KosApp` keeps
-  it as `theme_mode`/`dark` and every screen takes its secondary text from
+  it as the choice `theme_mode` (system/dark/light) plus `dark`, switchable for the
+  session from the command menu, and every screen takes its secondary text from
   `app.secondary_style` — `dim` on dark (the terminal dims its own foreground) and ANSI 8
   on light (a readable grey rather than a foreground faded towards white). Terminals that
   export no `COLORFGBG` (Konsole does not) fall back to dark; pass `--theme` there.

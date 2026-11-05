@@ -58,9 +58,10 @@ class KosApp(App, inherit_bindings=False):
         super().__init__(ansi_color=True, **kwargs)
         # "system" (or None) follows the terminal; --theme / KOS_THEME / COLORFGBG
         # decide which. Textual's own theme stays out of it: ansi_default is the
-        # terminal's background either way.
-        self.theme_mode = resolve_mode(mode)
-        self.dark = self.theme_mode == "dark"
+        # terminal's background either way. The choice is kept so the command
+        # menu can mark it; only the dark flag is resolved from it.
+        self.theme_mode = mode if mode in ("system", "dark", "light") else "system"
+        self.dark = resolve_mode(self.theme_mode) == "dark"
         # Secondary text: dim is quieter on a dark terminal, but on a light one it
         # only fades towards white; ANSI 8 stays a readable grey there.
         self.secondary_style = "dim" if self.dark else "bright_black"
@@ -139,6 +140,19 @@ class KosApp(App, inherit_bindings=False):
     def invalidate_prepared(self) -> None:
         self.prepared = None
         self.prepare_error = ""
+
+    async def set_theme(self, choice: str) -> None:
+        """Switch the appearance for this session; nothing is written to disk."""
+        if choice not in ("system", "dark", "light") or choice == self.theme_mode:
+            return
+        self.theme_mode = choice
+        dark = resolve_mode(choice) == "dark"
+        changed = dark != self.dark
+        self.dark = dark
+        self.secondary_style = "dim" if dark else "bright_black"
+        if changed:
+            # Secondary text embeds its style, so the page is rebuilt once.
+            await self.screen.recompose()
 
     async def set_language(self, lang: str) -> None:
         """Switch every label now; the wizard keeps its place and its state."""

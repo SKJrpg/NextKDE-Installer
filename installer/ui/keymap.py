@@ -166,7 +166,9 @@ ACTIONS: tuple[Action, ...] = (
            bind=("wizard_back", "wizard_back")),
     Action("menu.act", ("enter",), "key_open", frozenset({MENU}), 10),
     Action("wizard.back", ("escape",), "key_back", frozenset(MENUS), 15),
-    Action("app.manage", ("ctrl+p",), "key_manage", frozenset({WELCOME, RESULT}), 50),
+    # The command menu: every non-run page, including the management area.
+    Action("app.commands", ("ctrl+p",), "key_commands",
+           frozenset({WELCOME, CHECKS, OPTIONS, REVIEW, RESULT}) | MENUS, 50),
     # Abort is immediate; Ctrl+C is the app's quit gesture, so while something
     # runs a hidden guard swallows it before the app binding can fire.
     Action("run.abort", ("ctrl+z",), "key_abort", frozenset({RUN, MENU}) | LISTS, 5,

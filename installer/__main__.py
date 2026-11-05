@@ -251,11 +251,8 @@ def main(argv: list[str] | None = None) -> int:
     # The screen starts from the same Options the flags and config made, so
     # `--source local --apps todo` is already selected when it opens. The theme
     # defaults to system: the flag wins over the config, both over detection.
-    from .ui.theme import resolve_mode
-
-    mode = resolve_mode(args.theme or config.get("theme"))
     return int(KosApp(opts=opts, paths=paths, lang=lang, system=system,
-                      mode=mode).run() or 0)
+                      mode=args.theme or config.get("theme")).run() or 0)
 
 
 if __name__ == "__main__":

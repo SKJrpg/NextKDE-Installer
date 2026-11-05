@@ -136,6 +136,8 @@ class ManageScreen(ChromeScreen):
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         if action in ("run_abort", "run_guard"):
             return bool(self.busy)      # Ctrl+Z aborts, Ctrl+C is swallowed
+        if action == "app_commands":
+            return not self.busy        # an action owns the screen while it runs
         return True
 
     def action_wizard_back(self) -> None:

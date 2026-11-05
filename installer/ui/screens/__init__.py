@@ -10,6 +10,9 @@ letters are Vim.
 
 from __future__ import annotations
 
+import inspect
+from functools import partial
+
 from rich.cells import cell_len
 from rich.text import Text
 from textual.app import ComposeResult
@@ -19,6 +22,7 @@ from textual.widgets import Header, Static
 
 from ...strings import Strings
 from .. import keymap
+from ..widgets.commands import Command, CommandMenu
 from ..widgets.footer import KeyFooter
 from ..widgets.help import HelpScreen
 
@@ -159,6 +163,58 @@ class ChromeScreen(Screen):
     def apply_language(self, strings: Strings) -> None:
         self.strings = strings
         self._bind_keys()
+
+    # -- the command menu -------------------------------------------------
+    def commands(self) -> list[Command]:
+        """Everything this page can run, in one list; subclasses add their own."""
+        s, app = self.strings, self.app
+        here = self.CONTEXT in keymap.MENUS
+        rows = [Command("manage", s("nav_manage"), self._open_management,
+                        enabled=not here,
+                        reason=s("cmd_here") if here else "")]
+        rows += self.context_commands()
+        for choice in ("system", "dark", "light"):
+            rows.append(Command(f"theme.{choice}", s("cmd_theme") % s("theme_" + choice),
+                                partial(app.set_theme, choice),
+                                current=app.theme_mode == choice))
+        for code, name in (("zh", "中文"), ("en", "English")):
+            rows.append(Command(f"lang.{code}", s("cmd_language") % name,
+                                partial(app.set_language, code),
+                                current=app.lang == code))
+        rows += [
+            Command("help", s("cmd_help"), self.action_help_open, shortcut="ctrl+k"),
+            Command("about", s("about_title"), self._open_about),
+            Command("quit", s("quit"), self._quit),
+        ]
+        return rows
+
+    def context_commands(self) -> list[Command]:
+        """The page's own rows, between 管理 and the shared ones."""
+        return []
+
+    def action_app_commands(self) -> None:
+        self.app.push_screen(CommandMenu(self.strings, self.commands()),
+                             callback=self._command_chosen)
+
+    def _command_chosen(self, command) -> None:
+        if command is None:
+            return
+        result = command.run()
+        if inspect.isawaitable(result):
+            self.app.run_worker(result)
+
+    def _open_management(self) -> None:
+        from .management import ManagementScreen
+
+        self.app.push_screen(ManagementScreen(self.strings))
+
+    def _open_about(self) -> None:
+        from ..widgets.about import AboutScreen
+
+        self.app.push_screen(AboutScreen())
+
+    def _quit(self) -> None:
+        self.app.exit(self.app.exit_code)
 
     # -- shared actions ---------------------------------------------------
     def action_help_open(self) -> None:

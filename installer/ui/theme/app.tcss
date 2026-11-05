@@ -415,6 +415,48 @@ HelpScreen {
     color: ansi_default;
 }
 
+/* -- command menu and about ------------------------------------------ */
+CommandMenu, AboutScreen {
+    align: center middle;
+    background: transparent;
+}
+
+#command_box, #about_box {
+    width: 58;
+    max-width: 96%;
+    height: auto;
+    max-height: 90%;
+    border: round $foreground;
+    /* The terminal's own background: the page behind must not show through. */
+    background: ansi_default;
+    color: ansi_default;
+    padding: 1 2;
+}
+
+#command_title, #about_title {
+    height: auto;
+    text-style: bold;
+}
+
+#about_body {
+    height: auto;
+    margin-top: 1;
+}
+
+#about_close {
+    height: auto;
+    margin-top: 1;
+    color: ansi_default;
+}
+
+#command_list {
+    height: auto;
+    max-height: 16;
+    border: none;
+    padding: 0;
+    background: transparent;
+}
+
 /* Ctrl+C is not a quit key; its notice shrink-wraps so it sits on the right
    edge instead of floating mid-screen in a half-width box. */
 Toast {

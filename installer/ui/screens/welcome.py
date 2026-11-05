@@ -71,8 +71,3 @@ class WelcomeScreen(WizardScreen):
         from .system import SystemScreen
 
         self.app.push_screen(SystemScreen(self.strings))
-
-    def action_app_manage(self) -> None:
-        from .management import ManagementScreen
-
-        self.app.push_screen(ManagementScreen(self.strings))

@@ -19,6 +19,7 @@ from textual.widgets import Checkbox, RadioButton, Static
 from ...backend.models import ACTIVATION_START, INSTALL_APPS, INSTALL_LOCKSCREEN
 from ...plan import ALL_APPS
 from ...source import manager
+from ..widgets.commands import Command
 from ..widgets.local_path import LocalPathDialog
 from . import ChoicePasses, EnterPasses, WizardScreen
 
@@ -270,6 +271,13 @@ class OptionsScreen(WizardScreen):
                 text = s("local_detecting") if self._detecting else s("local_not_found")
         self.query_one("#local_state", Static).update(
             Text(text, style=self.app.secondary_style))
+
+    def context_commands(self) -> list[Command]:
+        local = self.app.opts.source == "local"
+        return [Command("local-path", self.strings("local_path_title"),
+                        self.action_option_local_path, shortcut="ctrl+e",
+                        enabled=local,
+                        reason="" if local else self.strings("cmd_need_local"))]
 
     def action_option_local_path(self) -> None:
         """Ctrl+E: type a checkout path instead of taking the detected one."""

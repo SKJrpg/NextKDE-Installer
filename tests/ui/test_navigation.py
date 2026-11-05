@@ -43,6 +43,7 @@ if HAS_TEXTUAL:
     from installer.ui.screens.system import SystemScreen
     from installer.ui.screens.units import UnitsScreen
     from installer.ui.screens.welcome import WelcomeScreen
+    from installer.ui.widgets.commands import CommandMenu
     from installer.ui.widgets.confirm import ConfirmDialog
     from installer.ui.widgets.help import HelpScreen
 
@@ -52,30 +53,36 @@ UNITS = [manage.Unit("core", "1.0", "dirs", 4, "2026-01-01T00:00:00"),
 SNAPSHOTS = [manage.Snapshot("s1", "2026-01-01T00:00:00", "before", "config")]
 
 FOOTERS = {
-    "welcome": "Tab next  ←/→ language  ctrl+p manage  ctrl+k help",
-    "checks": "↑/↓ select  Tab next  ctrl+r re-check  Shift+Tab back  ctrl+k help",
+    "welcome": "Tab next  ←/→ language  ctrl+p commands  ctrl+k help",
+    "checks": "↑/↓ select  Tab next  ctrl+r re-check  Shift+Tab back  "
+              "ctrl+p commands  ctrl+k help",
     "options_source": "↑/↓ select  ⏎ options below  Tab next  Shift+Tab back  "
-                      "ctrl+k help",
+                      "ctrl+p commands  ctrl+k help",
     "options_check": "↑/↓ move  ⏎ confirm  space toggle  Tab next  "
-                     "Shift+Tab back  ctrl+k help",
-    "review": "⏎ continue  Tab next  ctrl+e commands  Shift+Tab back  ctrl+k help",
-    "review_failed": "ctrl+r retry  ctrl+l log  Shift+Tab back  ctrl+k help",
+                     "Shift+Tab back  ctrl+p commands  ctrl+k help",
+    "review": "⏎ continue  Tab next  ctrl+e details  Shift+Tab back  "
+              "ctrl+p commands  ctrl+k help",
+    "review_failed": "ctrl+r retry  ctrl+l log  Shift+Tab back  "
+                     "ctrl+p commands  ctrl+k help",
     "confirm": "y confirm  n cancel  ctrl+k help",
     "installation": "ctrl+z abort  ctrl+k help",
-    "result_ok": "ctrl+l log  ctrl+p manage  ctrl+k help",
-    "result_failed": "ctrl+r retry  ctrl+l log  ctrl+p manage  ctrl+k help",
+    "result_ok": "ctrl+l log  ctrl+p commands  ctrl+k help",
+    "result_failed": "ctrl+r retry  ctrl+l log  ctrl+p commands  ctrl+k help",
     "management": "1–6 go to  ↑/↓ select  g/G first/last  ⏎ open  esc back  "
-                  "ctrl+k help",
-    "units": "↑/↓ select  g/G first/last  ⏎ toggle  esc back  ctrl+k help",
+                  "ctrl+p commands  ctrl+k help",
+    "units": "↑/↓ select  g/G first/last  ⏎ toggle  esc back  "
+             "ctrl+p commands  ctrl+k help",
     "snapshots": "↑/↓ select  g/G first/last  ⏎ roll back  ctrl+n create  "
-                 "esc back  ctrl+k help",
-    "logs": "↑/↓ select  g/G first/last  ⏎ open  esc back  ctrl+k help",
-    "log_view": "↑/↓ scroll  ctrl+u/d page  g/G first/last  esc back  ctrl+k help",
+                 "esc back  ctrl+p commands  ctrl+k help",
+    "logs": "↑/↓ select  g/G first/last  ⏎ open  esc back  "
+            "ctrl+p commands  ctrl+k help",
+    "log_view": "↑/↓ scroll  ctrl+u/d page  g/G first/last  esc back  "
+                "ctrl+p commands  ctrl+k help",
 }
 
 # At 66 columns the fit drops the secondary hints first; help always stays.
 FOOTERS_NARROW = {
-    "welcome": "Tab next  ←/→ language  ctrl+p manage  ctrl+k help",
+    "welcome": "Tab next  ←/→ language  ctrl+p commands  ctrl+k help",
     "checks": "↑/↓ select  Tab next  Shift+Tab back  ctrl+k help",
     "options_source": "⏎ options below  Tab next  Shift+Tab back  ctrl+k help",
     "options_check": "⏎ confirm  space toggle  Tab next  Shift+Tab back  ctrl+k help",
@@ -83,8 +90,8 @@ FOOTERS_NARROW = {
     "review_failed": "ctrl+r retry  Shift+Tab back  ctrl+k help",
     "confirm": "y confirm  n cancel  ctrl+k help",
     "installation": "ctrl+z abort  ctrl+k help",
-    "result_ok": "ctrl+l log  ctrl+p manage  ctrl+k help",
-    "result_failed": "ctrl+r retry  ctrl+l log  ctrl+p manage  ctrl+k help",
+    "result_ok": "ctrl+l log  ctrl+p commands  ctrl+k help",
+    "result_failed": "ctrl+r retry  ctrl+l log  ctrl+p commands  ctrl+k help",
     "management": "1–6 go to  ↑/↓ select  ⏎ open  esc back  ctrl+k help",
     "units": "↑/↓ select  g/G first/last  ⏎ toggle  esc back  ctrl+k help",
     "snapshots": "↑/↓ select  ⏎ roll back  ctrl+n create  esc back  ctrl+k help",
@@ -336,10 +343,7 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
     async def test_a_modal_question_suppresses_the_quit_gesture(self) -> None:
         app = self.manage_app()
         async with app.run_test(size=(100, 30)) as pilot:
-            await pilot.press("ctrl+p")
-            await self.wait_for(pilot, lambda: isinstance(app.screen, ManagementScreen)
-                                and app.screen.query_one("#manage_list",
-                                                         OptionList).option_count == 6)
+            await self.open_management(pilot, app)
             await pilot.press("5")              # uninstall asks for a typed word
             await pilot.pause()
             self.assertIsInstance(app.screen, ConfirmDialog)
@@ -436,7 +440,8 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
             body = str(app.screen.query_one("#help_body").render())
             self.assertIn("re-check", body)
             self.assertIn("j/k", body)             # the Vim aliases are listed
-            self.assertNotIn("commands", body)      # that key lives on Review
+            self.assertNotIn("ctrl+e", body)        # details live on Review
+            self.assertIn("ctrl+p", body)           # the command menu is here
             await pilot.press("escape")
             await pilot.pause()
             await pilot.press("tab")               # Options
@@ -459,7 +464,7 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertEqual(foot(app),
                              "↑/↓ select  Tab next  ctrl+r re-check  b back  "
-                             "ctrl+k help")
+                             "ctrl+p commands  ctrl+k help")
             await pilot.press("b")
             await pilot.pause()
             self.assertIsInstance(app.screen, WelcomeScreen)
@@ -499,10 +504,7 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
     async def test_vim_keys_in_the_menu_and_the_log(self) -> None:
         app = self.manage_app()
         async with app.run_test(size=(100, 30)) as pilot:
-            await pilot.press("ctrl+p")
-            await self.wait_for(pilot, lambda: isinstance(app.screen, ManagementScreen)
-                                and app.screen.query_one("#manage_list",
-                                                         OptionList).option_count == 6)
+            await self.open_management(pilot, app)
             listing = app.screen.query_one("#manage_list", OptionList)
             await pilot.press("j")
             await pilot.pause()
@@ -685,13 +687,19 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
                       paths=Paths.resolve(source_root=ROOT),
                       prepare=fake_prepare, session_factory=factory)
 
+    async def open_management(self, pilot, app) -> None:
+        """Ctrl+P is the command menu now; 管理 is its first row."""
+        await pilot.press("ctrl+p")
+        await self.wait_for(pilot, lambda: isinstance(app.screen, CommandMenu))
+        await pilot.press("enter")
+        await self.wait_for(pilot, lambda: isinstance(app.screen, ManagementScreen)
+                            and app.screen.query_one("#manage_list",
+                                                     OptionList).option_count == 6)
+
     async def test_management_menu_footer_and_disabled_slot(self) -> None:
         app = self.manage_app(units=[], snapshots=[], logs=())
         async with app.run_test(size=(66, 20)) as pilot:
-            await pilot.press("ctrl+p")
-            await self.wait_for(pilot, lambda: isinstance(app.screen, ManagementScreen)
-                                and app.screen.query_one("#manage_list",
-                                                         OptionList).option_count == 6)
+            await self.open_management(pilot, app)
             self.assertEqual(foot(app), FOOTERS_NARROW["management"])
             rows = [str(option.prompt) for option in
                     app.screen.query_one("#manage_list", OptionList).options]
@@ -711,10 +719,7 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
     async def test_management_opens_children_and_their_footers(self) -> None:
         app = self.manage_app()
         async with app.run_test(size=(100, 30)) as pilot:
-            await pilot.press("ctrl+p")
-            await self.wait_for(pilot, lambda: isinstance(app.screen, ManagementScreen)
-                                and app.screen.query_one("#manage_list",
-                                                         OptionList).option_count == 6)
+            await self.open_management(pilot, app)
             await pilot.press("1")
             await self.wait_for(pilot, lambda: isinstance(app.screen, UnitsScreen)
                                 and app.screen.query_one("#manage_list",
@@ -743,10 +748,7 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
     async def test_uninstall_keeps_the_typed_word(self) -> None:
         app = self.manage_app()
         async with app.run_test(size=(100, 30)) as pilot:
-            await pilot.press("ctrl+p")
-            await self.wait_for(pilot, lambda: isinstance(app.screen, ManagementScreen)
-                                and app.screen.query_one("#manage_list",
-                                                         OptionList).option_count == 6)
+            await self.open_management(pilot, app)
             await pilot.press("5")
             await pilot.pause()
             self.assertIsInstance(app.screen, ConfirmDialog)
@@ -756,10 +758,7 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
     async def test_abort_on_a_busy_menu_stops_the_action(self) -> None:
         app = self.manage_app(session_mode="cancel")
         async with app.run_test(size=(100, 30)) as pilot:
-            await pilot.press("ctrl+p")
-            await self.wait_for(pilot, lambda: isinstance(app.screen, ManagementScreen)
-                                and app.screen.query_one("#manage_list",
-                                                         OptionList).option_count == 6)
+            await self.open_management(pilot, app)
             await pilot.press("1")
             await self.wait_for(pilot, lambda: isinstance(app.screen, UnitsScreen)
                                 and app.screen.query_one("#manage_list",

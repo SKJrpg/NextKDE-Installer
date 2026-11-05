@@ -7,6 +7,7 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, VerticalScroll
 from textual.widgets import Button, Static
 
+from ..widgets.commands import Command
 from . import WizardScreen
 
 
@@ -89,16 +90,17 @@ class ResultScreen(WizardScreen):
         if self.result != "ok":
             self.dismiss("retry")
 
+    def context_commands(self) -> list[Command]:
+        enabled = self.log_path is not None
+        return [Command("log", self.strings("cmd_log"), self.action_log_open,
+                        shortcut="ctrl+l", enabled=enabled,
+                        reason="" if enabled else self.strings("cmd_no_log"))]
+
     def action_log_open(self) -> None:
         from .logs import LogViewerScreen
 
         if self.log_path is not None:
             self.app.push_screen(LogViewerScreen(self.strings, self.log_path))
-
-    def action_app_manage(self) -> None:
-        from .management import ManagementScreen
-
-        self.app.push_screen(ManagementScreen(self.strings))
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "retry":
