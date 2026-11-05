@@ -118,7 +118,7 @@ class ManageTest(unittest.IsolatedAsyncioTestCase):
         self.fail("condition was never met")
 
     async def open_manage(self, pilot, app) -> None:
-        await pilot.press("m")
+        await pilot.press("ctrl+p")
         await self.wait_for(
             pilot, lambda: isinstance(app.screen, ManagementScreen)
             and app.screen.query_one("#manage_list", OptionList).option_count == 6)

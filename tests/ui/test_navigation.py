@@ -51,7 +51,7 @@ UNITS = [manage.Unit("core", "1.0", "dirs", 4, "2026-01-01T00:00:00"),
 SNAPSHOTS = [manage.Snapshot("s1", "2026-01-01T00:00:00", "before", "config")]
 
 FOOTERS = {
-    "welcome": "⏎ next  ←/→ language  m manage  q quit  ? help",
+    "welcome": "⏎ next  ←/→ language  ^P manage  q quit  ? help",
     "checks": "↑/↓ select  ⏎ next  r re-check  esc back  q quit  ? help",
     "options_radio": "↑/↓ select  ⏎ next  esc back  q quit  ? help",
     "options_check": "space toggle  ↑/↓ move  ⏎ next  esc back  q quit  ? help",
@@ -59,8 +59,8 @@ FOOTERS = {
     "review_failed": "r retry  l log  esc back  q quit  ? help",
     "confirm": "1/2 select  ⏎ confirm  esc back  ? help",
     "installation": "ctrl+c abort  ? help",
-    "result_ok": "q exit  l log  m manage  ? help",
-    "result_failed": "r retry  l log  m manage  q exit  ? help",
+    "result_ok": "q exit  l log  ^P manage  ? help",
+    "result_failed": "r retry  l log  ^P manage  q exit  ? help",
     "management": "1–6 go to  ↑/↓ select  ⏎ open  esc back  ? help",
     "units": "↑/↓ select  ⏎ toggle  esc back  ? help",
     "snapshots": "↑/↓ select  ⏎ roll back  c create  esc back  ? help",
@@ -459,7 +459,7 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
     async def test_management_menu_footer_and_disabled_slot(self) -> None:
         app = self.manage_app(units=[], snapshots=[], logs=())
         async with app.run_test(size=(66, 20)) as pilot:
-            await pilot.press("m")
+            await pilot.press("ctrl+p")
             await self.wait_for(pilot, lambda: isinstance(app.screen, ManagementScreen)
                                 and app.screen.query_one("#manage_list",
                                                          OptionList).option_count == 6)
@@ -482,7 +482,7 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
     async def test_management_opens_children_and_their_footers(self) -> None:
         app = self.manage_app()
         async with app.run_test(size=(100, 30)) as pilot:
-            await pilot.press("m")
+            await pilot.press("ctrl+p")
             await self.wait_for(pilot, lambda: isinstance(app.screen, ManagementScreen)
                                 and app.screen.query_one("#manage_list",
                                                          OptionList).option_count == 6)
@@ -514,7 +514,7 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
     async def test_uninstall_keeps_the_typed_word(self) -> None:
         app = self.manage_app()
         async with app.run_test(size=(100, 30)) as pilot:
-            await pilot.press("m")
+            await pilot.press("ctrl+p")
             await self.wait_for(pilot, lambda: isinstance(app.screen, ManagementScreen)
                                 and app.screen.query_one("#manage_list",
                                                          OptionList).option_count == 6)

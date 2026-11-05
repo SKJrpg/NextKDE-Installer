@@ -23,7 +23,7 @@
 2. **Space = 切换/选中**，只作用于有布尔或选项的控件。
 3. **Esc = 后退一层**，没有后退时就不绑定（不出现、不响应）。
 4. **q = 退出**，向导有状态时 `ConfirmDialog` 确认，默认焦点「继续」。
-5. 单字符键（`m` 管理、`r` 重试/重检、`l` 日志、`t` 详情、`c` 新建）只在**没有文本输入聚焦**时生效；`Input` 聚焦时全部让位。只在菜单里出现的行（Doctor、卸载）不额外给字母——`[n]` 已足够，字母留给跨屏反复出现的动作。
+5. 单字符键（`r` 重试/重检、`l` 日志、`t` 详情、`c` 新建）只在**没有文本输入聚焦**时生效；`Input` 聚焦时全部让位。`^P` 是控制键，只出现在没有输入框的 Welcome / Result。只在菜单里出现的行（Doctor、卸载）不额外给字母——`[n]` 已足够，字母留给跨屏反复出现的动作。
 6. 数字只用于**有序选项**：菜单行（`[n]`）与确认页的两个选项（`1`/`2`）；不用于线性向导跳步。禁用项保留自己的槽位。
 
 ---
@@ -60,7 +60,7 @@
 | 动作 ID | 默认键 | 上下文 | 标签（strings key） | 备注 |
 |---|---|---|---|---|
 | `app.quit` | `q` | app（`wizard.run` 除外） | `key_quit` 退出 / quit | 有状态时先确认 |
-| `app.manage` | `m` | `wizard.welcome`、`wizard.result` | `key_manage` 管理 / manage | 栈式进入管理区 |
+| `app.manage` | `Ctrl+P`（底栏 `^P`） | `wizard.welcome`、`wizard.result` | `key_manage` 管理 / manage | 栈式进入管理区 |
 | `help.open` | `?` | app | `key_help` 帮助 / help | 覆盖层用当前上下文 |
 | `focus.next` | `Tab` | app | `key_focus_next` 下一项 / next field | 隐藏：不进底栏，只进帮助 |
 | `focus.prev` | `Shift+Tab` | app | `key_focus_prev` 上一项 / previous field | 隐藏，同上 |
@@ -107,14 +107,14 @@
 
 | 屏幕 | 默认焦点 | 键位 | 禁用/例外 |
 |---|---|---|---|
-| Welcome | 无（`#language` 只是文本） | `←/→` 语言 · `Enter` 下一步 · `m` 管理 · `q` 退出 · `?` | **没有 Esc**（无路可退）；q 直接退出 |
+| Welcome | 无（`#language` 只是文本） | `←/→` 语言 · `Enter` 下一步 · `^P` 管理 · `q` 退出 · `?` | **没有 Esc**（无路可退）；q 直接退出 |
 | Checks | 第一行探针 | `↑/↓` 选择 · `Enter` 下一步 · `r` 重新检测 · `Esc` 返回 · `q` 退出 · `?` | 无探针时 `check.move` 不绑定 |
 | Options | `source_stable` | `Tab/Shift+Tab` 换控件 · `↑/↓` 组内移动 · `Space` 切换 · `Enter` 下一步 · `Esc` 返回 · `q` 退出 · `?` | `core` 行 disabled，Tab 跳过；后端不支持的项 disabled + 文字标记 |
 | Review（正常） | 页面本身 | `Enter` 进入确认页 · `t` 命令详情 · `Esc` 返回 · `q` 退出 · `?` | 计划为空时 Enter 不绑定 |
 | Review（准备失败） | 页面本身 | 上一行去掉 `Enter`/`t`，加 `r` 重试 · `l` 日志 | 失败块本身写明这三个键 |
 | Confirm（新） | 「返回上一步」单选行 | `↑/↓` 或 `1`/`2` 选择 · `Enter` 确认 · `Esc` 返回 · `?` | 未选「开始安装」时 Enter = 返回；`q` 不绑定（先返回再退，避免运行中被 q 打断） |
 | Installation | 无（`#cancel` 仅鼠标，`can_focus=False`） | `Ctrl+C` 中止（确认框） · `?` | 导航键全部不绑定：无 Esc、无 q、无 Tab、无数字。`?` 允许——只读覆盖层，不改运行状态 |
-| Result | 失败/取消 →「重试」；成功 →「退出」 | `Enter` 激活聚焦按钮 · `r` 重试（非成功） · `l` 日志 · `m` 管理 · `q` 退出 · `?` | 成功页无 `r` |
+| Result | 失败/取消 →「重试」；成功 →「退出」 | `Enter` 激活聚焦按钮 · `r` 重试（非成功） · `l` 日志 · `^P` 管理 · `q` 退出 · `?` | 成功页无 `r` |
 | Management | 第一行菜单项 | `1–6` 直达 · `↑/↓` 选择 · `Enter` 打开 · `Esc` 返回 · `?`；动作运行中另加 `Ctrl+C` 中止 | 禁用项保留编号、文字标注、按数字无动作 |
 | Units | 第一行单元 | `↑/↓` 选择 · `Enter`/`Space` 切换 · `Esc` 返回 · `?`；运行中加 `Ctrl+C` | `core` 关闭被拒绝并给一行原因 |
 | Snapshots | 第一行快照 | `↑/↓` 选择 · `Enter` 回滚（确认） · `c` 新建 · `Esc` 返回 · `?`；运行中加 `Ctrl+C` | 空列表时 `c` 仍可用 |
@@ -190,7 +190,7 @@ Management（`ManagementScreen`）是唯一菜单；子页是列表。
 
 | 场景 | zh | en |
 |---|---|---|
-| Welcome | `⏎ 下一步  ←/→ 语言  m 管理  q 退出  ? 帮助` | `⏎ next  ←/→ language  m manage  q quit  ? help` |
+| Welcome | `⏎ 下一步  ←/→ 语言  ^P 管理  q 退出  ? 帮助` | `⏎ next  ←/→ language  ^P manage  q quit  ? help` |
 | Checks | `↑↓ 选择  ⏎ 下一步  r 重新检测  esc 返回  q 退出  ? 帮助` | `↑↓ select  ⏎ next  r re-check  esc back  q quit  ? help` |
 | Options（复选聚焦） | `空格 切换  ↑↓ 移动  ⏎ 下一步  esc 返回  q 退出  ? 帮助` | `space toggle  ↑↓ move  ⏎ next  esc back  q quit  ? help` |
 | Options（单选聚焦） | `↑↓ 选择  ⏎ 下一步  esc 返回  q 退出  ? 帮助` | `↑↓ select  ⏎ next  esc back  q quit  ? help` |
@@ -198,8 +198,8 @@ Management（`ManagementScreen`）是唯一菜单；子页是列表。
 | Review（失败） | `r 重试  l 日志  esc 返回  q 退出  ? 帮助` | `r retry  l log  esc back  q quit  ? help` |
 | Confirm | `1/2 选择  ⏎ 确认  esc 返回  ? 帮助` | `1/2 choose  ⏎ confirm  esc back  ? help` |
 | Installation | `ctrl+c 中止  ? 帮助` | `ctrl+c abort  ? help` |
-| Result（成功） | `q 退出  l 日志  m 管理  ? 帮助` | `q exit  l log  m manage  ? help` |
-| Result（失败/取消） | `r 重试  l 日志  m 管理  q 退出  ? 帮助` | `r retry  l log  m manage  q exit  ? help` |
+| Result（成功） | `q 退出  l 日志  ^P 管理  ? 帮助` | `q exit  l log  ^P manage  ? help` |
+| Result（失败/取消） | `r 重试  l 日志  ^P 管理  q 退出  ? 帮助` | `r retry  l log  ^P manage  q exit  ? help` |
 | Management | `1–6 直达  ↑↓ 选择  ⏎ 打开  esc 返回  ? 帮助` | `1–6 go to  ↑↓ select  ⏎ open  esc back  ? help` |
 | Units | `↑↓ 选择  ⏎ 切换  esc 返回  ? 帮助` | `↑↓ select  ⏎ toggle  esc back  ? help` |
 | Snapshots | `↑↓ 选择  ⏎ 回滚  c 新建  esc 返回  ? 帮助` | `↑↓ select  ⏎ roll back  c create  esc back  ? help` |
@@ -236,7 +236,7 @@ Management（`ManagementScreen`）是唯一菜单；子页是列表。
 |---|---|---|---|
 | `cycle_language` | Welcome | `welcome.language` | `←/→`（去掉 Tab） |
 | `open_system` | Welcome | `wizard.next` | `Enter` |
-| `open_manage` | Welcome / Result | `app.manage` | `m` |
+| `open_manage` | Welcome / Result | `app.manage` | `Ctrl+P` |
 | `quit`（Welcome 屏） | Welcome | `app.quit` | `q` |
 | `move(±1)` | Checks | `check.move` | `↑/↓` |
 | `refresh` | Checks | `check.refresh` | `r` |
@@ -311,7 +311,7 @@ def resolve(contexts, overrides=None, budget=None) -> list[tuple[str, str, str]]
 | `Ctrl+Z` / `Ctrl+\` / `Ctrl+D` | 挂起 / SIGQUIT / EOF | 不绑 |
 | `Ctrl+C` | SIGINT；同时是 Textual 的复制 | 只在 Installation（`run.abort`）和管理区动作运行中绑；其余屏交给复制 |
 | `Ctrl+A` / `Ctrl+B` | tmux/screen 前缀 | 不绑 |
-| `Ctrl+P` | 命令面板（已 `ENABLE_COMMAND_PALETTE=False`） | 不绑 |
+| `Ctrl+P` | 命令面板已关（`ENABLE_COMMAND_PALETTE=False`） | 绑 `app.manage`（Welcome / Result） |
 | `Alt-<键>` | 终端/SSH 下常被拆成裸 Esc，产生误后退 | 不绑任何 Alt 组合 |
 | `Esc` 时序 | 真终端里裸 Esc 不等待；箭头是 `ESC [` 序列 | 只用裸 `Esc`；不要依赖“Esc 连按”语义 |
 | `F1–F12` | macOS/tmux/终端常拦截 | 默认不用（F5 已删） |

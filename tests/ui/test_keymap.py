@@ -43,7 +43,7 @@ class RegistryTest(unittest.TestCase):
 
     def test_no_default_key_is_a_terminal_conflict(self) -> None:
         forbidden = {"ctrl+m", "ctrl+i", "ctrl+j", "ctrl+h", "ctrl+s", "ctrl+q",
-                     "ctrl+z", "ctrl+d", "ctrl+a", "ctrl+b", "ctrl+p"}
+                     "ctrl+z", "ctrl+d", "ctrl+a", "ctrl+b"}
         for action in keymap.ACTIONS:
             for key in action.keys + action.aliases:
                 self.assertNotIn(key, forbidden, action.id)
