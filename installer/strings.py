@@ -175,13 +175,10 @@ _TEXT = {
     "listing_range": ("%d–%d / %d", "%d–%d / %d"),
 
     # -- welcome -------------------------------------------------------
-    "welcome_intro": ("基于 Quickshell 的 KDE Plasma 桌面，包含顶栏、浮动 Dock、启动器、搜索、通知、设置、"
-                      "桌面文件及组件。支持液态玻璃、柔光/磨砂、Material 外观，接入 KWin、"
-                      "NetworkManager、PipeWire、BlueZ、systemd。",
-                      "A KDE Plasma desktop built on Quickshell, with a top bar, floating dock, launcher, "
-                      "search, notifications, settings, desktop files and widgets. Liquid glass, "
-                      "soft/blurred and Material looks; integrates KWin, NetworkManager, PipeWire, "
-                      "BlueZ and systemd."),
+    "welcome_intro": ("为 KDE Plasma 打造的 Quickshell 桌面。\n"
+                      "液态玻璃、浮动 Dock，以及可以随心打造的专属工作空间。",
+                      "A Quickshell desktop for KDE Plasma.\n"
+                      "Liquid glass, a floating dock, and a workspace you can make your own."),
     "label_distro": ("发行版", "Distribution"),
     "label_arch": ("架构", "Architecture"),
     "label_session": ("会话", "Session"),
