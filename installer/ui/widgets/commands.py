@@ -74,13 +74,9 @@ class CommandMenu(ModalScreen[Command | tuple[Callable[[], object], ...] | None]
         text = Text()
         text.append(command.label)
         if command.choices:
-            text.append("  ")
-            for choice_index, choice in enumerate(command.choices):
-                if choice_index:
-                    text.append("  ")
-                chosen = choice_index == self.pending[index]
-                text.append(f"[{choice.label}]" if chosen else choice.label,
-                            style="bold" if chosen else None)
+            # One value at a time; left/right cycles it.
+            text.append("  " + command.choices[self.pending[index]].label,
+                        style="bold")
         if command.shortcut:
             text.append("  " + command.shortcut, style=quiet)
         if command.reason:
@@ -107,7 +103,7 @@ class CommandMenu(ModalScreen[Command | tuple[Callable[[], object], ...] | None]
         command = self.commands[index]
         if not command.choices:
             return
-        moved = max(0, min(self.pending[index] + step, len(command.choices) - 1))
+        moved = (self.pending[index] + step) % len(command.choices)
         if moved != self.pending[index]:
             self.pending[index] = moved
             listing.replace_option_prompt_at_index(index, self._row_text(index))

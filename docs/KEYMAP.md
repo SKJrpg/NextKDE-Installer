@@ -652,8 +652,8 @@ def resolve(contexts, overrides=None, budget=None) -> list[tuple[str, str, str]]
 用户的指示：**这个语言和主题不能横向切换吗，非要堆在一起**。
 
 - 菜单里不再有 3 行主题、2 行语言：各留一行，行内横向列出选项：
-  `主题  [系统]  深色  浅色` / `Theme  [system]  dark  light`，
-  `语言  [中文]  English` / `Language  中文  [English]`。选中项用方括号包住并加粗，其余不加。
+  `主题  系统` / `Theme  system`，`语言  中文` / `Language  English`。
+  只显示当前或待选的一个值，`←/→` 循环切换，待选值加粗。
 - 键位：高亮在主题/语言行时，`←/→` 与 `h/l` 在该行内移动选择，到两端停住；`↑/↓` / `j/k` 仍然在行间移动；在别的行上 `←/→` 什么也不做。标题下新增一行键位提示：`↑/↓ 选择 · ←/→ 调整 · ⏎ 运行 · esc 关闭`。
 - 取值是**待定**的：箭头只改行内标记，不动 app；`Enter` 才应用并关闭，`Esc` 关闭且丢弃全部待定项。若打开菜单后同时改了主题和语言，按任意一行上的 `Enter` 会按行顺序都应用（两项都真的变了才调用），仍是在菜单关闭之后执行，重排页面一次。打开菜单时两行都从当前 `theme_mode` / `lang` 预选。
 - 实现：`Command` 增加 `choices`（`Choice(label, run)`）与 `selected`；`CommandMenu` 维护 `pending`，用 `replace_option_prompt_at_index()` 只重画那一行；返回 `tuple[run, ...]`，`ChromeScreen` 在菜单关闭后顺序 await（主题先、语言后），不再有 `current` 标记列。
