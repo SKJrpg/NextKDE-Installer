@@ -6,6 +6,7 @@ import subprocess
 
 from rich.cells import cell_len
 from rich.text import Text
+from textual import work
 from textual.app import ComposeResult
 from textual.containers import VerticalScroll
 from textual.widgets import Static
@@ -59,6 +60,28 @@ class ReviewScreen(WizardScreen):
 
     def on_mount(self) -> None:
         self.reload()
+        if self.app.prepared is None and not self._resolved:
+            self.resolve_source()
+
+    @work(thread=True, exit_on_error=False)
+    def resolve_source(self) -> None:
+        """Resolve the workspace off the event loop: ls-remote is network I/O."""
+        source = None
+        try:
+            source = workflow.identity(self.app.opts.source, self.app.opts,
+                                       self.app.paths)
+        except (OSError, ValueError, subprocess.SubprocessError):
+            pass
+        try:
+            self.app.call_from_thread(self._source_resolved, source)
+        except RuntimeError:
+            pass
+
+    def _source_resolved(self, source) -> None:
+        self._source = source
+        self._resolved = True
+        if self.is_mounted:
+            self.query_one("#steps", Static).update(self._steps())
 
     def reload(self) -> None:
         """Rebuild every pane from the app's current options and source."""
@@ -146,13 +169,6 @@ class ReviewScreen(WizardScreen):
         Before the source exists, resolve its identity so the argv already
         points inside the workspace that ``preparation.finish()`` creates.
         """
-        if self.app.prepared is None and not self._resolved:
-            self._resolved = True
-            try:
-                self._source = workflow.identity(self.app.opts.source, self.app.opts,
-                                                 self.app.paths)
-            except (OSError, ValueError, subprocess.SubprocessError):
-                self._source = None  # unreachable ref: fall back to the raw plan
         prepared = self.app.prepared or self._source
         return build_plan(self.app.system.family, self.app.opts, self.app.paths,
                           prepared, backend=self.app.backend,
@@ -161,8 +177,11 @@ class ReviewScreen(WizardScreen):
     def _steps(self) -> Text:
         s = self.strings
         quiet = self.app.secondary_style
-        steps = self._plan_steps()
         text = Text(s("review_steps"), style="bold")
+        if self.app.prepared is None and not self._resolved:
+            text.append("\n" + s("review_resolving"), style=quiet)
+            return text
+        steps = self._plan_steps()
         if not steps:
             text.append("\n")
             text.append(s("review_no_steps"), style="yellow")

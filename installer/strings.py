@@ -238,6 +238,7 @@ _TEXT = {
     "review_head": ("安装确认", "Review"),
     "review_summary": ("摘要", "Summary"),
     "review_steps": ("将执行的步骤", "Steps that will run"),
+    "review_resolving": ("正在解析源码…", "Resolving the source…"),
     "review_side": ("副作用与提示", "Side effects and warnings"),
     "review_details": ("[t] 展开完整命令", "[t] show full commands"),
     "review_details_on": ("[t] 收起完整命令", "[t] hide full commands"),
