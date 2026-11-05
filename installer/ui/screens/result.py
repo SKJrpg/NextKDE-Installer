@@ -90,6 +90,9 @@ class ResultScreen(WizardScreen):
         if self.result != "ok":
             self.dismiss("retry")
 
+    def action_result_quit(self) -> None:
+        self.dismiss("quit")
+
     def context_commands(self) -> list[Command]:
         enabled = self.log_path is not None
         return [Command("log", self.strings("cmd_log"), self.action_log_open,

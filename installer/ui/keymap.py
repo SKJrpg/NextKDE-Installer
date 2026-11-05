@@ -117,6 +117,7 @@ ACTIONS: tuple[Action, ...] = (
     Action("review.details", ("ctrl+e",), "key_details", frozenset({REVIEW}), 40),
     Action("review.retry", ("ctrl+r",), "key_retry", frozenset({REVIEW}), 30),
     Action("result.retry", ("ctrl+r",), "key_retry", frozenset({RESULT}), 30),
+    Action("result.quit", ("q",), "quit", frozenset({RESULT}), 20),
     Action("log.open", ("ctrl+l",), "key_log", frozenset({REVIEW, RESULT}), 40),
     Action("check.refresh", ("ctrl+r",), "key_refresh", frozenset({CHECKS}), 40),
     Action("welcome.language", ("left", "right"), "key_language",

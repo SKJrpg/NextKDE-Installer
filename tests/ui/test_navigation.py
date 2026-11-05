@@ -66,8 +66,8 @@ FOOTERS = {
                      "ctrl+p commands  ctrl+k help",
     "confirm": "y confirm  n cancel  ctrl+k help",
     "installation": "ctrl+z abort  ctrl+k help",
-    "result_ok": "ctrl+l log  ctrl+p commands  ctrl+k help",
-    "result_failed": "ctrl+r retry  ctrl+l log  ctrl+p commands  ctrl+k help",
+    "result_ok": "q Quit  ctrl+l log  ctrl+p commands  ctrl+k help",
+    "result_failed": "ctrl+r retry  q Quit  ctrl+l log  ctrl+p commands  ctrl+k help",
     "management": "1–6 go to  ↑/↓ select  g/G first/last  ⏎ open  esc back  "
                   "ctrl+p commands  ctrl+k help",
     "units": "↑/↓ select  g/G first/last  ⏎ toggle  esc back  "
@@ -90,8 +90,8 @@ FOOTERS_NARROW = {
     "review_failed": "ctrl+r retry  Shift+Tab back  ctrl+k help",
     "confirm": "y confirm  n cancel  ctrl+k help",
     "installation": "ctrl+z abort  ctrl+k help",
-    "result_ok": "ctrl+l log  ctrl+p commands  ctrl+k help",
-    "result_failed": "ctrl+r retry  ctrl+l log  ctrl+p commands  ctrl+k help",
+    "result_ok": "q Quit  ctrl+l log  ctrl+p commands  ctrl+k help",
+    "result_failed": "ctrl+r retry  q Quit  ctrl+l log  ctrl+p commands  ctrl+k help",
     "management": "1–6 go to  ↑/↓ select  ⏎ open  esc back  ctrl+k help",
     "units": "↑/↓ select  g/G first/last  ⏎ toggle  esc back  ctrl+k help",
     "snapshots": "↑/↓ select  ⏎ roll back  ctrl+n create  esc back  ctrl+k help",
@@ -233,6 +233,18 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
             app.push_screen(ResultScreen(Strings("en"), "ok"))
             await pilot.pause()
             self.assertEqual(foot(app), FOOTERS["result_ok"])
+
+    async def test_q_quits_from_the_result_page(self) -> None:
+        app = self.make_app()
+        seen = []
+        async with app.run_test(size=(100, 30)) as pilot:
+            app.push_screen(ResultScreen(Strings("en"), "ok"), callback=seen.append)
+            await pilot.pause()
+            self.assertIn("q Quit", foot(app))
+            await pilot.press("q")
+            await pilot.pause()
+            self.assertEqual(seen, ["quit"])
+            self.assertNotIsInstance(app.screen, ResultScreen)
 
     # -- the confirmation page: Y or N, nothing else ----------------------
     async def test_confirm_is_inert_until_y_or_n(self) -> None:
