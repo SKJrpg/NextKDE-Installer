@@ -11,7 +11,8 @@
 | 议题 | 结论 | 一句话理由 |
 |---|---|---|
 | 换页 | 向导页 `Tab` 下一页、`Shift+Tab` 上一页；其余屏幕 `Tab` 仍是焦点 | 线性向导用 Tab 最自然；表单/列表自己还要用 Tab 走焦点 |
-| Enter | 只做“确认/激活”：Options 上作用于当前行，Review 进确认页，Confirm 确认，别的页不做页面切换 | 换页归 Tab，Enter 就不该再兼两份工作 |
+| Enter | 只做“确认/激活”：Options 上作用于当前行，Review 进确认页，别的页不做页面切换；**Confirm 上 Enter 不做任何事** | 换页归 Tab；最后一页只认 Y 和 N |
+| 确认页 | `Y` 开始安装、`N` 返回上一步（`Shift+Tab`/`Esc` 是 N 的别名）；Enter/Tab/方向键/数字都不响应 | 一屏两键，比“移动选中再确认”少一步，也不会被误触 |
 | 功能键 | 一律 `Ctrl+…`：重试/重检 `ctrl+r`、日志 `ctrl+l`、详情 `ctrl+e`、新建 `ctrl+n`、管理 `ctrl+p`、帮助 `ctrl+k`、中止 `ctrl+c`、退出 `ctrl+x` | 单字母键让给导航；功能键同一前缀 |
 | 导航 | Vim：`j`/`k` 下/上、`h`/`l` 左/右、`g`/`G` 首/末；方向键、`Space`、菜单数字不变 | 导航是**别名**，挂在已有动作上 |
 | 安装来源 | 独立成块：`↑/↓` 只换来源，`Enter` 下到下方选项；下方块有自己的光标，首行 `↑` 回到来源 | 来源是单选且会重写工作区，和复选项不是一类东西 |
@@ -25,7 +26,7 @@
 3. **Esc = 后退一层**，向导页上与 `Shift+Tab` 同义；没有后退时就不绑定。
 4. **功能键一律 Ctrl**；单字母只做导航（`j k h l g G`），`?` 是唯一例外且不上海报。
 5. Ctrl 选键避开终端、shell、tmux 的冲突（§9.3）；`ctrl+c` 仍是中止。
-6. 数字只用于**有序选项**：菜单行（`[n]`）与确认页的两个选项（`1`/`2`）。
+6. 数字只用于**有序选项**：菜单行（`[n]`）；确认页不再有数字。
 
 ---
 
@@ -62,7 +63,7 @@
 |---|---|---|---|---|---|
 | `app.quit` | `ctrl+x` | | welcome / checks / options / review | `key_quit` 退出 / quit | 有状态时先确认 |
 | `wizard.next` | `Tab` | | welcome / checks / options / review | `key_next` 下一步 / next | 换页；Confirm 上没有下一页 |
-| `wizard.previous` | `Shift+Tab` | `Esc` | checks / options / review / confirm | `key_previous` 上一步 / back | Esc 是别名，不上底栏 |
+| `wizard.previous` | `Shift+Tab` | `Esc` | checks / options / review | `key_previous` 上一步 / back | Esc 是别名，不上底栏 |
 | `result.exit` | `ctrl+x` | | result | `key_exit` 退出 / exit | 成功页排第一 |
 | `app.manage` | `ctrl+p` | | welcome / result | `key_manage` 管理 / manage | 命令面板已关 |
 | `help.open` | `ctrl+k` | `?` | 全部 | `key_help` 帮助 / help | 别名不进底栏；底栏永远最后一项 |
@@ -81,9 +82,8 @@
 | `review.details` | `ctrl+e` | | review | `key_details` 命令详情 / commands | e = expand |
 | `review.retry` | `ctrl+r` | | review（仅失败） | `key_retry` 重试 / retry | 失败前不绑定 |
 | `log.open` | `ctrl+l` | | review（失败）、result | `key_log` 日志 / log | 复用 `LogViewerScreen` |
-| `review.install` | `Enter` | | confirm（仅选中「开始安装」） | `key_confirm` 确认 / confirm | **danger**，见 §5；Confirm 无 `Tab` |
-| `confirm.pick` | `1` `2` | | confirm | `key_select` 选择 / select | 只移动选中项，不执行 |
-| `confirm.move` | `↑` `↓` | `h` `l` `k` `j` | confirm | `key_move` 移动 / move | 移动即改选中项 |
+| `confirm.install` | `y` | | confirm | `key_install` 开始安装 / install | **danger**；这一页唯一的安装键 |
+| `confirm.back` | `n` | `Esc` `Shift+Tab` | confirm | `key_previous` 上一步 / back | 别名不上底栏 |
 | `result.retry` | `ctrl+r` | | result（非成功） | `key_retry` 重试 / retry | |
 | `run.abort` | `ctrl+c` | | run / menu / list.*（运行中） | `key_abort` 中止 / abort | **danger**，先确认 |
 | `menu.move` | `↑` `↓` | `k` `j` | menu / list.* | `key_select` 选择 / select | `OptionList` 自带方向键 |
@@ -122,7 +122,7 @@
 | Options（下方块） | 第一个可用行 | `↑/↓` 或 `j/k` 移动 · `Enter` 切换复选框 · `Space` 同上（别名） · `Tab` 下一步 · `Shift+Tab` 上一步 · `ctrl+x` · `ctrl+k` | 首行 `↑` 回到当前来源行；末行 `↓` 停住 |
 | Review（正常） | 页面本身 | `Enter` 进确认页 · `Tab` 同上（下一页） · `ctrl+e` 命令详情 · `Shift+Tab` 上一步 · `ctrl+x` · `ctrl+k` | Enter 进的是确认页，不安装 |
 | Review（准备失败） | 页面本身 | `ctrl+r` 重试 · `ctrl+l` 日志 · `Shift+Tab` 上一步 · `ctrl+x` · `ctrl+k` | `Enter`/`Tab`/`ctrl+e` 在失败页禁用 |
-| Confirm | 「返回上一步」单选行 | `1`/`2` 或 `↑/↓` `h/l` `j/k` 选择 · `Enter` 确认 · `Shift+Tab` 上一步 · `ctrl+k` | **没有 Tab**（最后一页）；未选「开始安装」时 Enter = 返回 |
+| Confirm | 页面本身 | `y` 开始安装 · `n` 返回上一步（`Shift+Tab`/`Esc` 同义） · `ctrl+k` | **Enter、Tab、方向键、数字都不响应**，整页保持原样 |
 | Installation | 无（`#cancel` 仅鼠标） | `ctrl+c` 中止（确认框） · `ctrl+k` | 导航键全部不绑定：无 Esc、无 Tab、无 Ctrl+X、无数字 |
 | Result | 失败/取消 →「重试」；成功 →「退出」 | `Enter` 激活聚焦按钮 · `Tab`/`Shift+Tab` 换按钮 · `ctrl+r` 重试（非成功） · `ctrl+l` 日志 · `ctrl+p` 管理 · `ctrl+x` 退出 · `ctrl+k` | 成功页无 `ctrl+r` |
 | Management | 第一行菜单项 | `1–6` 直达 · `↑/↓` 或 `j/k` 选择 · `g/G` 首末 · `Enter` 打开 · `Tab` 换焦点 · `Esc` 返回 · `ctrl+k`；运行中 `ctrl+c` | 禁用项保留编号与文字标注 |
@@ -141,33 +141,29 @@ Options 的两块模型：
 
 ---
 
-## 5. 执行确认页（新）
+## 5. 执行确认页
 
-`installer/ui/screens/confirm.py`，`STEP = 3`（侧栏仍停在「确认」）、`JUMP = False`，从 Review `Enter` 推入；`Esc` 弹回 Review。66×20 版式：
+`installer/ui/screens/confirm.py`，`STEP = 3`（侧栏仍停在「确认」）、`JUMP = False`，从 Review `Enter` 推入。66×20 版式：
 
 ```
- 确认安装？
+ 确认安装
  ────────────────────────────────────────
- 将执行    6 个步骤
+ 将执行    2 个步骤
  源码      v0.3.0 · 2ca59a1f
  写入      ~/.local（无需 root）
- 接管      plasmashell，注销后生效
 
-   ( ) [1] 开始安装
-   (•) [2] 返回上一步          ← 默认
+ 安装会接管 plasmashell，注销重新登录后生效。
 
- 1/2 选择   ↑/↓ 移动   ⏎ 确认   esc 上一步   ctrl+k 帮助
+ Y 开始安装    N 返回上一步
 ```
 
 规则：
 
-- 默认选中「返回上一步」；`Enter` 在默认态 = 返回，不是安装。
-- 安装需要两步：先 `↓`/`j`/`h`（或 `1`）把选中移到「开始安装」，再 `Enter`。
-- `h/l` 与 `j/k` 都改选中项；在「返回」上按 `l`/`j` 不环绕，仍然是「返回」。
-- 只有「开始安装」被选中时 `Enter` 才走 `review.install`（`danger`）；该动作不再叠加第二个确认框——这一页本身就是计划的二次确认。
-- `ctrl+x` 在这一页不绑定：要退出先 `Shift+Tab` 回 Review，从那里 `ctrl+x`（确认后退出）。
-- `Tab` 在这一页也不绑定：最后一页没有“下一页”，误触 Tab 不会安装，也不会改选中项。
-- 计划正文留在 Review 页；确认页只放“会改什么”，因此 66×20 不需要滚动。
+- `Y` 是唯一安装路径，只在这一页有效；`N` 返回 Review，`Shift+Tab` 与 `Esc` 是它的别名。
+- 其余按键一律不响应：`Enter`、`Tab`、`↑/↓`、`j/k`、`h/l`、`1`/`2` 都不会安装、也不会改页面。
+- 这一页本身就是计划的二次确认，所以 `Y` 不再叠加第二个对话框（那是用户明确要的单键确认）。
+- `ctrl+x` 在这一页不绑定：要退出先 `N` 回 Review，从那里 `ctrl+x`（确认后退出）。
+- 计划正文留在 Review 页；确认页只放“会改什么”与两个键，因此 66×20 不需要滚动。
 
 ---
 
@@ -210,7 +206,7 @@ Management（`ManagementScreen`）是唯一菜单；子页是列表。
 | Options（下方行） | `↑/↓ 移动  ⏎ 确认  space 切换  Tab 下一步  Shift+Tab 上一步  ctrl+x 退出  ctrl+k 帮助` | `↑/↓ move  ⏎ confirm  space toggle  Tab next  Shift+Tab back  ctrl+x quit  ctrl+k help` |
 | Review（正常） | `⏎ 继续  Tab 下一步  ctrl+e 命令详情  Shift+Tab 上一步  ctrl+x 退出  ctrl+k 帮助` | `⏎ continue  Tab next  ctrl+e commands  Shift+Tab back  ctrl+x quit  ctrl+k help` |
 | Review（失败） | `ctrl+r 重试  ctrl+l 日志  Shift+Tab 上一步  ctrl+x 退出  ctrl+k 帮助` | `ctrl+r retry  ctrl+l log  Shift+Tab back  ctrl+x quit  ctrl+k help` |
-| Confirm | `1/2 选择  ↑/↓ 移动  ⏎ 确认  Shift+Tab 上一步  ctrl+k 帮助` | `1/2 select  ↑/↓ move  ⏎ confirm  Shift+Tab back  ctrl+k help` |
+| Confirm | `y 开始安装  n 上一步  ctrl+k 帮助` | `y install  n back  ctrl+k help` |
 | Installation | `ctrl+c 中止  ctrl+k 帮助` | `ctrl+c abort  ctrl+k help` |
 | Result（成功） | `ctrl+x 退出  ctrl+l 日志  ctrl+p 管理  ctrl+k 帮助` | `ctrl+x exit  ctrl+l log  ctrl+p manage  ctrl+k help` |
 | Result（失败/取消） | `ctrl+r 重试  ctrl+l 日志  ctrl+p 管理  ctrl+x 退出  ctrl+k 帮助` | `ctrl+r retry  ctrl+l log  ctrl+p manage  ctrl+x exit  ctrl+k help` |
@@ -230,7 +226,7 @@ Management（`ManagementScreen`）是唯一菜单；子页是列表。
 | Options（下方行） | `⏎ confirm  Tab next  Shift+Tab back  ctrl+x quit  ctrl+k help` |
 | Review | `⏎ continue  Tab next  Shift+Tab back  ctrl+x quit  ctrl+k help` |
 | Review（失败） | `ctrl+r retry  Shift+Tab back  ctrl+x quit  ctrl+k help` |
-| Confirm | `1/2 select  ↑/↓ move  ⏎ confirm  Shift+Tab back  ctrl+k help` |
+| Confirm | `y install  n back  ctrl+k help` |
 | Installation | `ctrl+c abort  ctrl+k help` |
 | Result（成功） | `ctrl+x exit  ctrl+l log  ctrl+p manage  ctrl+k help` |
 | Result（失败） | `ctrl+r retry  ctrl+l log  ctrl+x exit  ctrl+k help` |
@@ -301,6 +297,16 @@ Management（`ManagementScreen`）是唯一菜单；子页是列表。
 | Enter 在来源行与下方行含义不同 | 拆成 `option.below`（来源：下去）与 `option.activate`（下方：切换），底栏各写各的词 |
 | 来源行用方向键移动时同时选中 | 移动后调用 `_select_source`：值、标记、明细、`opts.source` 一次性同步 |
 
+### 8.2c 本轮确认页（旧 → 新）
+
+| 动作 | 旧 | 新 | 说明 |
+|---|---|---|---|
+| 安装 | 移动选中项 + `Enter` | `y` | 用户明确改为单键确认；一页两键，误触风险由“必须在这一页”兜住 |
+| 返回 | `1`/`2` 选中「返回」+ `Enter`，或 `Shift+Tab` | `n`（`Esc`/`Shift+Tab` 别名） | 返回键在任何状态下都只回上一页 |
+| 选择 | `1`/`2`、`↑/↓`、`h/l/j/k` | 无 | 没有可选项，就没有“移动选中” |
+| `Enter` | 确认当前选中项 | 不响应 | 单键安装只留给 Y |
+| `review.install` / `confirm.pick` / `confirm.move` | — | 删除 | 换成一个安装键、一个返回键 |
+
 ### 8.3 Textual / 布局层面的冲突
 
 | 现象 | 修法 |
@@ -321,8 +327,8 @@ Management（`ManagementScreen`）是唯一菜单；子页是列表。
 | `quit`（Welcome 屏） | Welcome | `app.quit` | `ctrl+x` |
 | `move(±1)` | Checks | `check.move` | `↑/↓`（`j/k` 别名） |
 | `refresh` | Checks | `check.refresh` | `ctrl+r` |
-| `next` | Options | `wizard.next` | `Enter` |
-| `start` | Review | `review.continue` + `review.install` | `Enter`（两步） |
+| `next` | Options / 各向导页 | `wizard.next` | `Tab` |
+| `start` | Review → Confirm | `review.continue`（Enter 进确认页）+ `confirm.install`（`y` 安装） | `Enter` → `y` |
 | `details` | Review | `review.details` | `ctrl+e` |
 | `retry` | Review | `review.retry` | `ctrl+r`（仅失败） |
 | `open_log` | Review | `log.open` | `ctrl+l` |
@@ -417,9 +423,9 @@ def resolve(contexts, overrides=None, budget=None) -> list[tuple[str, str, str]]
 2. 底栏：对 §7 的每个 (屏幕, 焦点, 状态) 断言**整行文本**在 100×30 与 66×20 下与表一致，且 `cell_len ≤ 66`。
 3. 一致性：底栏出现的每一段文本都能在 `resolve()` 里找到同名 label 的动作，且该动作有 `action_*` 方法；帮助行 ⊇ 底栏行。
 4. 禁用：构造“无单元/无日志”的管理区，断言 `[5]`/`[4]` 仍在行文本里、带文字标记、`check_action` 为 False、底栏不出现其主动作。
-5. 危险动作：`review.install`、`run.abort`、`menu.item.uninstall`、`snapshot.rollback` 的入口都经过 `ConfirmDialog`（用 `push_screen` spy 或断言首个按键不改变状态）。
+5. 危险动作：`confirm.install`、`run.abort`、`menu.item.uninstall`、`snapshot.rollback`；`confirm.install` 只存在于确认页（`Y` 之前必须经过 Review），其余三个都经过 `ConfirmDialog`。
 6. 键位覆盖：`{"wizard.previous": "b"}` 后底栏出现 `b 上一步`，`esc` 不再后退。
-7. 导航链：Welcome（Esc 不动）→ Checks → Options → Review → Confirm（默认返回）→ Esc 逐层回到 Welcome。
+7. 导航链：Welcome（Esc 不动）→ Checks → Options → Review → Confirm（`N` 回 Review）→ Esc/Shift+Tab 逐层回到 Welcome。
 8. 数字：向导页没有数字绑定；管理区 `1..6` 命中对应行；禁用行按数字无状态变化。
 9. 焦点穿透：Options 里 Enter = 下一步（不切换任何复选框），Space 才切换；`Tab` 走组。
 
@@ -477,13 +483,13 @@ def resolve(contexts, overrides=None, budget=None) -> list[tuple[str, str, str]]
 
 ### 12.2 Vim 是别名，不是第二套动作
 
-`j/k` 挂在 `check.move`、`option.move`、`option.pick`、`confirm.move`、`menu.move`、`log.scroll` 上；`h/l` 挂在 `welcome.language`、`confirm.move`；`g/G` 是新动作 `menu.ends` / `log.ends`（列表首末、日志顶部/底部），因为它们没有现成动作可挂。
+`j/k` 挂在 `check.move`、`option.move`、`option.pick`、`menu.move`、`log.scroll` 上；`h/l` 挂在 `welcome.language`；`g/G` 是新动作 `menu.ends` / `log.ends`（列表首末、日志顶部/底部），因为它们没有现成动作可挂。（确认页的两个选项已在 §14 改成 Y/N，`confirm.move` 不复存在。）
 
 `h/l` **不做翻页**：向导的“上一步/下一步”仍然只有 Esc / Enter。原因：`l` 翻页会让一次误触跳过整页，而且与“`h/l` = 左/右”的 Vim 语义打架。向导页不需要横向移动，所以 `h/l` 在 Checks / Options / Review 上没有绑定。
 
 ### 12.3 为了 Vim 顺手而修的两处控件行为
 
-- **单选组**：Textual `RadioSet` 的箭头只移动一个不可见的 `_selected`，值要等 Space。`CursorKeys` 把 `up/down/left/right` 从集合的绑定里摘掉，页面按键直接改 `value`，标记（`(•)`）跟着动。Options 的来源组与 Confirm 的选项都因此“一按就变”。
+- **单选组**：Textual `RadioSet` 的箭头只移动一个不可见的 `_selected`，值要等 Space。`CursorKeys` 把 `up/down/left/right` 从集合的绑定里摘掉，页面按键直接改 `value`，标记（`(•)`）跟着动。Options 的来源组因此“一按就变”。（确认页此后不再用单选组，见 §14。）
 - **确认页不环绕**：在「返回」上按 `l`/`j` 不动，`h`/`k` 才移到「开始安装」——默认态永远是最安全的。
 
 ### 12.4 底栏宽度
@@ -513,7 +519,7 @@ def resolve(contexts, overrides=None, budget=None) -> list[tuple[str, str, str]]
 ### 13.1 换页与 Enter
 
 - 向导页（Welcome/Checks/Options/Review/Confirm）用 `Tab` 下一页、`Shift+Tab` 上一页；`Esc` 在向导页上是 `Shift+Tab` 的别名，但不上底栏。
-- `Enter` 只做确认/激活：Welcome/Checks 上没有动作（按了不动），Options 看当前行（来源 → 下去；复选 → 切换），Review 进确认页，Confirm 确认当前选项。
+- `Enter` 只做确认/激活：Welcome/Checks 上没有动作（按了不动），Options 看当前行（来源 → 下去；复选 → 切换），Review 进确认页。（Confirm 上的 Enter 在 §14 改为不响应。）
 - Confirm 没有 `Tab`：最后一页没有下一页，误触不会安装，也不会改选中项。
 - Result、菜单、列表、日志仍然用 `Tab`/`Shift+Tab` 换焦点（`focus.next/prev` 只在这些上下文里）。
 
@@ -533,8 +539,19 @@ def resolve(contexts, overrides=None, budget=None) -> list[tuple[str, str, str]]
 
 ### 13.4 测试与尺寸
 
-`tests/ui/test_navigation.py` 用 Tab 走页面，新增：Tab 换页而 Enter 不换页、Confirm 上 Tab 无效、来源块不越界、Enter 下去 / 首行 `↑` 回来、空格只切换复选框；底栏两种尺寸整行钉住（英文 66 列表另列）。`tests/ui/test_keymap.py` 增加页面键与焦点键的上下文互斥、以及 `option.pick`/`option.below` 的断言。整套 `232` 项全绿。
+`tests/ui/test_navigation.py` 用 Tab 走页面，新增：Tab 换页而 Enter 不换页、Confirm 上 Tab 无效（§14 起整页只认 Y/N）、来源块不越界、Enter 下去 / 首行 `↑` 回来、空格只切换复选框；底栏两种尺寸整行钉住（英文 66 列表另列）。`tests/ui/test_keymap.py` 增加页面键与焦点键的上下文互斥、以及 `option.pick`/`option.below` 的断言。整套 `232` 项全绿。
 
 ### 13.5 66×20
 
 `Tab`、`Shift+Tab`、`ctrl+k` 的优先级最高，任何宽度都会保留；被裁的是移动提示、`space 切换`、`ctrl+r`、`ctrl+x`。来源行在 66 列英文下只剩 `⏎ options below  Tab next  Shift+Tab back  ctrl+k help`，中文还能留下 `ctrl+x`。
+
+---
+
+## 14. 本轮变更记录（确认页改成 Y / N）
+
+- 确认页删掉 `RadioSet` 与 `1`/`2` 选择，只剩摘要 + 一行提示：`Y 开始安装    N 返回上一步`。
+- 按键：`confirm.install` = `y`（`danger`，调 `app.start_install()`），`confirm.back` = `n`（`Esc`/`Shift+Tab` 为别名）。`review.install`、`confirm.pick`、`confirm.move` 删除；`wizard.previous` 不再覆盖 Confirm。
+- 页面保持惰性：`Enter`、`Tab`、方向键、`j/k/h/l`、`1/2` 都不响应；Tab 仍然因为向导页摘掉继承绑定而为空。
+- 底栏：`y 开始安装  n 上一步  ctrl+k 帮助`（en: `y install  n back  ctrl+k help`），两种尺寸都只有三项。
+- “不可用单键安装”的旧规则被用户本轮显式推翻：Y 是单键，但只在这一页、只在这一屏可选；其余危险动作仍需确认框。
+- 测试：`test_confirm_is_inert_until_y_or_n`（Enter/Tab/1/2/方向/vim 全部无动作、N 返回）、`test_y_installs_and_n_goes_back`、`test_shift_tab_and_escape_both_leave_the_confirm_page`；`start_install` 辅助函数改为 `y`；危险动作集合改为 `confirm.install`。

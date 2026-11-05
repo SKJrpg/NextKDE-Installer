@@ -119,15 +119,13 @@ ACTIONS: tuple[Action, ...] = (
     Action("check.refresh", ("ctrl+r",), "key_refresh", frozenset({CHECKS}), 40),
     Action("welcome.language", ("left", "right"), "key_language",
            frozenset({WELCOME}), 35, display="←/→", aliases=("h", "l")),
-    Action("confirm.pick", ("1", "2"), "key_select", frozenset({CONFIRM}), 10,
-           display="1/2", bind=("confirm_pick(1)", "confirm_pick(2)")),
-    Action("confirm.move", ("up", "down"), "key_move", frozenset({CONFIRM}), 35,
-           display="↑/↓", aliases=("h", "l", "j", "k"),
-           bind=("confirm_move(-1)", "confirm_move(1)",
-                 "confirm_move(-1)", "confirm_move(1)",
-                 "confirm_move(1)", "confirm_move(-1)")),
-    Action("review.install", ("enter",), "key_confirm", frozenset({CONFIRM}), 10,
-           danger=True),
+    # Y installs, N goes back; Enter/Tab/arrows/digits are deliberately inert.
+    # Uppercase is an alias because the prompt prints Y/N and a shifted letter
+    # reaches the terminal as its uppercase form on some terminals.
+    Action("confirm.install", ("y",), "key_install", frozenset({CONFIRM}), 10,
+           danger=True, aliases=("Y",)),
+    Action("confirm.back", ("n",), "key_previous", frozenset({CONFIRM}), 10,
+           aliases=("N", "escape", "shift+tab")),
     Action("menu.goto", ("1", "2", "3", "4", "5", "6"), "menu_goto",
            frozenset({MENU}), 10, display="1–6", bind=()),
     Action("menu.move", ("up", "down"), "key_select", frozenset({MENU}) | LISTS, 35,
@@ -161,7 +159,7 @@ ACTIONS: tuple[Action, ...] = (
     Action("menu.item.back", ("6",), "", frozenset({MENU}), 30, hidden=True),
     # Shift+Tab is the visible page-back key; Esc stays as its alias.
     Action("wizard.previous", ("shift+tab",), "key_previous",
-           frozenset({CHECKS, OPTIONS, REVIEW, CONFIRM}), 5,
+           frozenset({CHECKS, OPTIONS, REVIEW}), 5,
            display="Shift+Tab", aliases=("escape",),
            bind=("wizard_back", "wizard_back")),
     Action("menu.act", ("enter",), "key_open", frozenset({MENU}), 10),

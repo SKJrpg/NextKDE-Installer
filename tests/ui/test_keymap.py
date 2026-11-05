@@ -38,8 +38,10 @@ class RegistryTest(unittest.TestCase):
 
     def test_dangerous_actions_are_declared(self) -> None:
         danger = {action.id for action in keymap.ACTIONS if action.danger}
-        self.assertEqual(danger, {"review.install", "run.abort", "snapshot.rollback",
-                                  "menu.item.uninstall"})
+        # Y on the confirmation page is the one single-key install the user
+        # chose; the rest still confirm first.
+        self.assertEqual(danger, {"confirm.install", "run.abort",
+                                  "snapshot.rollback", "menu.item.uninstall"})
 
     def test_no_default_key_is_a_terminal_conflict(self) -> None:
         # Ctrl+Q is XON, Ctrl+S XOFF, the rest are Enter/Tab/EOF/suspend or
@@ -65,12 +67,12 @@ class RegistryTest(unittest.TestCase):
                 self.assertTrue(key.startswith("ctrl+"), f"{action_id} -> {key}")
 
         navigation = ("check.move", "option.pick", "option.move", "option.activate",
-                      "option.below", "option.toggle", "confirm.move",
-                      "menu.move", "menu.ends",
+                      "option.below", "option.toggle", "confirm.install",
+                      "confirm.back", "menu.move", "menu.ends",
                       "log.scroll", "log.ends", "welcome.language",
                       "unit.toggle", "snapshot.rollback", "logs.open", "menu.act",
                       "wizard.next", "wizard.previous", "wizard.back",
-                      "review.continue", "review.install", "confirm.pick")
+                      "review.continue")
         for action_id in navigation:
             action = next(a for a in keymap.ACTIONS if a.id == action_id)
             for key in action.keys + action.aliases:
@@ -81,7 +83,6 @@ class RegistryTest(unittest.TestCase):
             "check.move": ("j", "k"),
             "option.pick": ("j", "k"),
             "option.move": ("j", "k"),
-            "confirm.move": ("h", "l", "j", "k"),
             "menu.move": ("j", "k"),
             "menu.ends": (),        # g/G are its primary keys
             "log.ends": (),
@@ -125,7 +126,12 @@ class RegistryTest(unittest.TestCase):
         self.assertEqual(lower["option.move"].keys, ("up", "down"))
         self.assertNotIn("option.pick", lower)
         confirm = keymap.resolve({keymap.CONFIRM})
-        self.assertFalse(any("tab" in row.keys for row in confirm))
+        rows = {row.action.id: row for row in confirm}
+        self.assertFalse(any("tab" in row.keys for row in confirm))   # inert
+        self.assertEqual(rows["confirm.install"].keys, ("y",))
+        self.assertEqual(rows["confirm.back"].keys, ("n",))
+        self.assertEqual(rows["confirm.back"].aliases, ("N", "escape", "shift+tab"))
+        self.assertNotIn("wizard.previous", rows)      # its back is confirm.back
 
     def test_help_is_a_ctrl_key_with_the_question_mark_alias(self) -> None:
         action = next(a for a in keymap.ACTIONS if a.id == "help.open")
@@ -154,7 +160,7 @@ class RegistryTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             keymap.apply_overrides({"wizard.nope": "x"})
         with self.assertRaises(ValueError):
-            keymap.apply_overrides({"confirm.pick": "9"})   # needs two keys
+            keymap.apply_overrides({"check.move": "9"})     # needs two keys
 
     def test_the_config_accepts_a_keys_section(self) -> None:
         from installer.__main__ import CONFIG_KEYS

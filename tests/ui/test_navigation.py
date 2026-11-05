@@ -63,7 +63,7 @@ FOOTERS = {
               "ctrl+x quit  ctrl+k help",
     "review_failed": "ctrl+r retry  ctrl+l log  Shift+Tab back  "
                      "ctrl+x quit  ctrl+k help",
-    "confirm": "1/2 select  ↑/↓ move  ⏎ confirm  Shift+Tab back  ctrl+k help",
+    "confirm": "y install  n back  ctrl+k help",
     "installation": "ctrl+c abort  ctrl+k help",
     "result_ok": "ctrl+x exit  ctrl+l log  ctrl+p manage  ctrl+k help",
     "result_failed": "ctrl+r retry  ctrl+l log  ctrl+p manage  ctrl+x exit  "
@@ -85,7 +85,7 @@ FOOTERS_NARROW = {
     "options_check": "⏎ confirm  Tab next  Shift+Tab back  ctrl+x quit  ctrl+k help",
     "review": "⏎ continue  Tab next  Shift+Tab back  ctrl+x quit  ctrl+k help",
     "review_failed": "ctrl+r retry  Shift+Tab back  ctrl+x quit  ctrl+k help",
-    "confirm": "1/2 select  ↑/↓ move  ⏎ confirm  Shift+Tab back  ctrl+k help",
+    "confirm": "y install  n back  ctrl+k help",
     "installation": "ctrl+c abort  ctrl+k help",
     "result_ok": "ctrl+x exit  ctrl+l log  ctrl+p manage  ctrl+k help",
     "result_failed": "ctrl+r retry  ctrl+l log  ctrl+x exit  ctrl+k help",
@@ -174,9 +174,7 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
 
     async def start_install(self, pilot) -> None:
         await self.to_confirm(pilot)
-        await pilot.press("1")
-        await pilot.pause()
-        await pilot.press("enter")
+        await pilot.press("y")
         await pilot.pause()
 
     # -- footers: whole line, at both sizes ------------------------------
@@ -228,38 +226,38 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertEqual(foot(app), FOOTERS["result_ok"])
 
-    # -- the confirmation page -------------------------------------------
-    async def test_confirm_defaults_to_back_and_enter_alone_never_installs(self) -> None:
+    # -- the confirmation page: Y or N, nothing else ----------------------
+    async def test_confirm_is_inert_until_y_or_n(self) -> None:
         app = self.make_app()
         async with app.run_test(size=(100, 30)) as pilot:
             await self.to_confirm(pilot)
             screen = app.screen
             self.assertIsInstance(screen, ConfirmScreen)
-            self.assertEqual(screen.choice, "back")
-            await pilot.press("enter")        # Enter on the default choice
+            for key in ("enter", "tab", "1", "2", "up", "down", "h", "l", "j", "k"):
+                await pilot.press(key)
+                await pilot.pause()
+                self.assertIs(app.screen, screen, key)
+                self.assertTrue(all(not isinstance(s, InstallationScreen)
+                                    for s in app._screen_stack), key)
+
+            await pilot.press("n")
             await pilot.pause()
-            self.assertIsInstance(app.screen, ReviewScreen)   # back, not install
+            self.assertIsInstance(app.screen, ReviewScreen)
+
+    async def test_y_installs_and_n_goes_back(self) -> None:
+        app = self.make_app(mode="cancel")
+        async with app.run_test(size=(100, 30)) as pilot:
+            await self.to_confirm(pilot)
+            await pilot.press("N")
+            await pilot.pause()
+            self.assertIsInstance(app.screen, ReviewScreen)
             self.assertTrue(all(not isinstance(s, InstallationScreen)
                                 for s in app._screen_stack))
 
-    async def test_numbers_only_move_the_choice(self) -> None:
-        app = self.make_app()
-        async with app.run_test(size=(100, 30)) as pilot:
-            await self.to_confirm(pilot)
-            screen = app.screen
-            await pilot.press("1")
+            await pilot.press("enter")        # Review -> Confirm again
             await pilot.pause()
-            self.assertEqual(screen.choice, "install")
-            self.assertIs(app.screen, screen)          # nothing started
-            await pilot.press("2")
-            await pilot.pause()
-            self.assertEqual(screen.choice, "back")
-            self.assertIs(app.screen, screen)
-
-    async def test_the_chosen_install_does_start(self) -> None:
-        app = self.make_app(mode="cancel")
-        async with app.run_test(size=(100, 30)) as pilot:
-            await self.start_install(pilot)
+            self.assertIsInstance(app.screen, ConfirmScreen)
+            await pilot.press("Y")
             await self.wait_for(pilot, lambda: isinstance(app.screen, InstallationScreen))
 
     # -- Esc is back only -------------------------------------------------
@@ -493,23 +491,6 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertEqual(app.opts.source, "stable")
 
-    async def test_vim_keys_choose_on_the_confirm_page(self) -> None:
-        app = self.make_app()
-        async with app.run_test(size=(100, 30)) as pilot:
-            await self.to_confirm(pilot)
-            screen = app.screen
-            self.assertEqual(screen.choice, "back")
-            await pilot.press("h")              # left/up is the first choice
-            await pilot.pause()
-            self.assertEqual(screen.choice, "install")
-            await pilot.press("l")
-            await pilot.pause()
-            self.assertEqual(screen.choice, "back")
-            await pilot.press("l")              # clamped: still "back", no wrap
-            await pilot.pause()
-            self.assertEqual(screen.choice, "back")
-            self.assertIs(app.screen, screen)   # and nothing was installed
-
     async def test_vim_keys_in_the_menu_and_the_log(self) -> None:
         app = self.manage_app()
         async with app.run_test(size=(100, 30)) as pilot:
@@ -577,20 +558,17 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertIsInstance(app.screen, OptionsScreen)
 
-    async def test_confirm_tab_never_installs_and_shift_tab_goes_back(self) -> None:
+    async def test_shift_tab_and_escape_both_leave_the_confirm_page(self) -> None:
         app = self.make_app()
         async with app.run_test(size=(100, 30)) as pilot:
             await self.to_confirm(pilot)
-            screen = app.screen
-            self.assertIsInstance(screen, ConfirmScreen)
-            self.assertEqual(screen.choice, "back")
-            await pilot.press("tab")             # no forward page from here
-            await pilot.pause()
-            self.assertIs(app.screen, screen)
-            self.assertEqual(screen.choice, "back")
-            self.assertTrue(all(not isinstance(s, InstallationScreen)
-                                for s in app._screen_stack))
             await pilot.press("shift+tab")
+            await pilot.pause()
+            self.assertIsInstance(app.screen, ReviewScreen)
+            await pilot.press("enter")
+            await pilot.pause()
+            self.assertIsInstance(app.screen, ConfirmScreen)
+            await pilot.press("escape")
             await pilot.pause()
             self.assertIsInstance(app.screen, ReviewScreen)
 

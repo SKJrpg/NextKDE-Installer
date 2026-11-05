@@ -1,8 +1,8 @@
 """Confirm: the last page before anything changes.
 
-Enter here is the confirmation itself, so the page opens with "back" selected:
-installing takes one more deliberate move of the selection. ``1``/``2`` only
-move it; they never install.
+Y installs, N goes back. Nothing else does anything here: Enter, Tab, the
+arrows and the digits are inert, so a stray key cannot leave the page or start
+the install. Shift+Tab and Esc are aliases for N.
 """
 
 from __future__ import annotations
@@ -10,19 +10,9 @@ from __future__ import annotations
 from rich.cells import cell_len
 from rich.text import Text
 from textual.app import ComposeResult
-from textual.widgets import RadioButton, RadioSet, Static
+from textual.widgets import Static
 
-from . import ChoicePasses, CursorKeys, WizardScreen
-
-
-class PickRow(ChoicePasses, RadioButton):
-    """A radio row whose marker is text; Enter belongs to the page."""
-
-    BUTTON_LEFT = BUTTON_INNER = BUTTON_RIGHT = ""
-
-
-class PickSet(CursorKeys, RadioSet):
-    """Arrows and h/l/j/k move the choice; Enter confirms it."""
+from . import WizardScreen
 
 
 class ConfirmScreen(WizardScreen):
@@ -33,28 +23,20 @@ class ConfirmScreen(WizardScreen):
     def __init__(self, strings, steps: int = 0, **kwargs) -> None:
         super().__init__(strings, **kwargs)
         self.steps = steps
-        self.choice = "back"      # the safe half of the choice is the default
 
     def body(self) -> ComposeResult:
         yield Static(self._summary(), id="confirm_page")
-        with PickSet(id="confirm_pick", compact=True):
-            yield PickRow(self._row(False, "install"), id="install")
-            yield PickRow(self._row(True, "back"), id="back", value=True)
-
-    def on_mount(self) -> None:
-        self.query_one("#back", RadioButton).focus()
+        yield Static(self._prompt(), id="confirm_prompt")
 
     # -- drawing -----------------------------------------------------------
-    def _row(self, chosen: bool, key: str) -> Text:
-        on, off = ("(*)", "( )") if self.strings.ascii else ("(•)", "( )")
-        text = Text(on if chosen else off, style="bold" if chosen else None)
-        text.append(" " + self._numbered(key))
-        return text
-
-    def _numbered(self, key: str) -> str:
-        """`[1] 开始安装` — the number is the slot, not the trigger."""
-        number = "1" if key == "install" else "2"
-        return f"[{number}] {self.strings('confirm_' + key)}"
+    def _prompt(self) -> Text:
+        """`Y 开始安装    N 返回上一步` — the two keys are the whole page."""
+        s = self.strings
+        return Text.assemble(
+            ("Y", "bold"), " " + s("confirm_install"),
+            "    ",
+            ("N", "bold"), " " + s("confirm_back"),
+        )
 
     def _summary(self) -> Text:
         s, opts = self.strings, self.app.opts
@@ -76,29 +58,10 @@ class ConfirmScreen(WizardScreen):
         return text
 
     # -- keys --------------------------------------------------------------
-    def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
-        if event.radio_set.id != "confirm_pick" or event.pressed.id is None:
-            return
-        self.choice = event.pressed.id
-        for button in event.radio_set.query(RadioButton):
-            button.label = self._row(button.id == self.choice, button.id)
+    def action_confirm_install(self) -> None:
+        """Y: the one install path, and only on this page."""
+        self.app.start_install()
 
-    def action_confirm_pick(self, choice: int) -> None:
-        """A number moves the selection; Enter is still what acts on it."""
-        self.query_one("#install" if choice == 1 else "#back", RadioButton).value = True
-
-    def action_confirm_move(self, step: int) -> None:
-        """h/l and j/k move the choice, like the arrow keys do."""
-        rows = [self.query_one("#" + name, RadioButton) for name in ("install", "back")]
-        current = 0 if self.choice == "install" else 1
-        index = max(0, min(current + step, len(rows) - 1))
-        rows[index].value = True
-
-    def action_review_install(self) -> None:
-        if self.choice == "install":
-            self.app.start_install()
-        else:
-            self.app.pop_screen()
-
-    def action_wizard_back(self) -> None:
+    def action_confirm_back(self) -> None:
+        """N, Esc and Shift+Tab all go back to the plan."""
         self.app.pop_screen()

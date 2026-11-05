@@ -124,12 +124,10 @@ class WizardTest(unittest.IsolatedAsyncioTestCase):
         await pilot.pause()
 
     async def start_install(self, pilot) -> None:
-        """Review -> confirm page -> move to "install" -> Enter."""
+        """Review -> confirm page -> Y."""
         await pilot.press("enter")    # Review -> Confirm
         await pilot.pause()
-        await pilot.press("1")        # select "start the install", never runs it
-        await pilot.pause()
-        await pilot.press("enter")    # the confirmation itself
+        await pilot.press("y")        # the one install key
         await pilot.pause()
 
     async def abort_the_run(self, pilot) -> None:
