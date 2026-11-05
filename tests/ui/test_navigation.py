@@ -471,6 +471,12 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
             await pilot.press("j")
             await pilot.pause()
             self.assertEqual(app.screen.row, 1)
+            await pilot.press("j")              # past the last -> first
+            await pilot.pause()
+            self.assertEqual(app.screen.row, 0)
+            await pilot.press("k")              # before the first -> last
+            await pilot.pause()
+            self.assertEqual(app.screen.row, 1)
             await pilot.press("k")
             await pilot.pause()
             self.assertEqual(app.screen.row, 0)

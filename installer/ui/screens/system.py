@@ -151,7 +151,9 @@ class SystemScreen(WizardScreen):
         probes = self.app.system.probes
         if not probes:
             return
-        self.row = max(0, min(self.row + step, len(probes) - 1))
+        # A short probe list is a ring: down past the last row returns to the
+        # first, and up from the first goes to the last.
+        self.row = (self.row + step) % len(probes)
         self._paint_rows()
         self._show_detail()
         if 0 <= self.row < len(self.rows):
