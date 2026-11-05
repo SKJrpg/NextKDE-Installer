@@ -247,7 +247,7 @@ class ManageTest(unittest.IsolatedAsyncioTestCase):
                             app.screen.query_one("#action_log", RichLog).lines)
             self.assertIn("boom: kosctl refused", log)
 
-    async def test_ctrl_c_cancels_a_running_action(self) -> None:
+    async def test_ctrl_z_cancels_a_running_action(self) -> None:
         self.mode = "cancel"
         app = self.make_app()
         async with app.run_test(size=(100, 30)) as pilot:
@@ -259,19 +259,13 @@ class ManageTest(unittest.IsolatedAsyncioTestCase):
             await pilot.press("down")
             await pilot.press("space")
             await self.wait_for(pilot, lambda: bool(self.sessions))
-            await pilot.press("ctrl+c")
-            await self.wait_for(pilot, lambda: isinstance(app.screen, ConfirmDialog)
-                                and bool(app.screen.query("#confirm_ok")))
-            # The safe choice is "keep running", and it is focused.
-            await pilot.press("enter")
-            await pilot.pause()
             self.assertTrue(app.screen.busy)
-            self.assertTrue(self.sessions)
+            await pilot.press("ctrl+c")       # swallowed: no quit, no abort
+            await pilot.pause()
+            self.assertFalse(app._exit)
+            self.assertTrue(app.screen.busy)
 
-            await pilot.press("ctrl+c")
-            await self.wait_for(pilot, lambda: isinstance(app.screen, ConfirmDialog)
-                                and bool(app.screen.query("#confirm_ok")))
-            await pilot.click("#confirm_ok")
+            await pilot.press("ctrl+z")       # no question: it just stops
             await self.wait_for(pilot, lambda: not app.screen.busy)
             status = str(app.screen.query_one("#action_status").render())
             self.assertIn("cancelled", status.lower())

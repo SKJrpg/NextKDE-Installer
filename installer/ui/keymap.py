@@ -61,7 +61,7 @@ class Action:
     contexts: frozenset[str]
     priority: int = 50            # lower survives first when the footer is short
     hidden: bool = False          # bound and in the help overlay, not in the footer
-    danger: bool = False          # only reachable through a confirmation
+    danger: bool = False          # destructive: painted as the warning colour
     aliases: tuple[str, ...] = ()  # extra keys, bound with no footer text
     display: str | None = None     # key name for a multi-key row ("↑/↓", "1/2")
     bind: tuple[str, ...] | None = None  # Textual action per key; default id_underscored
@@ -165,8 +165,12 @@ ACTIONS: tuple[Action, ...] = (
     Action("menu.act", ("enter",), "key_open", frozenset({MENU}), 10),
     Action("wizard.back", ("escape",), "key_back", frozenset(MENUS), 15),
     Action("app.manage", ("ctrl+p",), "key_manage", frozenset({WELCOME, RESULT}), 50),
-    Action("run.abort", ("ctrl+c",), "key_abort", frozenset({RUN, MENU}) | LISTS, 5,
+    # Abort is immediate; Ctrl+C is the app's quit gesture, so while something
+    # runs a hidden guard swallows it before the app binding can fire.
+    Action("run.abort", ("ctrl+z",), "key_abort", frozenset({RUN, MENU}) | LISTS, 5,
            danger=True),
+    Action("run.guard", ("ctrl+c",), "", frozenset({RUN, MENU}) | LISTS, 5,
+           hidden=True),
     # Tab/Shift+Tab focus only where they are not page keys.
     Action("focus.next", ("tab",), "key_focus_next", OTHERS, 80, hidden=True,
            display="Tab", bind=("focus_next",)),

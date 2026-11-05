@@ -145,8 +145,8 @@ class ChromeScreen(Screen):
         ascii_only = self.strings.ascii
         rows = []
         for row in self.key_rows():
-            if not self._available(row):
-                continue
+            if not self._available(row) or not row.action.label:
+                continue        # a hidden guard has nothing to describe
             key = row.action.display or keymap.display_key(row.keys[0], ascii_only)
             letters = [keymap.display_key(alias, ascii_only)
                        for alias in row.aliases if len(alias) == 1]
@@ -165,7 +165,10 @@ class ChromeScreen(Screen):
         self.app.push_screen(HelpScreen(self.strings, self.help_rows()))
 
     def action_run_abort(self) -> None:
-        self.app.request_abort()
+        self.app.abort()
+
+    def action_run_guard(self) -> None:
+        """A running step owns Ctrl+C, so the app's quit gesture cannot fire."""
 
     def action_focus_next(self) -> None:
         self.app.action_focus_next()

@@ -61,7 +61,7 @@ FOOTERS = {
     "review": "⏎ continue  Tab next  ctrl+e commands  Shift+Tab back  ctrl+k help",
     "review_failed": "ctrl+r retry  ctrl+l log  Shift+Tab back  ctrl+k help",
     "confirm": "y confirm  n cancel  ctrl+k help",
-    "installation": "ctrl+c abort  ctrl+k help",
+    "installation": "ctrl+z abort  ctrl+k help",
     "result_ok": "ctrl+l log  ctrl+p manage  ctrl+k help",
     "result_failed": "ctrl+r retry  ctrl+l log  ctrl+p manage  ctrl+k help",
     "management": "1–6 go to  ↑/↓ select  g/G first/last  ⏎ open  esc back  "
@@ -82,7 +82,7 @@ FOOTERS_NARROW = {
     "review": "⏎ continue  Tab next  Shift+Tab back  ctrl+k help",
     "review_failed": "ctrl+r retry  Shift+Tab back  ctrl+k help",
     "confirm": "y confirm  n cancel  ctrl+k help",
-    "installation": "ctrl+c abort  ctrl+k help",
+    "installation": "ctrl+z abort  ctrl+k help",
     "result_ok": "ctrl+l log  ctrl+p manage  ctrl+k help",
     "result_failed": "ctrl+r retry  ctrl+l log  ctrl+p manage  ctrl+k help",
     "management": "1–6 go to  ↑/↓ select  ⏎ open  esc back  ctrl+k help",
@@ -208,10 +208,15 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
             await self.start_install(pilot)
             await self.wait_for(pilot, lambda: isinstance(app.screen, InstallationScreen))
             self.assertEqual(foot(app), FOOTERS_NARROW["installation"])
-            await pilot.press("ctrl+c")
-            await self.wait_for(pilot, lambda: isinstance(app.screen, ConfirmDialog)
-                                and bool(app.screen.query("#confirm_ok")))
-            await pilot.click("#confirm_ok")
+            await pilot.press("ctrl+k")     # the guard has no row to offer
+            await pilot.pause()
+            keys = [key for key, _text in app.screen.rows]
+            self.assertIn("ctrl+z", keys)
+            self.assertNotIn("ctrl+c", keys)
+            self.assertTrue(all(text for _key, text in app.screen.rows))
+            await pilot.press("escape")
+            await pilot.pause()
+            await pilot.press("ctrl+z")
             await self.wait_for(pilot, lambda: isinstance(app.screen, ResultScreen))
             self.assertEqual(foot(app), FOOTERS_NARROW["result_failed"])
 
@@ -269,24 +274,29 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertIsInstance(app.screen, WelcomeScreen)
 
-    async def test_abort_question_takes_arrows_and_vim_keys(self) -> None:
+    async def test_abort_is_immediate_on_the_run_page(self) -> None:
         app = self.make_app(mode="cancel")
         async with app.run_test(size=(100, 30)) as pilot:
             await self.start_install(pilot)
             await self.wait_for(pilot, lambda: isinstance(app.screen, InstallationScreen))
+            await pilot.press("ctrl+z")
+            self.assertTrue(app.cancel_event.is_set())      # no question in between
+            await self.wait_for(pilot, lambda: isinstance(app.screen, ResultScreen))
+            self.assertEqual(app.exit_code, 130)
+            self.assertIn("cancelled",
+                          str(app.screen.query_one("#result_text").render()).lower())
+
+    async def test_ctrl_c_does_nothing_while_a_run_owns_it(self) -> None:
+        app = self.make_app(mode="cancel")
+        async with app.run_test(size=(100, 30), notifications=True) as pilot:
+            await self.start_install(pilot)
+            await self.wait_for(pilot, lambda: isinstance(app.screen, InstallationScreen))
             await pilot.press("ctrl+c")
-            await self.wait_for(pilot, lambda: isinstance(app.screen, ConfirmDialog))
-            self.assertEqual(app.focused.id, "confirm_cancel")
-            for key, expected in (("right", "confirm_ok"), ("left", "confirm_cancel"),
-                                  ("l", "confirm_ok"), ("h", "confirm_cancel"),
-                                  ("j", "confirm_ok"), ("k", "confirm_cancel")):
-                await pilot.press(key)
-                await pilot.pause()
-                self.assertEqual(app.focused.id, expected, key)
-            await pilot.press("escape")
+            await pilot.press("ctrl+c")
             await pilot.pause()
+            self.assertFalse(app._exit)                      # no quit gesture
+            self.assertFalse(app.cancel_event.is_set())      # and no abort either
             self.assertIsInstance(app.screen, InstallationScreen)
-            self.assertFalse(app.cancel_event.is_set())
 
     async def test_ctrl_c_twice_quits_from_the_wizard(self) -> None:
         app = self.make_app()
@@ -324,12 +334,15 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
             self.assertIs(app.screen, screen)   # no inherited ctrl+q quit
 
     async def test_a_modal_question_suppresses_the_quit_gesture(self) -> None:
-        app = self.make_app(mode="cancel")
+        app = self.manage_app()
         async with app.run_test(size=(100, 30)) as pilot:
-            await self.start_install(pilot)
-            await self.wait_for(pilot, lambda: isinstance(app.screen, InstallationScreen))
-            await pilot.press("ctrl+c")         # the abort question
-            await self.wait_for(pilot, lambda: isinstance(app.screen, ConfirmDialog))
+            await pilot.press("ctrl+p")
+            await self.wait_for(pilot, lambda: isinstance(app.screen, ManagementScreen)
+                                and app.screen.query_one("#manage_list",
+                                                         OptionList).option_count == 6)
+            await pilot.press("5")              # uninstall asks for a typed word
+            await pilot.pause()
+            self.assertIsInstance(app.screen, ConfirmDialog)
             await pilot.press("ctrl+c")
             await pilot.press("ctrl+c")
             await pilot.pause()
@@ -651,7 +664,8 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(advice_for("exit status 1"), "")
 
     # -- management menu ---------------------------------------------------
-    def manage_app(self, units=UNITS, snapshots=SNAPSHOTS, logs=(Path("/tmp/x.log"),)):
+    def manage_app(self, units=UNITS, snapshots=SNAPSHOTS, logs=(Path("/tmp/x.log"),),
+                   session_mode: str = "ok"):
         patchers = [
             mock.patch("installer.manage.units", return_value=list(units)),
             mock.patch("installer.manage.snapshots", return_value=list(snapshots)),
@@ -660,7 +674,16 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
         for patcher in patchers:
             patcher.start()
             self.addCleanup(patcher.stop)
-        return self.make_app()
+        self.sessions: list[FakeSession] = []
+
+        def factory(steps, log, root):
+            session = FakeSession(steps, log, root, session_mode)
+            self.sessions.append(session)
+            return session
+
+        return KosApp(lang="en", system=fake_system(),
+                      paths=Paths.resolve(source_root=ROOT),
+                      prepare=fake_prepare, session_factory=factory)
 
     async def test_management_menu_footer_and_disabled_slot(self) -> None:
         app = self.manage_app(units=[], snapshots=[], logs=())
@@ -729,33 +752,26 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
             self.assertIsInstance(app.screen, ConfirmDialog)
             self.assertTrue(app.screen.query_one("#confirm_ok", Button).disabled)
 
-    # -- dangerous things ask first ---------------------------------------
-    async def test_ctrl_c_asks_and_the_safe_choice_keeps_running(self) -> None:
-        app = self.make_app(mode="cancel")
+    # -- abort is immediate; Ctrl+C belongs to the quit gesture elsewhere --
+    async def test_abort_on_a_busy_menu_stops_the_action(self) -> None:
+        app = self.manage_app(session_mode="cancel")
         async with app.run_test(size=(100, 30)) as pilot:
-            await self.start_install(pilot)
-            await self.wait_for(pilot, lambda: isinstance(app.screen, InstallationScreen))
-            # Nothing is focused: a stray Enter cannot press "cancel".
-            self.assertIsNone(pilot.app.focused)
-            await pilot.press("enter")
+            await pilot.press("ctrl+p")
+            await self.wait_for(pilot, lambda: isinstance(app.screen, ManagementScreen)
+                                and app.screen.query_one("#manage_list",
+                                                         OptionList).option_count == 6)
+            await pilot.press("1")
+            await self.wait_for(pilot, lambda: isinstance(app.screen, UnitsScreen)
+                                and app.screen.query_one("#manage_list",
+                                                         OptionList).option_count == 2)
+            await pilot.press("down")
+            await pilot.press("space")
+            await self.wait_for(pilot, lambda: app.screen.busy)
+            self.assertIn("ctrl+z abort", foot(app))
+            await pilot.press("ctrl+c")           # swallowed: neither quit nor abort
             await pilot.pause()
-            self.assertIsInstance(app.screen, InstallationScreen)
-            self.assertFalse(app.cancel_event.is_set())
-            await pilot.press("ctrl+c")
-            await self.wait_for(pilot, lambda: isinstance(app.screen, ConfirmDialog)
-                                and bool(app.screen.query("#confirm_ok")))
-            dialog = app.screen
-            self.assertIn(Strings("en")("abort_keep"),
-                          str(dialog.query_one("#confirm_cancel", Button).label))
-            self.assertIn(Strings("en")("abort_confirm"),
-                          str(dialog.query_one("#confirm_ok", Button).label))
-            await pilot.press("enter")          # focused "keep running"
-            await pilot.pause()
-            self.assertIsInstance(app.screen, InstallationScreen)
-            self.assertFalse(app.cancel_event.is_set())
-
-            await pilot.press("ctrl+c")
-            await self.wait_for(pilot, lambda: isinstance(app.screen, ConfirmDialog)
-                                and bool(app.screen.query("#confirm_ok")))
-            await pilot.click("#confirm_ok")
-            await self.wait_for(pilot, lambda: app.cancel_event.is_set())
+            self.assertFalse(app._exit)
+            self.assertTrue(app.screen.busy)
+            await pilot.press("ctrl+z")
+            await self.wait_for(pilot, lambda: not app.screen.busy)
+            self.assertEqual(self.sessions[0].result, "cancelled")

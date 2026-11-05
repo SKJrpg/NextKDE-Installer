@@ -225,5 +225,5 @@ class InstallationScreen(WizardScreen):
     # -- cancel ----------------------------------------------------------
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "cancel":
-            # Mouse is deliberate, but aborting asks the same question as Ctrl+C.
-            self.app.request_abort()
+            # Deliberate mouse click: stop at once, no question.
+            self.app.abort()

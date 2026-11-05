@@ -38,24 +38,43 @@ class RegistryTest(unittest.TestCase):
 
     def test_dangerous_actions_are_declared(self) -> None:
         danger = {action.id for action in keymap.ACTIONS if action.danger}
-        # Y on the confirmation page is the one single-key install the user
-        # chose; the rest still confirm first.
+        # Y installs and Ctrl+Z stops a run; both are deliberate single keys.
+        # Rollback and uninstall still ask first.
         self.assertEqual(danger, {"confirm.install", "run.abort",
                                   "snapshot.rollback", "menu.item.uninstall"})
 
     def test_no_default_key_is_a_terminal_conflict(self) -> None:
-        # Ctrl+Q is XON, Ctrl+S XOFF, the rest are Enter/Tab/EOF/suspend or
-        # shell, tmux and Emacs aliases. Ctrl+C stays abort, and the log viewer
-        # takes Ctrl+U/D on purpose (half page over a read-only view).
+        # Ctrl+Q is XON, Ctrl+S XOFF, Ctrl+Z suspends a cooked terminal, the
+        # rest are Enter/Tab/EOF or shell, tmux and Emacs aliases. Ctrl+Z is
+        # abort anyway (raw mode delivers it), and the log viewer takes
+        # Ctrl+U/D on purpose (half page over a read-only view).
         forbidden = {"ctrl+m", "ctrl+i", "ctrl+j", "ctrl+h", "ctrl+s", "ctrl+q",
-                     "ctrl+z", "ctrl+d", "ctrl+a", "ctrl+b", "ctrl+\\"}
+                     "ctrl+d", "ctrl+a", "ctrl+b", "ctrl+\\"}
         for action in keymap.ACTIONS:
             for key in action.keys + action.aliases:
                 if key in ("ctrl+u", "ctrl+d"):
                     self.assertEqual(action.id, "log.halfpage")
                     continue
+                if key == "ctrl+z":
+                    self.assertEqual(action.id, "run.abort")
+                    continue
                 self.assertNotIn(key, forbidden, action.id)
                 self.assertFalse(key.startswith("alt+"), action.id)
+
+    def test_ctrl_c_is_guarded_where_abort_runs(self) -> None:
+        guard = next(a for a in keymap.ACTIONS if a.id == "run.guard")
+        abort = next(a for a in keymap.ACTIONS if a.id == "run.abort")
+        self.assertEqual(guard.keys, ("ctrl+c",))
+        self.assertEqual(abort.keys, ("ctrl+z",))
+        self.assertEqual(guard.contexts, abort.contexts)   # one cannot fire alone
+        self.assertTrue(guard.hidden)                      # no footer hint
+        self.assertFalse(abort.hidden)
+        self.assertEqual(guard.label, "")
+        # Hidden rows still reach the bindings: the guard must be resolvable.
+        for context in abort.contexts:
+            self.assertIn("run.guard",
+                          {row.action.id
+                           for row in keymap.resolve(frozenset({context}))})
 
     def test_function_keys_are_ctrl_and_letters_are_navigation(self) -> None:
         functions = ("review.details", "review.retry", "result.retry", "log.open",

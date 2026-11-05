@@ -35,7 +35,6 @@ if HAS_TEXTUAL:
     from installer.ui.screens.result import ResultScreen
     from installer.ui.screens.review import ReviewScreen
     from installer.ui.screens.system import SystemScreen
-    from installer.ui.widgets.confirm import ConfirmDialog
     from installer.ui.screens.welcome import WelcomeScreen
 
 
@@ -131,21 +130,13 @@ class WizardTest(unittest.IsolatedAsyncioTestCase):
         await pilot.pause()
 
     async def abort_the_run(self, pilot) -> None:
-        """Ctrl+C asks first; the safe choice is "keep running"."""
-        await pilot.press("ctrl+c")
-        for _ in range(100):
-            await pilot.pause()
-            if (isinstance(pilot.app.screen, ConfirmDialog)
-                    and pilot.app.screen.query("#confirm_ok")):
-                break
-        self.assertIsInstance(pilot.app.screen, ConfirmDialog)
-        await asyncio.sleep(0.05)          # the dialog needs its region laid out
-        await pilot.click("#confirm_ok")
+        """Ctrl+Z stops the run at once; there is no question any more."""
+        await pilot.press("ctrl+z")
         for _ in range(300):
             await pilot.pause()
             if pilot.app.cancel_event.is_set():
                 return
-        self.fail("the abort confirmation never cancelled the run")
+        self.fail("Ctrl+Z never cancelled the run")
 
     async def wait_screen(self, app, kind) -> None:
         for _ in range(600):
@@ -282,7 +273,7 @@ class WizardTest(unittest.IsolatedAsyncioTestCase):
             self.assertIn("finished", head.lower())
             self.assertIn("kosctl install", text)
 
-    async def test_ctrl_c_during_install_ends_cancelled(self) -> None:
+    async def test_ctrl_z_during_install_ends_cancelled(self) -> None:
         app = self.make_app(mode="cancel")
         async with app.run_test(size=(100, 30)) as pilot:
             await self.to_options(pilot)

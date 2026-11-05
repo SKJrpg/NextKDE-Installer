@@ -45,7 +45,7 @@ class KosApp(App, inherit_bindings=False):
     # A developer affordance; its footer hint has no place in an installer.
     ENABLE_COMMAND_PALETTE = False
     # Inherited bindings are off, so Textual's ctrl+q quit is really gone.
-    # Ctrl+C twice quits; on a run or a menu action the screen's abort wins.
+    # Ctrl+C twice quits; while something runs, the screen's guard takes it.
     BINDINGS = [("ctrl+c", "help_quit", "")]
 
     def __init__(self, lang: str | None = None, system: System | None = None,
@@ -422,21 +422,8 @@ class KosApp(App, inherit_bindings=False):
             self.exit(self.exit_code)
 
     # -- cancel and quit -------------------------------------------------
-    def request_abort(self) -> None:
-        """Ctrl+C while something runs: stop only after an explicit yes."""
-        if isinstance(self.screen, ConfirmDialog):
-            return
-        self.push_screen(
-            ConfirmDialog(self.strings, self.strings("abort_title"),
-                          self.strings("abort_body"),
-                          confirm_label=self.strings("abort_confirm"),
-                          cancel_label=self.strings("abort_keep"),
-                          confirm_variant="error"),
-            callback=self._abort_answer)
-
-    def _abort_answer(self, stop: bool | None) -> None:
-        if not stop:
-            return
+    def abort(self) -> None:
+        """Ctrl+Z (or the mouse button): stop the running step at once."""
         if self.action_screen is not None:
             self.cancel_action()
         else:

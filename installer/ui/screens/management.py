@@ -93,7 +93,7 @@ class ManageScreen(ChromeScreen):
 
     def action_started(self, title: str, log_path) -> None:
         self.busy = True
-        self.refresh_bindings()     # Ctrl+C joins the footer
+        self._bind_keys()           # Ctrl+Z / Ctrl+C become live, footer follows
         self.query_one("#action_log", RichLog).clear()
         self.note(title + "  " + str(log_path), "bold")
 
@@ -108,7 +108,7 @@ class ManageScreen(ChromeScreen):
 
     def handle_action_done(self, session, code: int) -> None:
         self.busy = False
-        self.refresh_bindings()     # and leaves it again
+        self._bind_keys()           # and leave again
         if code == 0:
             self.note(self.strings("action_ok"), "green")
             self.reload()
@@ -134,8 +134,8 @@ class ManageScreen(ChromeScreen):
         self.query_one("#manage_list", OptionList).action_last()
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
-        if action == "run_abort":
-            return bool(self.busy)      # Ctrl+C only while something runs
+        if action in ("run_abort", "run_guard"):
+            return bool(self.busy)      # Ctrl+Z aborts, Ctrl+C is swallowed
         return True
 
     def action_wizard_back(self) -> None:
