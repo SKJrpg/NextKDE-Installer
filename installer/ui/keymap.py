@@ -165,9 +165,6 @@ ACTIONS: tuple[Action, ...] = (
     Action("menu.act", ("enter",), "key_open", frozenset({MENU}), 10),
     Action("wizard.back", ("escape",), "key_back", frozenset(MENUS), 15),
     Action("app.manage", ("ctrl+p",), "key_manage", frozenset({WELCOME, RESULT}), 50),
-    Action("app.quit", ("ctrl+x",), "key_quit",
-           frozenset({WELCOME, CHECKS, OPTIONS, REVIEW}), 20),
-    Action("result.exit", ("ctrl+x",), "key_exit", frozenset({RESULT}), 20),
     Action("run.abort", ("ctrl+c",), "key_abort", frozenset({RUN, MENU}) | LISTS, 5,
            danger=True),
     # Tab/Shift+Tab focus only where they are not page keys.

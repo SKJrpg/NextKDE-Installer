@@ -52,22 +52,18 @@ UNITS = [manage.Unit("core", "1.0", "dirs", 4, "2026-01-01T00:00:00"),
 SNAPSHOTS = [manage.Snapshot("s1", "2026-01-01T00:00:00", "before", "config")]
 
 FOOTERS = {
-    "welcome": "Tab next  ←/→ language  ctrl+p manage  ctrl+x quit  ctrl+k help",
-    "checks": "↑/↓ select  Tab next  ctrl+r re-check  Shift+Tab back  "
-              "ctrl+x quit  ctrl+k help",
+    "welcome": "Tab next  ←/→ language  ctrl+p manage  ctrl+k help",
+    "checks": "↑/↓ select  Tab next  ctrl+r re-check  Shift+Tab back  ctrl+k help",
     "options_source": "↑/↓ select  ⏎ options below  Tab next  Shift+Tab back  "
-                      "ctrl+x quit  ctrl+k help",
+                      "ctrl+k help",
     "options_check": "↑/↓ move  ⏎ confirm  space toggle  Tab next  "
-                     "Shift+Tab back  ctrl+x quit  ctrl+k help",
-    "review": "⏎ continue  Tab next  ctrl+e commands  Shift+Tab back  "
-              "ctrl+x quit  ctrl+k help",
-    "review_failed": "ctrl+r retry  ctrl+l log  Shift+Tab back  "
-                     "ctrl+x quit  ctrl+k help",
+                     "Shift+Tab back  ctrl+k help",
+    "review": "⏎ continue  Tab next  ctrl+e commands  Shift+Tab back  ctrl+k help",
+    "review_failed": "ctrl+r retry  ctrl+l log  Shift+Tab back  ctrl+k help",
     "confirm": "y confirm  n cancel  ctrl+k help",
     "installation": "ctrl+c abort  ctrl+k help",
-    "result_ok": "ctrl+x exit  ctrl+l log  ctrl+p manage  ctrl+k help",
-    "result_failed": "ctrl+r retry  ctrl+l log  ctrl+p manage  ctrl+x exit  "
-                     "ctrl+k help",
+    "result_ok": "ctrl+l log  ctrl+p manage  ctrl+k help",
+    "result_failed": "ctrl+r retry  ctrl+l log  ctrl+p manage  ctrl+k help",
     "management": "1–6 go to  ↑/↓ select  g/G first/last  ⏎ open  esc back  "
                   "ctrl+k help",
     "units": "↑/↓ select  g/G first/last  ⏎ toggle  esc back  ctrl+k help",
@@ -79,16 +75,16 @@ FOOTERS = {
 
 # At 66 columns the fit drops the secondary hints first; help always stays.
 FOOTERS_NARROW = {
-    "welcome": "Tab next  ←/→ language  ctrl+p manage  ctrl+x quit  ctrl+k help",
-    "checks": "↑/↓ select  Tab next  Shift+Tab back  ctrl+x quit  ctrl+k help",
+    "welcome": "Tab next  ←/→ language  ctrl+p manage  ctrl+k help",
+    "checks": "↑/↓ select  Tab next  Shift+Tab back  ctrl+k help",
     "options_source": "⏎ options below  Tab next  Shift+Tab back  ctrl+k help",
-    "options_check": "⏎ confirm  Tab next  Shift+Tab back  ctrl+x quit  ctrl+k help",
-    "review": "⏎ continue  Tab next  Shift+Tab back  ctrl+x quit  ctrl+k help",
-    "review_failed": "ctrl+r retry  Shift+Tab back  ctrl+x quit  ctrl+k help",
+    "options_check": "⏎ confirm  space toggle  Tab next  Shift+Tab back  ctrl+k help",
+    "review": "⏎ continue  Tab next  Shift+Tab back  ctrl+k help",
+    "review_failed": "ctrl+r retry  Shift+Tab back  ctrl+k help",
     "confirm": "y confirm  n cancel  ctrl+k help",
     "installation": "ctrl+c abort  ctrl+k help",
-    "result_ok": "ctrl+x exit  ctrl+l log  ctrl+p manage  ctrl+k help",
-    "result_failed": "ctrl+r retry  ctrl+l log  ctrl+x exit  ctrl+k help",
+    "result_ok": "ctrl+l log  ctrl+p manage  ctrl+k help",
+    "result_failed": "ctrl+r retry  ctrl+l log  ctrl+p manage  ctrl+k help",
     "management": "1–6 go to  ↑/↓ select  ⏎ open  esc back  ctrl+k help",
     "units": "↑/↓ select  g/G first/last  ⏎ toggle  esc back  ctrl+k help",
     "snapshots": "↑/↓ select  ⏎ roll back  ctrl+n create  esc back  ctrl+k help",
@@ -127,7 +123,7 @@ class FakeSession:
     def run(self, emit, cancel) -> int:
         if self.mode == "cancel":
             emit(Event("stage", text="working", key="fake", index=1, total=1))
-            cancel.wait(10)
+            cancel.wait(60)
             self.result, self.exit_code = "cancelled", 130
             emit(Event("cancelled", index=1, total=1))
             return 130
@@ -273,50 +269,39 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertIsInstance(app.screen, WelcomeScreen)
 
-    async def test_the_quit_question_takes_arrows_and_vim_keys(self) -> None:
-        app = self.make_app()
+    async def test_abort_question_takes_arrows_and_vim_keys(self) -> None:
+        app = self.make_app(mode="cancel")
         async with app.run_test(size=(100, 30)) as pilot:
-            await pilot.press("tab")
-            await pilot.pause()
-            await pilot.press("ctrl+x")
-            await pilot.pause()
-            self.assertIsInstance(app.screen, ConfirmDialog)
+            await self.start_install(pilot)
+            await self.wait_for(pilot, lambda: isinstance(app.screen, InstallationScreen))
+            await pilot.press("ctrl+c")
+            await self.wait_for(pilot, lambda: isinstance(app.screen, ConfirmDialog))
             self.assertEqual(app.focused.id, "confirm_cancel")
-            await pilot.press("right")
-            await pilot.pause()
-            self.assertEqual(app.focused.id, "confirm_ok")
-            await pilot.press("left")
-            await pilot.pause()
-            self.assertEqual(app.focused.id, "confirm_cancel")
-            await pilot.press("l")
-            await pilot.pause()
-            self.assertEqual(app.focused.id, "confirm_ok")
-            await pilot.press("h")
-            await pilot.pause()
-            self.assertEqual(app.focused.id, "confirm_cancel")
-            await pilot.press("j")
-            await pilot.pause()
-            self.assertEqual(app.focused.id, "confirm_ok")
-            await pilot.press("k")
-            await pilot.pause()
-            self.assertEqual(app.focused.id, "confirm_cancel")
+            for key, expected in (("right", "confirm_ok"), ("left", "confirm_cancel"),
+                                  ("l", "confirm_ok"), ("h", "confirm_cancel"),
+                                  ("j", "confirm_ok"), ("k", "confirm_cancel")):
+                await pilot.press(key)
+                await pilot.pause()
+                self.assertEqual(app.focused.id, expected, key)
             await pilot.press("escape")
             await pilot.pause()
-            self.assertIsInstance(app.screen, SystemScreen)
+            self.assertIsInstance(app.screen, InstallationScreen)
+            self.assertFalse(app.cancel_event.is_set())
 
-    async def test_q_asks_mid_wizard_and_leaves_on_welcome(self) -> None:
+    async def test_ctrl_c_twice_quits_from_the_wizard(self) -> None:
         app = self.make_app()
-        async with app.run_test(size=(100, 30)) as pilot:
+        async with app.run_test(size=(100, 30), notifications=True) as pilot:
             await pilot.press("tab")
             await pilot.pause()
-            await pilot.press("ctrl+x")
-            await pilot.pause()
-            self.assertIsInstance(app.screen, ConfirmDialog)
-            self.assertIn(Strings("en")("quit_stay"),
-                          str(app.screen.query_one("#confirm_cancel", Button).label))
-            await pilot.press("escape")
-            await pilot.pause()
             self.assertIsInstance(app.screen, SystemScreen)
+            await pilot.press("ctrl+c")
+            await pilot.pause()
+            self.assertIsInstance(app.screen, SystemScreen)   # still here
+            self.assertIn(Strings("en")("ctrl_c_hint"),
+                          [note.message for note in app._notifications])
+            await pilot.press("ctrl+c")
+            await pilot.pause()
+            self.assertTrue(app._exit)
 
     # -- no wizard digits, no ctrl+q --------------------------------------
     async def test_digits_do_not_jump_the_wizard(self) -> None:
@@ -338,28 +323,35 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertIs(app.screen, screen)   # no inherited ctrl+q quit
 
-    async def test_ctrl_c_only_aborts_never_quits(self) -> None:
-        app = self.make_app()
+    async def test_a_modal_question_suppresses_the_quit_gesture(self) -> None:
+        app = self.make_app(mode="cancel")
         async with app.run_test(size=(100, 30)) as pilot:
-            await self.to_review(pilot)
+            await self.start_install(pilot)
+            await self.wait_for(pilot, lambda: isinstance(app.screen, InstallationScreen))
+            await pilot.press("ctrl+c")         # the abort question
+            await self.wait_for(pilot, lambda: isinstance(app.screen, ConfirmDialog))
             await pilot.press("ctrl+c")
             await pilot.press("ctrl+c")
             await pilot.pause()
-            self.assertFalse(app._exit)
-            self.assertIsInstance(app.screen, ReviewScreen)
+            self.assertFalse(app._exit)          # no bypass
+            self.assertIsInstance(app.screen, ConfirmDialog)
 
-    async def test_ctrl_c_does_not_quit_through_a_question(self) -> None:
+    async def test_help_overlay_does_not_arm_the_quit_gesture(self) -> None:
         app = self.make_app()
         async with app.run_test(size=(100, 30)) as pilot:
-            await self.to_review(pilot)
-            await pilot.press("ctrl+x")         # the quit question
+            await pilot.press("tab")
             await pilot.pause()
-            self.assertIsInstance(app.screen, ConfirmDialog)
-            await pilot.press("ctrl+c")
+            await pilot.press("ctrl+k")
+            await pilot.pause()
+            self.assertIsInstance(app.screen, HelpScreen)
+            await pilot.press("ctrl+c")          # closes the overlay, as any key does
+            await pilot.pause()
+            self.assertIsInstance(app.screen, SystemScreen)
+            self.assertFalse(app._exit)          # and did not arm a quit
             await pilot.press("ctrl+c")
             await pilot.pause()
+            self.assertIsInstance(app.screen, SystemScreen)
             self.assertFalse(app._exit)
-            self.assertIsInstance(app.screen, ConfirmDialog)
 
     # -- help overlay ------------------------------------------------------
     async def test_help_is_ctrl_k_and_question_mark_still_works(self) -> None:
@@ -454,7 +446,7 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertEqual(foot(app),
                              "↑/↓ select  Tab next  ctrl+r re-check  b back  "
-                             "ctrl+x quit  ctrl+k help")
+                             "ctrl+k help")
             await pilot.press("b")
             await pilot.pause()
             self.assertIsInstance(app.screen, WelcomeScreen)

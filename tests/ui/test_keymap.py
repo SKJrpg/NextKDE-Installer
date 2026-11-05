@@ -59,8 +59,8 @@ class RegistryTest(unittest.TestCase):
 
     def test_function_keys_are_ctrl_and_letters_are_navigation(self) -> None:
         functions = ("review.details", "review.retry", "result.retry", "log.open",
-                     "check.refresh", "snapshot.create", "app.manage", "app.quit",
-                     "result.exit", "run.abort", "help.open", "log.halfpage")
+                     "check.refresh", "snapshot.create", "app.manage",
+                     "run.abort", "help.open", "log.halfpage")
         for action_id in functions:
             action = next(a for a in keymap.ACTIONS if a.id == action_id)
             for key in action.keys:
@@ -132,6 +132,16 @@ class RegistryTest(unittest.TestCase):
         self.assertEqual(rows["confirm.back"].keys, ("n",))
         self.assertEqual(rows["confirm.back"].aliases, ("N", "escape", "shift+tab"))
         self.assertNotIn("wizard.previous", rows)      # its back is confirm.back
+
+    def test_ctrl_x_is_not_a_quit_key(self) -> None:
+        # Quitting is the double Ctrl+C gesture in the app, not a table row.
+        for action in keymap.ACTIONS:
+            for key in action.keys + action.aliases:
+                self.assertNotEqual(key, "ctrl+x", action.id)
+        self.assertNotIn("app.quit",
+                         {action.id for action in keymap.ACTIONS})
+        self.assertNotIn("result.exit",
+                         {action.id for action in keymap.ACTIONS})
 
     def test_help_is_a_ctrl_key_with_the_question_mark_alias(self) -> None:
         action = next(a for a in keymap.ACTIONS if a.id == "help.open")

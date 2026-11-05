@@ -67,7 +67,7 @@ class FakeSession:
         if self.mode == "cancel":
             emit(Event("stage", text="working", key="fake", index=1, total=1))
             emit(Event("log", text="waiting for cancel", level="INFO"))
-            cancel.wait(5)
+            cancel.wait(60)
             self.result, self.exit_code = "cancelled", 130
             emit(Event("cancelled", index=1, total=1))
             return 130

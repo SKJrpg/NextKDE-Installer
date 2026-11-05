@@ -3,8 +3,9 @@
 A screen declares a context (``CONTEXT``); ``installer/ui/keymap.py`` turns it
 into bindings, the footer words and the help overlay, so the three cannot
 disagree. Tab pages the wizard forward and Shift+Tab back (Esc stays as an
-alias); everywhere else Tab still moves focus. Quitting goes through
-``ctrl+x``, every other function key is Ctrl, and the letters are Vim.
+alias); everywhere else Tab still moves focus. Quitting is Ctrl+C twice (the
+app's gesture, not a table row); every other function key is Ctrl, and the
+letters are Vim.
 """
 
 from __future__ import annotations
@@ -62,8 +63,6 @@ class ChromeScreen(Screen):
     """Header and footer with localized key labels; the management area."""
 
     CONTEXT = ""
-    # q leaves immediately here (nothing to lose yet, or nothing left to do).
-    QUIT_DIRECT = False
 
     def __init__(self, strings: Strings, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -164,12 +163,6 @@ class ChromeScreen(Screen):
     # -- shared actions ---------------------------------------------------
     def action_help_open(self) -> None:
         self.app.push_screen(HelpScreen(self.strings, self.help_rows()))
-
-    def action_app_quit(self) -> None:
-        if self.QUIT_DIRECT:
-            self.app.exit()
-        else:
-            self.app.request_quit()
 
     def action_run_abort(self) -> None:
         self.app.request_abort()

@@ -14,7 +14,6 @@ class ResultScreen(WizardScreen):
     STEP = 5
     JUMP = False       # the wizard has ended; retry and quit are the ways out
     CONTEXT = "wizard.result"
-    QUIT_DIRECT = True  # q leaves: there is nothing left to lose here
 
     def __init__(self, strings, result: str, exit_code: int = 0,
                  failed_title: str = "", log_path=None, log_tail=(),
@@ -41,13 +40,6 @@ class ResultScreen(WizardScreen):
         self.query_one("#result_text", Static).update(self._body())
         # Enter presses the safe default: retry when something failed, else quit.
         self.query_one("#retry" if self.result != "ok" else "#quit", Button).focus()
-
-    def footer_rows(self):
-        rows = super().footer_rows()
-        if self.result == "ok":
-            # Nothing to retry: leaving is the first thing the page offers.
-            rows.sort(key=lambda row: row.action.id != "result.exit")
-        return rows
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         if action == "result_retry":
@@ -92,9 +84,6 @@ class ResultScreen(WizardScreen):
             else:
                 text.append(f"  {s('result_none_logged')}\n", style=quiet)
         return text
-
-    def action_result_exit(self) -> None:
-        self.dismiss("quit")
 
     def action_result_retry(self) -> None:
         if self.result != "ok":

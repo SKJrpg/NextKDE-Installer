@@ -44,7 +44,6 @@ class Banner(Static):
 class WelcomeScreen(WizardScreen):
     STEP = 0
     CONTEXT = "wizard.welcome"
-    QUIT_DIRECT = True      # nothing has run yet
 
     def body(self) -> ComposeResult:
         yield Banner(self.strings, id="banner")
