@@ -12,7 +12,6 @@ import platform
 import re
 import shutil
 import subprocess
-import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -182,11 +181,7 @@ def detect(fixed_os_release: str | None = None, root: Path | None = None) -> Sys
     method = METHODS.get(family or "", "unknown")
     system = System(os=info, family=family, method=method, arch=platform.machine())
 
-    system.probes.append(_probe("probe_os", bool(info.id), info.label or "unknown",
-                                "Read /etc/os-release; this system is not identifiable."))
-    system.probes.append(_probe("probe_arch", system.arch in ("x86_64", "aarch64"),
-                                system.arch, "Only x86_64 and aarch64 are tested.", warn=True))
-
+    # The stack checks first: Plasma on Wayland, KWin, Quickshell, Qt.
     session = os.environ.get("XDG_SESSION_TYPE", "")
     desktop = os.environ.get("XDG_CURRENT_DESKTOP", "")
     wayland = session == "wayland" or "wayland" in os.environ.get("WAYLAND_DISPLAY", "")
@@ -196,14 +191,10 @@ def detect(fixed_os_release: str | None = None, root: Path | None = None) -> Sys
         session_detail = "wayland (WAYLAND_DISPLAY)"
     else:
         session_detail = desktop or "unknown"
-    system.probes.append(_probe("probe_session", wayland, session_detail,
-                                "KOS needs a Plasma 6 Wayland session, not X11 or a bare TTY."))
-
     plasma_bin = shutil.which("plasmashell")
-    plasma = "KDE" in desktop.upper() or bool(plasma_bin)
-    plasma_detail = desktop or ("plasmashell present" if plasma_bin else "not detected")
-    system.probes.append(_probe("probe_plasma", plasma, plasma_detail,
-                                "Install KDE Plasma 6 first; KOS replaces its shell."))
+    plasma = wayland and ("KDE" in desktop.upper() or bool(plasma_bin))
+    system.probes.append(_probe("probe_plasma", plasma, session_detail,
+                                "Run this inside a Plasma 6 Wayland session."))
 
     rc, kwin_out = _run(["kwin_wayland", "--version"])
     ver = _major_minor(kwin_out) if rc == 0 else None
@@ -221,6 +212,30 @@ def detect(fixed_os_release: str | None = None, root: Path | None = None) -> Sys
                                 "Quickshell 0.3.x is required; the install step can provide it.",
                                 warn=True))
 
+    qt_out, rc = "", 127
+    for argv in (["qmake6", "-query", "QT_VERSION"],
+                 ["qtpaths6", "--qt-version"],
+                 ["pkg-config", "--modversion", "Qt6Core"]):
+        if not shutil.which(argv[0]):
+            continue
+        rc, qt_out = _run(argv, timeout=3.0)
+        if rc == 0:
+            break
+    qt_ver = _major_minor(qt_out) if rc == 0 else None
+    qt_ok = qt_ver is not None and qt_ver >= (6, 6)
+    system.probes.append(_probe("probe_qt", qt_ok,
+                                _version(qt_out) or qt_out or "not found",
+                                "Qt 6.6+ is required; install qt6-base.", warn=True))
+
+    system.probes.append(_probe("probe_os", bool(info.id), info.label or "unknown",
+                                "Read /etc/os-release; this system is not identifiable."))
+    system.probes.append(_probe("probe_arch", system.arch in ("x86_64", "aarch64"),
+                                system.arch, "Only x86_64 and aarch64 are tested.", warn=True))
+
+    manager = next((m for m in ("apt-get", "pacman", "dnf", "zypper") if shutil.which(m)), "")
+    system.probes.append(_probe("probe_manager", bool(manager), manager or "not found",
+                                "No supported package manager found."))
+
     free_gb = 0.0
     try:
         free_gb = shutil.disk_usage(str(Path.home())).free / (1024 ** 3)
@@ -228,20 +243,6 @@ def detect(fixed_os_release: str | None = None, root: Path | None = None) -> Sys
         pass
     system.probes.append(_probe("probe_disk", free_gb >= 6.0, f"{free_gb:.1f} GiB free",
                                 "At least 6 GiB is needed for the build tree."))
-
-    git_bin = shutil.which("git")
-    rc, git_out = _run([git_bin, "--version"], timeout=3.0) if git_bin else (127, "")
-    system.probes.append(_probe("probe_git", bool(git_bin) and rc == 0,
-                                _version(git_out) or git_out or git_bin or "not found",
-                                "Install git before running the installer."))
-
-    py = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
-    system.probes.append(_probe("probe_python", sys.version_info >= (3, 10), py,
-                                "Python 3.10+ is required."))
-
-    manager = next((m for m in ("apt-get", "pacman", "dnf", "zypper") if shutil.which(m)), "")
-    system.probes.append(_probe("probe_manager", bool(manager), manager or "not found",
-                                "No supported package manager found."))
 
     if root is not None and (Path(root) / "tools" / "kosctl").is_file():
         rc, doctor_out = _run(["bash", str(Path(root) / "tools" / "kosctl"), "doctor"], timeout=30)
