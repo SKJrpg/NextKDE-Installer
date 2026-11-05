@@ -268,7 +268,29 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(options)          # still there to go back to
 
     async def test_no_hidden_ctrl_q_quit(self) -> None:
-        self.assertFalse(any(binding.key == "ctrl+q" for binding in KosApp.BINDINGS))
+        app = self.make_app()
+        async with app.run_test(size=(100, 30)) as pilot:
+            await self.to_review(pilot)
+            screen = app.screen
+            await pilot.press("ctrl+q")
+            await pilot.pause()
+            self.assertIs(app.screen, screen)   # no inherited ctrl+q quit
+
+    async def test_ctrl_c_hint_names_the_pages_exit_key(self) -> None:
+        app = self.make_app()
+        async with app.run_test(size=(100, 30), notifications=True) as pilot:
+            await self.to_review(pilot)
+            await pilot.press("ctrl+c")
+            await pilot.pause()
+            self.assertIn(Strings("en")("quit_hint") % "q",
+                          [note.message for note in app._notifications])
+            app.clear_notifications()
+            await pilot.press("enter")          # Review -> Confirm
+            await pilot.pause()
+            await pilot.press("ctrl+c")
+            await pilot.pause()
+            self.assertIn(Strings("en")("back_hint") % "esc",
+                          [note.message for note in app._notifications])
 
     # -- help overlay ------------------------------------------------------
     async def test_help_lists_what_the_footer_offers(self) -> None:

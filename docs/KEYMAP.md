@@ -366,6 +366,7 @@ def resolve(contexts, overrides=None, budget=None) -> list[tuple[str, str, str]]
 | 对话框 | 不进注册表；`ConfirmDialog` 增加 `confirm_label`/`cancel_label` | 模态屏幕只活在自己的栈帧里，文案按动作命名（中止/继续运行） |
 | 焦点 | `focus.next` 绑 `app.focus_next`，Options 覆写为“跳到下一组” | 表单要按组走，其它屏仍是逐控件 |
 | 进度页 | `#stages_box`、`#log`、`#cancel` 全部不可聚焦 | 误触 Enter 不能中止；中止只走 Ctrl+C + 确认 |
+| Ctrl+C 提示 | `KosApp` 用 `inherit_bindings=False` 真正去掉 Textual 自带的 `ctrl+q`；`ctrl+c` 保留提示，但改成当前页真正的出口键（`q` 或 `esc`），toast 自适应宽度并靠右 | 继承的 `ctrl+q` 原来仍能退出；自带提示还指向这个已删除的键 |
 
 测试：`tests/ui/test_keymap.py`（表本身：重复键、双语标签、冲突键、覆写）与
 `tests/ui/test_navigation.py`（每屏整行底栏 100×30 / 66×20、帮助 ⊇ 底栏、禁用槽位、

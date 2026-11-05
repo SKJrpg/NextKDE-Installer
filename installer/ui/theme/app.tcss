@@ -365,3 +365,9 @@ HelpScreen {
     margin-top: 1;
     color: ansi_default;
 }
+
+/* Ctrl+C is not a quit key; its notice shrink-wraps so it sits on the right
+   edge instead of floating mid-screen in a half-width box. */
+Toast {
+    width: auto;
+}

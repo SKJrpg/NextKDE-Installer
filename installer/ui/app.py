@@ -32,18 +32,20 @@ from .screens.installation import InstallationScreen
 from .screens.result import ResultScreen
 from .screens.review import ReviewScreen
 from .screens.welcome import WelcomeScreen
+from . import keymap
 from .theme import resolve_mode
 from .widgets.confirm import ConfirmDialog
 from .widgets.password import PasswordDialog
 
 
-class KosApp(App):
+class KosApp(App, inherit_bindings=False):
     CSS_PATH = "theme/app.tcss"
     # A developer affordance; its footer hint has no place in an installer.
     ENABLE_COMMAND_PALETTE = False
-    # Textual's own ctrl+q quit conflicts with XON and is invisible: quitting
-    # goes through the screens' "q" action instead.
-    BINDINGS = []
+    # Textual's own ctrl+q quit conflicts with XON and is invisible. The class
+    # also disables inherited bindings, so ctrl+q is really gone; ctrl+C keeps a
+    # hint, but it names the quit key this screen actually offers.
+    BINDINGS = [("ctrl+c", "help_quit", "")]
 
     def __init__(self, lang: str | None = None, system: System | None = None,
                  paths: Paths | None = None, *, opts: Options | None = None,
@@ -98,6 +100,21 @@ class KosApp(App):
         # Injected by tests: preparation and the object that runs a plan.
         self._prepare_fn = prepare or workflow.begin
         self._session_factory = session_factory
+
+    def action_help_quit(self) -> None:
+        """Ctrl+C is not a quit key: point at the one the current page offers."""
+        rows = getattr(self.screen, "key_rows", lambda: [])()
+        row = next((row for row in rows
+                    if row.action.id in ("app.quit", "result.exit")), None)
+        if row is not None:
+            key = keymap.display_key(row.keys[0], self.strings.ascii)
+            self.notify(self.strings("quit_hint") % key)
+            return
+        # The confirmation and menu pages have no q: their way out is Esc.
+        back = next((row for row in rows if row.action.id == "wizard.back"), None)
+        if back is not None:
+            key = keymap.display_key(back.keys[0], self.strings.ascii)
+            self.notify(self.strings("back_hint") % key)
 
     def on_mount(self) -> None:
         self.push_screen(WelcomeScreen(self.strings))
