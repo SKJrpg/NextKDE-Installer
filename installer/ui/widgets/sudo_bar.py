@@ -7,12 +7,15 @@ value lives only in the field and is cleared when the bar goes away.
 
 from __future__ import annotations
 
+import getpass
 from typing import Callable
 
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Input, Static
+
+from ...strings import nerd_font_available
 
 
 class SudoInput(Input):
@@ -41,15 +44,17 @@ class SudoBar(Vertical):
         s = self.strings
         quiet = getattr(self.app, "secondary_style", "dim")
         with Horizontal(id="sudo_head"):
-            title = Text()
-            if not s.ascii:
-                title.append("🔒 ")
-            title.append(s("sudo_password_title"), style="bold")
-            yield Static(title, id="sudo_title")
+            yield Static(Text(s("sudo_password_title"), style="bold"), id="sudo_title")
             yield Static(Text(s("sudo_bar_hint"), style=quiet), id="sudo_hint")
         yield Static(Text(s("sudo_password_body"), style=quiet), id="sudo_body")
-        yield SudoInput(password=True, id="sudo_input",
-                        placeholder=s("sudo_password_prompt"))
+        with Horizontal(id="sudo_input_row"):
+            yield Static(Text(self._prompt(), style="bold"), id="sudo_prompt")
+            yield SudoInput(password=True, id="sudo_input", placeholder="")
+
+    def _prompt(self) -> str:
+        """The classic sudo prompt; the lock only when a Nerd Font is around."""
+        prompt = self.strings("sudo_prompt") % getpass.getuser()
+        return prompt + ("\uf023 " if nerd_font_available() else "")
 
     def ask(self, answer) -> None:
         """Show the bar for one request and put the cursor in the field."""

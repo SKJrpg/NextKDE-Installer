@@ -440,7 +440,17 @@ HelpScreen {
     height: auto;
 }
 
+#sudo_input_row {
+    height: 1;
+}
+
+#sudo_prompt {
+    width: auto;
+    height: 1;
+}
+
 #sudo_input {
+    width: 1fr;
     height: 1;
     border: none;
     padding: 0 1;

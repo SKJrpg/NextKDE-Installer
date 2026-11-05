@@ -409,8 +409,9 @@ class SudoPromptTest(unittest.IsolatedAsyncioTestCase):
             helper = self.ask_sudo(app)
             bar = await self.wait_bar(app, pilot)
             self.assertEqual(bar.size.height, 3)      # title, reason, field
-            if not app.strings.ascii:
-                self.assertIn("🔒", str(bar.screen.query_one("#sudo_title").render()))
+            self.assertNotIn("🔒", str(bar.screen.query_one("#sudo_title").render()))
+            prompt = str(bar.screen.query_one("#sudo_prompt").render())
+            self.assertTrue(prompt.startswith("[sudo] password for "), prompt)
             self.assertEqual(bar.screen.query_one("#sudo_input", Input).size.height, 1)
             self.assertIs(app.focused, bar.screen.query_one("#sudo_input", Input))
             await pilot.press("escape")

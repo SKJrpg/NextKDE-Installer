@@ -7,6 +7,7 @@ output (tools/install-debian13.sh) with an English companion (tools/kosctl).
 
 from __future__ import annotations
 
+from functools import lru_cache
 import os
 import shutil
 import subprocess
@@ -141,6 +142,7 @@ _TEXT = {
                            "Needs root for packages; used once, never written to disk."),
     "sudo_bar_hint": ("⏎ 继续 · esc 取消", "⏎ continue · esc cancel"),
     "sudo_password_prompt": ("sudo 密码：", "sudo password: "),
+    "sudo_prompt": ("[sudo] password for %s: ", "[sudo] password for %s: "),
     "sudo_password_missing": ("未提供 sudo 密码，sudo 无法执行，安装已停止。",
                               "No sudo password was provided, so sudo could not run; "
                               "the install stopped."),
@@ -455,6 +457,35 @@ def cjk_fonts_available(env: dict | None = None) -> bool:
             if next(directory.rglob(pattern), None) is not None:
                 return True
     return False
+
+
+def nerd_font_available(env: dict | None = None) -> bool:
+    """Whether a Nerd Font is installed; the sudo prompt uses its lock glyph.
+
+    This is a fontconfig probe, not a promise that the terminal is using that
+    font: KOS_NERD_FONT=0/1 overrides it when the terminal differs.
+    """
+    env = os.environ if env is None else env
+    choice = env.get("KOS_NERD_FONT", "").strip().lower()
+    if choice in ("1", "true", "yes", "on"):
+        return True
+    if choice in ("0", "false", "no", "off"):
+        return False
+    return _fontconfig_has_nerd_font()
+
+
+@lru_cache(maxsize=1)
+def _fontconfig_has_nerd_font() -> bool:
+    """The fontconfig probe once per process; the bar composes on every page."""
+    fontconfig = shutil.which("fc-list")
+    if not fontconfig:
+        return False
+    try:
+        result = subprocess.run([fontconfig, ":family"], capture_output=True,
+                                text=True, timeout=5, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0 and "nerd font" in result.stdout.lower()
 
 
 def resolve_lang(explicit: str | None, env: dict | None = None,
