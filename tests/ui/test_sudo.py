@@ -412,8 +412,14 @@ class SudoPromptTest(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn("🔒", str(bar.screen.query_one("#sudo_title").render()))
             prompt = str(bar.screen.query_one("#sudo_prompt").render())
             self.assertTrue(prompt.startswith("[sudo] password for "), prompt)
-            self.assertEqual(bar.screen.query_one("#sudo_input", Input).size.height, 1)
-            self.assertIs(app.focused, bar.screen.query_one("#sudo_input", Input))
+            field = bar.screen.query_one("#sudo_input", Input)
+            self.assertEqual(field.size.height, 1)
+            self.assertIs(app.focused, field)
+            self.assertFalse(field._cursor_visible)      # no cursor block
+            self.assertEqual(field.styles.background.a, 0)   # terminal shows through
+            self.assertEqual(field.styles.background_tint.a, 0)
+            await pilot.press("a")                       # typing restarts the blink
+            self.assertFalse(field._cursor_visible)
             await pilot.press("escape")
             await asyncio.to_thread(helper.communicate, 30)
             await self.wait_screen(app, ResultScreen)

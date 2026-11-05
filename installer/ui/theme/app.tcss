@@ -454,12 +454,21 @@ HelpScreen {
     height: 1;
     border: none;
     padding: 0 1;
-    background: $surface;
-    color: $foreground;
+    background: transparent;
+    background-tint: transparent;
+    color: ansi_default;
 }
 
 #sudo_input:focus {
-    background: $surface;
+    background: transparent;
+    background-tint: transparent;
+}
+
+/* The cursor cell is hidden in SudoInput itself; this keeps a stray cursor
+   style from painting a block if the widget is ever reused. */
+#sudo_input > .input--cursor {
+    background: transparent;
+    color: transparent;
 }
 
 /* -- command menu and about ------------------------------------------ */

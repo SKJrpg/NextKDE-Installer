@@ -29,6 +29,24 @@ class SudoInput(Input):
         # echoes nothing at all, so neither the secret nor its length is shown.
         return Text("", no_wrap=True, overflow="ignore", end="")
 
+    # Input draws its cursor as a styled space and restarts the blink on every
+    # focus or key. A password field should not reveal where it is: keep it
+    # hidden through the whole focus/blink cycle.
+    def _restart_blink(self) -> None:
+        self._cursor_visible = False
+        timer = getattr(self, "_blink_timer", None)
+        if timer is not None:
+            timer.pause()
+
+    def _toggle_cursor(self) -> None:
+        self._cursor_visible = False
+
+    def _pause_blink(self, visible: bool = False) -> None:
+        self._cursor_visible = False
+        timer = getattr(self, "_blink_timer", None)
+        if timer is not None:
+            timer.pause()
+
 
 class SudoBar(Vertical):
     """A compact title, reason and masked field; hidden by default."""
