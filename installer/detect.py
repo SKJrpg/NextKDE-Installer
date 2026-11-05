@@ -218,8 +218,10 @@ def detect(fixed_os_release: str | None = None, root: Path | None = None) -> Sys
     system.probes.append(_probe("probe_disk", free_gb >= 6.0, f"{free_gb:.1f} GiB free",
                                 "At least 6 GiB is needed for the build tree."))
 
-    git_ok = bool(shutil.which("git"))
-    system.probes.append(_probe("probe_git", git_ok, shutil.which("git") or "not found",
+    git_bin = shutil.which("git")
+    rc, git_out = _run([git_bin, "--version"], timeout=3.0) if git_bin else (127, "")
+    system.probes.append(_probe("probe_git", bool(git_bin) and rc == 0,
+                                git_out or git_bin or "not found",
                                 "Install git before running the installer."))
 
     py = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
