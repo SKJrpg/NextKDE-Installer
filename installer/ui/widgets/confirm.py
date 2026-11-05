@@ -16,11 +16,20 @@ from textual.widgets import Button, Input, Static
 class ConfirmDialog(ModalScreen[bool]):
     BINDINGS = [
         ("escape", "cancel", "escape"),
-        # The buttons sit side by side; arrows choose between them. A focused
-        # text field keeps its own left/right for the cursor.
+        # The buttons sit side by side; arrows and the Vim pairs choose between
+        # them. A focused text field keeps its own letters and arrows.
         ("left", "app.focus_previous", "left"),
         ("right", "app.focus_next", "right"),
+        ("h", "app.focus_previous", "h"),
+        ("l", "app.focus_next", "l"),
+        ("k", "app.focus_previous", "k"),
+        ("j", "app.focus_next", "j"),
     ]
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if self.word and action.startswith("app.focus_"):
+            return None        # the word field owns its letters
+        return True
 
     def __init__(self, strings, heading: str, body: str, word: str = "",
                  confirm_variant: str = "primary", confirm_label: str = "",

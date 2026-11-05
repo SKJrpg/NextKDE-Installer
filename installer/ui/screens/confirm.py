@@ -12,18 +12,17 @@ from rich.text import Text
 from textual.app import ComposeResult
 from textual.widgets import RadioButton, RadioSet, Static
 
-from . import EnterPasses, WizardScreen
+from . import CursorKeys, EnterPasses, WizardScreen
 
 
 class PickRow(EnterPasses, RadioButton):
     """A radio row whose marker is text; Enter belongs to the page."""
 
     BUTTON_LEFT = BUTTON_INNER = BUTTON_RIGHT = ""
-    context = "option.radio"
 
 
-class PickSet(EnterPasses, RadioSet):
-    """Arrows move the choice; Enter is the page's confirmation."""
+class PickSet(CursorKeys, RadioSet):
+    """Arrows and h/l/j/k move the choice; Enter confirms it."""
 
 
 class ConfirmScreen(WizardScreen):
@@ -87,6 +86,13 @@ class ConfirmScreen(WizardScreen):
     def action_confirm_pick(self, choice: int) -> None:
         """A number moves the selection; Enter is still what acts on it."""
         self.query_one("#install" if choice == 1 else "#back", RadioButton).value = True
+
+    def action_confirm_move(self, step: int) -> None:
+        """h/l and j/k move the choice, like the arrow keys do."""
+        rows = [self.query_one("#" + name, RadioButton) for name in ("install", "back")]
+        current = 0 if self.choice == "install" else 1
+        index = max(0, min(current + step, len(rows) - 1))
+        rows[index].value = True
 
     def action_review_install(self) -> None:
         if self.choice == "install":

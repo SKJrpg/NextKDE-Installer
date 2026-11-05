@@ -79,5 +79,23 @@ class LogViewerScreen(ChromeScreen):
         for line in lines:
             log.write(line)
 
+    def action_log_scroll(self, step: int) -> None:
+        self.query_one("#log_view", RichLog).scroll_relative(y=step, animate=False)
+
+    def action_log_page(self, step: int) -> None:
+        log = self.query_one("#log_view", RichLog)
+        (log.scroll_page_down if step > 0 else log.scroll_page_up)(animate=False)
+
+    def action_log_half(self, step: int) -> None:
+        log = self.query_one("#log_view", RichLog)
+        half = max(1, log.size.height // 2)
+        log.scroll_relative(y=step * half, animate=False)
+
+    def action_log_top(self) -> None:
+        self.query_one("#log_view", RichLog).scroll_home(animate=False)
+
+    def action_log_bottom(self) -> None:
+        self.query_one("#log_view", RichLog).scroll_end(animate=False)
+
     def action_wizard_back(self) -> None:
         self.app.pop_screen()

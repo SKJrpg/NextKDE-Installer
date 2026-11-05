@@ -16,7 +16,6 @@ from pathlib import Path
 
 from textual import work
 from textual.app import App
-from textual.screen import ModalScreen
 
 from .. import VERSION, workflow
 from ..backend import contract, probe
@@ -39,15 +38,12 @@ from .widgets.password import PasswordDialog
 
 
 class KosApp(App, inherit_bindings=False):
-    # The first Ctrl+C only warns; a second one within this window quits.
-    CTRL_C_QUIT_WINDOW = 5.0
     CSS_PATH = "theme/app.tcss"
     # A developer affordance; its footer hint has no place in an installer.
     ENABLE_COMMAND_PALETTE = False
-    # Textual's own ctrl+q quit conflicts with XON and is invisible. The class
-    # also disables inherited bindings, so ctrl+q is really gone; ctrl+C keeps a
-    # hint, but it names the quit key this screen actually offers.
-    BINDINGS = [("ctrl+c", "help_quit", "")]
+    # Inherited bindings are off, so Textual's ctrl+q quit is really gone.
+    # Ctrl+C is the abort request and nothing else; quitting is ctrl+x.
+    BINDINGS = []
 
     def __init__(self, lang: str | None = None, system: System | None = None,
                  paths: Paths | None = None, *, opts: Options | None = None,
@@ -93,7 +89,6 @@ class KosApp(App, inherit_bindings=False):
         self.install_worker = None
         self.prepare_worker = None
         self.action_worker = None
-        self._ctrl_c_at = 0.0          # time.monotonic() of the last Ctrl+C
         self.action_event = threading.Event()
         self.action_screen = None       # where the running action reports
         self.log_tail: deque[str] = deque(maxlen=8)
@@ -103,21 +98,6 @@ class KosApp(App, inherit_bindings=False):
         # Injected by tests: preparation and the object that runs a plan.
         self._prepare_fn = prepare or workflow.begin
         self._session_factory = session_factory
-
-    def action_help_quit(self) -> None:
-        """Ctrl+C twice quits; the first press only says so.
-
-        A modal owns its own keys (the abort and quit questions, the password
-        prompt), so a second press there must not bypass the question.
-        """
-        if isinstance(self.screen, ModalScreen):
-            return
-        now = time.monotonic()
-        if now - self._ctrl_c_at <= self.CTRL_C_QUIT_WINDOW:
-            self.exit()
-            return
-        self._ctrl_c_at = now
-        self.notify(self.strings("ctrl_c_hint"))
 
     def on_mount(self) -> None:
         self.push_screen(WelcomeScreen(self.strings))

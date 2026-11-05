@@ -14,7 +14,7 @@ from textual.widgets import Checkbox, RadioButton, RadioSet, Static
 
 from ...backend.models import ACTIVATION_START, INSTALL_APPS, INSTALL_LOCKSCREEN
 from ...plan import ALL_APPS
-from . import EnterPasses, WizardScreen
+from . import CursorKeys, EnterPasses, WizardScreen
 
 SOURCES = ("stable", "main", "local")
 WIDE_AT = 110
@@ -44,8 +44,8 @@ class SourceRow(EnterPasses, RadioButton):
     context = "option.radio"
 
 
-class SourceSet(EnterPasses, RadioSet):
-    """Arrows move the selection; Enter is the page's."""
+class SourceSet(CursorKeys, RadioSet):
+    """Arrows and j/k move the choice; Enter is the page's."""
 
     context = "option.radio"
 
@@ -252,6 +252,16 @@ class OptionsScreen(WizardScreen):
 
     def action_option_move(self, step: int) -> None:
         self._focus_sibling(step)
+
+    def action_option_pick(self, step: int) -> None:
+        """Arrows and j/k pick a source; the marker moves with the choice."""
+        rows = [row for row in self.query_one("#sources", SourceSet).query(SourceRow)
+                if not row.disabled]
+        if not rows:
+            return
+        current = next((index for index, row in enumerate(rows) if row.value), 0)
+        index = max(0, min(current + step, len(rows) - 1))
+        rows[index].value = True
 
     def action_option_toggle(self) -> None:
         widget = self.focused

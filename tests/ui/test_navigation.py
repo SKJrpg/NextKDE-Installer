@@ -20,6 +20,7 @@ if _VENDOR.is_dir():
 HAS_TEXTUAL = importlib.util.find_spec("textual") is not None
 
 if HAS_TEXTUAL:
+    from rich.cells import cell_len
     from textual.widgets import Button, OptionList
     from textual.widgets.option_list import Option
 
@@ -51,21 +52,40 @@ UNITS = [manage.Unit("core", "1.0", "dirs", 4, "2026-01-01T00:00:00"),
 SNAPSHOTS = [manage.Snapshot("s1", "2026-01-01T00:00:00", "before", "config")]
 
 FOOTERS = {
-    "welcome": "⏎ next  ←/→ language  ^P manage  q quit  ? help",
-    "checks": "↑/↓ select  ⏎ next  r re-check  esc back  q quit  ? help",
-    "options_radio": "↑/↓ select  ⏎ next  esc back  q quit  ? help",
-    "options_check": "space toggle  ↑/↓ move  ⏎ next  esc back  q quit  ? help",
-    "review": "⏎ continue  t commands  esc back  q quit  ? help",
-    "review_failed": "r retry  l log  esc back  q quit  ? help",
-    "confirm": "1/2 select  ⏎ confirm  esc back  ? help",
-    "installation": "ctrl+c abort  ? help",
-    "result_ok": "q exit  l log  ^P manage  ? help",
-    "result_failed": "r retry  l log  ^P manage  q exit  ? help",
-    "management": "1–6 go to  ↑/↓ select  ⏎ open  esc back  ? help",
-    "units": "↑/↓ select  ⏎ toggle  esc back  ? help",
-    "snapshots": "↑/↓ select  ⏎ roll back  c create  esc back  ? help",
-    "logs": "↑/↓ select  ⏎ open  esc back  ? help",
-    "log_view": "↑/↓ scroll  esc back  ? help",
+    "welcome": "⏎ next  ←/→ language  ctrl+p manage  ctrl+x quit  ctrl+k help",
+    "checks": "↑/↓ select  ⏎ next  ctrl+r re-check  esc back  ctrl+x quit  ctrl+k help",
+    "options_radio": "↑/↓ select  ⏎ next  esc back  ctrl+x quit  ctrl+k help",
+    "options_check": "space toggle  ↑/↓ move  ⏎ next  esc back  ctrl+x quit  ctrl+k help",
+    "review": "⏎ continue  ctrl+e commands  esc back  ctrl+x quit  ctrl+k help",
+    "review_failed": "ctrl+r retry  ctrl+l log  esc back  ctrl+x quit  ctrl+k help",
+    "confirm": "1/2 select  ↑/↓ move  ⏎ confirm  esc back  ctrl+k help",
+    "installation": "ctrl+c abort  ctrl+k help",
+    "result_ok": "ctrl+x exit  ctrl+l log  ctrl+p manage  ctrl+k help",
+    "result_failed": "ctrl+r retry  ctrl+l log  ctrl+p manage  ctrl+x exit  ctrl+k help",
+    "management": "1–6 go to  ↑/↓ select  g/G first/last  ⏎ open  esc back  ctrl+k help",
+    "units": "↑/↓ select  g/G first/last  ⏎ toggle  esc back  ctrl+k help",
+    "snapshots": "↑/↓ select  g/G first/last  ⏎ roll back  ctrl+n create  esc back  ctrl+k help",
+    "logs": "↑/↓ select  g/G first/last  ⏎ open  esc back  ctrl+k help",
+    "log_view": "↑/↓ scroll  ctrl+u/d page  g/G first/last  esc back  ctrl+k help",
+}
+
+# At 66 columns the fit drops the secondary hints first; help always stays.
+FOOTERS_NARROW = {
+    "welcome": "⏎ next  ←/→ language  ctrl+p manage  ctrl+x quit  ctrl+k help",
+    "checks": "↑/↓ select  ⏎ next  esc back  ctrl+x quit  ctrl+k help",
+    "options_radio": "↑/↓ select  ⏎ next  esc back  ctrl+x quit  ctrl+k help",
+    "options_check": "space toggle  ⏎ next  esc back  ctrl+x quit  ctrl+k help",
+    "review": "⏎ continue  ctrl+e commands  esc back  ctrl+x quit  ctrl+k help",
+    "review_failed": "ctrl+r retry  ctrl+l log  esc back  ctrl+x quit  ctrl+k help",
+    "confirm": "1/2 select  ↑/↓ move  ⏎ confirm  esc back  ctrl+k help",
+    "installation": "ctrl+c abort  ctrl+k help",
+    "result_ok": "ctrl+x exit  ctrl+l log  ctrl+p manage  ctrl+k help",
+    "result_failed": "ctrl+r retry  ctrl+l log  ctrl+x exit  ctrl+k help",
+    "management": "1–6 go to  ↑/↓ select  ⏎ open  esc back  ctrl+k help",
+    "units": "↑/↓ select  g/G first/last  ⏎ toggle  esc back  ctrl+k help",
+    "snapshots": "↑/↓ select  ⏎ roll back  ctrl+n create  esc back  ctrl+k help",
+    "logs": "↑/↓ select  g/G first/last  ⏎ open  esc back  ctrl+k help",
+    "log_view": "↑/↓ scroll  ctrl+u/d page  g/G first/last  esc back  ctrl+k help",
 }
 
 
@@ -153,40 +173,42 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
 
     # -- footers: whole line, at both sizes ------------------------------
     async def test_wizard_footers_are_whole_lines_at_both_sizes(self) -> None:
-        for size in ((100, 30), (66, 20)):
+        for size, table in (((100, 30), FOOTERS), ((66, 20), FOOTERS_NARROW)):
             with self.subTest(size=size):
                 app = self.make_app()
                 async with app.run_test(size=size) as pilot:
                     await pilot.pause()
-                    self.assertEqual(foot(app), FOOTERS["welcome"])
+                    self.assertEqual(foot(app), table["welcome"])
                     await pilot.press("enter")
                     await pilot.pause()
-                    self.assertEqual(foot(app), FOOTERS["checks"])
+                    self.assertEqual(foot(app), table["checks"])
                     await pilot.press("enter")
                     await pilot.pause()
-                    self.assertEqual(foot(app), FOOTERS["options_radio"])
+                    self.assertEqual(foot(app), table["options_radio"])
                     await pilot.press("tab")
                     await pilot.pause()
-                    self.assertEqual(foot(app), FOOTERS["options_check"])
+                    self.assertEqual(foot(app), table["options_check"])
+                    self.assertLessEqual(cell_len(foot(app)), size[0])
                     await pilot.press("enter")
                     await pilot.pause()
-                    self.assertEqual(foot(app), FOOTERS["review"])
+                    self.assertEqual(foot(app), table["review"])
                     await pilot.press("enter")
                     await pilot.pause()
-                    self.assertEqual(foot(app), FOOTERS["confirm"])
+                    self.assertEqual(foot(app), table["confirm"])
+                    self.assertLessEqual(cell_len(foot(app)), size[0])
 
     async def test_installation_and_result_footers(self) -> None:
         app = self.make_app(mode="cancel")
         async with app.run_test(size=(66, 20)) as pilot:
             await self.start_install(pilot)
             await self.wait_for(pilot, lambda: isinstance(app.screen, InstallationScreen))
-            self.assertEqual(foot(app), FOOTERS["installation"])
+            self.assertEqual(foot(app), FOOTERS_NARROW["installation"])
             await pilot.press("ctrl+c")
             await self.wait_for(pilot, lambda: isinstance(app.screen, ConfirmDialog)
                                 and bool(app.screen.query("#confirm_ok")))
             await pilot.click("#confirm_ok")
             await self.wait_for(pilot, lambda: isinstance(app.screen, ResultScreen))
-            self.assertEqual(foot(app), FOOTERS["result_failed"])
+            self.assertEqual(foot(app), FOOTERS_NARROW["result_failed"])
 
         app = self.make_app()
         async with app.run_test(size=(100, 30)) as pilot:
@@ -242,12 +264,12 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertIsInstance(app.screen, WelcomeScreen)
 
-    async def test_the_quit_question_takes_arrow_keys(self) -> None:
+    async def test_the_quit_question_takes_arrows_and_vim_keys(self) -> None:
         app = self.make_app()
         async with app.run_test(size=(100, 30)) as pilot:
             await pilot.press("enter")
             await pilot.pause()
-            await pilot.press("q")
+            await pilot.press("ctrl+x")
             await pilot.pause()
             self.assertIsInstance(app.screen, ConfirmDialog)
             self.assertEqual(app.focused.id, "confirm_cancel")
@@ -255,6 +277,18 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertEqual(app.focused.id, "confirm_ok")
             await pilot.press("left")
+            await pilot.pause()
+            self.assertEqual(app.focused.id, "confirm_cancel")
+            await pilot.press("l")
+            await pilot.pause()
+            self.assertEqual(app.focused.id, "confirm_ok")
+            await pilot.press("h")
+            await pilot.pause()
+            self.assertEqual(app.focused.id, "confirm_cancel")
+            await pilot.press("j")
+            await pilot.pause()
+            self.assertEqual(app.focused.id, "confirm_ok")
+            await pilot.press("k")
             await pilot.pause()
             self.assertEqual(app.focused.id, "confirm_cancel")
             await pilot.press("escape")
@@ -266,7 +300,7 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
         async with app.run_test(size=(100, 30)) as pilot:
             await pilot.press("enter")
             await pilot.pause()
-            await pilot.press("q")
+            await pilot.press("ctrl+x")
             await pilot.pause()
             self.assertIsInstance(app.screen, ConfirmDialog)
             self.assertIn(Strings("en")("quit_stay"),
@@ -295,24 +329,21 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertIs(app.screen, screen)   # no inherited ctrl+q quit
 
-    async def test_ctrl_c_twice_quits(self) -> None:
+    async def test_ctrl_c_only_aborts_never_quits(self) -> None:
         app = self.make_app()
-        async with app.run_test(size=(100, 30), notifications=True) as pilot:
+        async with app.run_test(size=(100, 30)) as pilot:
             await self.to_review(pilot)
+            await pilot.press("ctrl+c")
             await pilot.press("ctrl+c")
             await pilot.pause()
             self.assertFalse(app._exit)
-            self.assertIn(Strings("en")("ctrl_c_hint"),
-                          [note.message for note in app._notifications])
-            await pilot.press("ctrl+c")
-            await pilot.pause()
-            self.assertTrue(app._exit)
+            self.assertIsInstance(app.screen, ReviewScreen)
 
     async def test_ctrl_c_does_not_quit_through_a_question(self) -> None:
         app = self.make_app()
         async with app.run_test(size=(100, 30)) as pilot:
             await self.to_review(pilot)
-            await pilot.press("q")              # the quit question
+            await pilot.press("ctrl+x")         # the quit question
             await pilot.pause()
             self.assertIsInstance(app.screen, ConfirmDialog)
             await pilot.press("ctrl+c")
@@ -322,6 +353,22 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
             self.assertIsInstance(app.screen, ConfirmDialog)
 
     # -- help overlay ------------------------------------------------------
+    async def test_help_is_ctrl_k_and_question_mark_still_works(self) -> None:
+        app = self.make_app()
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.press("enter")
+            await pilot.pause()
+            self.assertIn("ctrl+k help", foot(app))
+            self.assertNotIn("? help", foot(app))
+            await pilot.press("?")            # the hidden alias
+            await pilot.pause()
+            self.assertIsInstance(app.screen, HelpScreen)
+            await pilot.press("escape")
+            await pilot.pause()
+            await pilot.press("ctrl+k")       # and the advertised key
+            await pilot.pause()
+            self.assertIsInstance(app.screen, HelpScreen)
+
     async def test_help_lists_what_the_footer_offers(self) -> None:
         app = self.make_app()
         async with app.run_test(size=(100, 30)) as pilot:
@@ -374,6 +421,7 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             body = str(app.screen.query_one("#help_body").render())
             self.assertIn("re-check", body)
+            self.assertIn("j/k", body)             # the Vim aliases are listed
             self.assertNotIn("commands", body)      # that key lives on Review
             await pilot.press("escape")
             await pilot.pause()
@@ -394,10 +442,90 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
             await pilot.press("enter")
             await pilot.pause()
             self.assertEqual(foot(app),
-                             "↑/↓ select  ⏎ next  r re-check  b back  q quit  ? help")
+                             "↑/↓ select  ⏎ next  ctrl+r re-check  b back  "
+                             "ctrl+x quit  ctrl+k help")
             await pilot.press("b")
             await pilot.pause()
             self.assertIsInstance(app.screen, WelcomeScreen)
+
+    # -- Vim navigation ----------------------------------------------------
+    async def test_vim_keys_move_checks_and_the_source_choice(self) -> None:
+        app = self.make_app()
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.press("enter")          # Checks
+            await pilot.pause()
+            self.assertEqual(app.screen.row, 0)
+            await pilot.press("j")
+            await pilot.pause()
+            self.assertEqual(app.screen.row, 1)
+            await pilot.press("k")
+            await pilot.pause()
+            self.assertEqual(app.screen.row, 0)
+            await pilot.press("enter")          # Options
+            await pilot.pause()
+            self.assertEqual(app.opts.source, "stable")
+            await pilot.press("j")
+            await pilot.pause()
+            self.assertEqual(app.opts.source, "main")
+            await pilot.press("k")
+            await pilot.pause()
+            self.assertEqual(app.opts.source, "stable")
+
+    async def test_vim_keys_choose_on_the_confirm_page(self) -> None:
+        app = self.make_app()
+        async with app.run_test(size=(100, 30)) as pilot:
+            await self.to_confirm(pilot)
+            screen = app.screen
+            self.assertEqual(screen.choice, "back")
+            await pilot.press("h")              # left/up is the first choice
+            await pilot.pause()
+            self.assertEqual(screen.choice, "install")
+            await pilot.press("l")
+            await pilot.pause()
+            self.assertEqual(screen.choice, "back")
+            await pilot.press("l")              # clamped: still "back", no wrap
+            await pilot.pause()
+            self.assertEqual(screen.choice, "back")
+            self.assertIs(app.screen, screen)   # and nothing was installed
+
+    async def test_vim_keys_in_the_menu_and_the_log(self) -> None:
+        app = self.manage_app()
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.press("ctrl+p")
+            await self.wait_for(pilot, lambda: isinstance(app.screen, ManagementScreen)
+                                and app.screen.query_one("#manage_list",
+                                                         OptionList).option_count == 6)
+            listing = app.screen.query_one("#manage_list", OptionList)
+            await pilot.press("j")
+            await pilot.pause()
+            self.assertEqual(listing.highlighted, 1)
+            await pilot.press("G")
+            await pilot.pause()
+            self.assertEqual(listing.highlighted, 5)
+            await pilot.press("g")
+            await pilot.pause()
+            self.assertEqual(listing.highlighted, 0)
+
+            log = app.paths.log_dir / "vim.log"
+            log.parent.mkdir(parents=True, exist_ok=True)
+            log.write_text("\n".join(f"line {n}" for n in range(80)), encoding="utf-8")
+            self.addCleanup(log.unlink, missing_ok=True)
+            app.push_screen(LogViewerScreen(Strings("en"), log))
+            await self.wait_for(pilot, lambda: isinstance(app.screen, LogViewerScreen)
+                                and bool(app.screen.query_one("#log_view").lines))
+            view = app.screen.query_one("#log_view")
+            await pilot.press("G")
+            await pilot.pause()
+            self.assertGreater(view.scroll_y, 0)
+            await pilot.press("g")
+            await pilot.pause()
+            self.assertEqual(view.scroll_y, 0)
+            await pilot.press("ctrl+d")
+            await pilot.pause()
+            self.assertGreater(view.scroll_y, 0)
+            await pilot.press("ctrl+u")
+            await pilot.pause()
+            self.assertEqual(view.scroll_y, 0)
 
     # -- options focus model ----------------------------------------------
     async def test_enter_advances_and_space_toggles(self) -> None:
@@ -450,10 +578,10 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(foot(app), FOOTERS["review_failed"])
             status = str(app.screen.query_one("#status").render())
             self.assertIn("git clone", status)
-            self.assertIn("[r] retry", status)
+            self.assertIn("[Ctrl+R] retry", status)
             self.assertIn(Strings("en")("advice_network"), status)
             self.assertIn("Could not resolve host", status)
-            await pilot.press("l")
+            await pilot.press("ctrl+l")
             await pilot.pause()
             self.assertIsInstance(app.screen, LogViewerScreen)
 
@@ -482,7 +610,7 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
             await self.wait_for(pilot, lambda: isinstance(app.screen, ManagementScreen)
                                 and app.screen.query_one("#manage_list",
                                                          OptionList).option_count == 6)
-            self.assertEqual(foot(app), FOOTERS["management"])
+            self.assertEqual(foot(app), FOOTERS_NARROW["management"])
             rows = [str(option.prompt) for option in
                     app.screen.query_one("#manage_list", OptionList).options]
             self.assertEqual([row[:4] for row in rows],

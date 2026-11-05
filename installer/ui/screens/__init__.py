@@ -2,7 +2,8 @@
 
 A screen declares a context (``CONTEXT``); ``installer/ui/keymap.py`` turns it
 into bindings, the footer words and the help overlay, so the three cannot
-disagree. Esc only steps back; quitting goes through ``q``.
+disagree. Esc only steps back; quitting goes through ``ctrl+x``, and every
+other function key is Ctrl too, which leaves the letters to Vim navigation.
 """
 
 from __future__ import annotations
@@ -34,6 +35,19 @@ class EnterPasses:
         self._bindings.key_to_bindings.pop("enter", None)
 
 
+class CursorKeys(EnterPasses):
+    """A radio set whose arrows belong to the page, so moving changes the value.
+
+    Textual's set moves an invisible cursor and waits for Space; here the
+    arrow/Vim keys pick the next row, which is what the footer promises.
+    """
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        for key in ("up", "down", "left", "right"):
+            self._bindings.key_to_bindings.pop(key, None)
+
+
 class ChromeScreen(Screen):
     """Header and footer with localized key labels; the management area."""
 
@@ -61,8 +75,10 @@ class ChromeScreen(Screen):
         return keymap.resolve(self.contexts())
 
     def _row_width(self, row: keymap.Row) -> int:
-        display = row.action.display or row.keys[0]
-        return cell_len(display) + 1 + cell_len(self.strings(row.action.label)) + 2
+        """One row exactly as the footer paints it: "key label"."""
+        display = (row.action.display
+                   or keymap.display_key(row.keys[0], self.strings.ascii))
+        return cell_len(display) + 1 + cell_len(self.strings(row.action.label))
 
     def _bind_keys(self) -> None:
         """(Re)bind the resolved rows; the footer is painted from the same rows."""
@@ -98,7 +114,7 @@ class ChromeScreen(Screen):
         width = self.size.width
         if width <= 0:
             return rows
-        return keymap.fit(rows, max(20, width - 1), self._row_width)
+        return keymap.fit(rows, max(20, width - 2), self._row_width)
 
     def paint_footer(self) -> None:
         """Paint the hint line; a no-op until the footer widget exists."""
@@ -107,13 +123,21 @@ class ChromeScreen(Screen):
             footers.first().show(self.footer_rows(), self.strings)
 
     def help_rows(self) -> list[tuple[str, str]]:
-        """(key, description) for the overlay: every action available here."""
+        """(key, description) for the overlay: every action available here.
+
+        The footer shows the primaries only; the overlay adds the one-letter
+        Vim aliases (j/k, h/l, g/G) so the scheme is discoverable.
+        """
         ascii_only = self.strings.ascii
         rows = []
         for row in self.key_rows():
             if not self._available(row):
                 continue
             key = row.action.display or keymap.display_key(row.keys[0], ascii_only)
+            letters = [keymap.display_key(alias, ascii_only)
+                       for alias in row.aliases if len(alias) == 1]
+            if letters:
+                key = f"{key} {'/'.join(letters)}"
             rows.append((keymap.display_key(key, ascii_only),
                          self.strings(row.action.label)))
         return rows

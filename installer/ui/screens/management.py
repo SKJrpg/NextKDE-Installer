@@ -120,6 +120,19 @@ class ManageScreen(ChromeScreen):
             for _level, text in session.tail[-4:]:
                 log.write(text)
 
+    def action_menu_move(self, step: int) -> None:
+        listing = self.query_one("#manage_list", OptionList)
+        if step > 0:
+            listing.action_cursor_down()
+        else:
+            listing.action_cursor_up()
+
+    def action_menu_first(self) -> None:
+        self.query_one("#manage_list", OptionList).action_first()
+
+    def action_menu_last(self) -> None:
+        self.query_one("#manage_list", OptionList).action_last()
+
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         if action == "run_abort":
             return bool(self.busy)      # Ctrl+C only while something runs

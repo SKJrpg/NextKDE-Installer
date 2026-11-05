@@ -112,12 +112,12 @@ class AppShellTest(unittest.IsolatedAsyncioTestCase):
             self.assertIn("通过", text)
             self.assertIn("注意", text)
 
-    async def test_r_reprobes_without_crashing(self) -> None:
+    async def test_ctrl_r_reprobes_without_crashing(self) -> None:
         app = self.make_app()
         async with app.run_test(size=(100, 30)) as pilot:
             await pilot.press("enter")
             await pilot.pause()
-            await pilot.press("r")
+            await pilot.press("ctrl+r")
             await pilot.pause()
             self.assertIsInstance(app.screen, SystemScreen)
             self.assertTrue(app.screen.query_one("#probes").children)

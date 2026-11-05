@@ -42,12 +42,63 @@ class RegistryTest(unittest.TestCase):
                                   "menu.item.uninstall"})
 
     def test_no_default_key_is_a_terminal_conflict(self) -> None:
+        # Ctrl+Q is XON, Ctrl+S XOFF, the rest are Enter/Tab/EOF/suspend or
+        # shell, tmux and Emacs aliases. Ctrl+C stays abort, and the log viewer
+        # takes Ctrl+U/D on purpose (half page over a read-only view).
         forbidden = {"ctrl+m", "ctrl+i", "ctrl+j", "ctrl+h", "ctrl+s", "ctrl+q",
-                     "ctrl+z", "ctrl+d", "ctrl+a", "ctrl+b"}
+                     "ctrl+z", "ctrl+d", "ctrl+a", "ctrl+b", "ctrl+\\"}
         for action in keymap.ACTIONS:
             for key in action.keys + action.aliases:
+                if key in ("ctrl+u", "ctrl+d"):
+                    self.assertEqual(action.id, "log.halfpage")
+                    continue
                 self.assertNotIn(key, forbidden, action.id)
                 self.assertFalse(key.startswith("alt+"), action.id)
+
+    def test_function_keys_are_ctrl_and_letters_are_navigation(self) -> None:
+        functions = ("review.details", "review.retry", "result.retry", "log.open",
+                     "check.refresh", "snapshot.create", "app.manage", "app.quit",
+                     "result.exit", "run.abort", "help.open", "log.halfpage")
+        for action_id in functions:
+            action = next(a for a in keymap.ACTIONS if a.id == action_id)
+            for key in action.keys:
+                self.assertTrue(key.startswith("ctrl+"), f"{action_id} -> {key}")
+
+        navigation = ("check.move", "option.move", "option.pick", "confirm.move",
+                      "menu.move", "menu.ends", "log.scroll", "log.ends",
+                      "welcome.language", "unit.toggle", "snapshot.rollback",
+                      "logs.open", "menu.act", "wizard.next", "wizard.previous",
+                      "wizard.back", "review.continue", "review.install",
+                      "confirm.pick")
+        for action_id in navigation:
+            action = next(a for a in keymap.ACTIONS if a.id == action_id)
+            for key in action.keys + action.aliases:
+                self.assertFalse(key.startswith("ctrl+"), f"{action_id} -> {key}")
+
+    def test_vim_aliases_cover_the_movement_rows(self) -> None:
+        expected = {
+            "check.move": ("j", "k"),
+            "option.move": ("j", "k"),
+            "option.pick": ("j", "k"),
+            "confirm.move": ("h", "l", "j", "k"),
+            "menu.move": ("j", "k"),
+            "menu.ends": (),        # g/G are its primary keys
+            "log.ends": (),
+            "welcome.language": ("h", "l"),
+        }
+        for action_id, aliases in expected.items():
+            action = next(a for a in keymap.ACTIONS if a.id == action_id)
+            self.assertEqual(action.aliases, aliases, action_id)
+        self.assertEqual(next(a for a in keymap.ACTIONS
+                              if a.id == "menu.ends").keys, ("g", "G"))
+        self.assertEqual(next(a for a in keymap.ACTIONS
+                              if a.id == "log.scroll").aliases[:2], ("j", "k"))
+
+    def test_help_is_a_ctrl_key_with_the_question_mark_alias(self) -> None:
+        action = next(a for a in keymap.ACTIONS if a.id == "help.open")
+        self.assertEqual(action.keys, ("ctrl+k",))
+        self.assertEqual(action.aliases, ("question_mark",))
+        self.assertEqual(action.priority, 1)      # the last hint ever dropped
 
     def test_display_names_are_short_and_ascii_safe(self) -> None:
         self.assertEqual(keymap.display_key("enter"), "⏎")
@@ -55,6 +106,8 @@ class RegistryTest(unittest.TestCase):
         self.assertEqual(keymap.display_key("enter", ascii_only=True), "Enter")
         self.assertEqual(keymap.display_key("↑/↓", ascii_only=True), "up/down")
         self.assertEqual(keymap.display_key("1–6", ascii_only=True), "1-6")
+        self.assertEqual(keymap.display_key("ctrl+x"), "ctrl+x")
+        self.assertEqual(keymap.display_key("G"), "G")
 
     def test_overrides_replace_keys_and_drop_aliases(self) -> None:
         keymap.apply_overrides({"wizard.previous": "b", "unit.toggle": "x"})

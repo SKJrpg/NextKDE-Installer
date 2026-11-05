@@ -30,6 +30,7 @@ _KEY_NAMES = {
     "shift+tab": "Shift+Tab", "left": "←", "right": "→", "up": "↑",
     "down": "↓", "pageup": "PgUp", "pagedown": "PgDn",
     "question_mark": "?",
+    "G": "G",
 }
 _ASCII = {"⏎": "Enter", "←": "left", "→": "right", "↑": "up", "↓": "down",
           "–": "-"}
@@ -71,34 +72,60 @@ class Row:
 
 # Footer order is table order: primary, secondary, then quit and help.
 ACTIONS: tuple[Action, ...] = (
-    # Table order is footer order; each screen takes the rows it declares.
+    # Footer order is table order; each screen takes the rows it declares.
+    # Priority is the drop order on a narrow terminal: the highest number goes
+    # first, so help (1) outlives everything and secondary hints go before the
+    # navigation ones. Function keys are Ctrl; single letters belong to Vim.
     Action("option.pick", ("up", "down"), "key_select", frozenset({"option.radio"}),
-           10, display="↑/↓", bind=()),
+           10, display="↑/↓", aliases=("j", "k"),
+           bind=("option_pick(-1)", "option_pick(1)",
+                 "option_pick(1)", "option_pick(-1)")),
     Action("option.toggle", ("space",), "key_toggle", frozenset({"option.check"}), 10),
-    Action("option.move", ("up", "down"), "key_move", frozenset({"option.check"}), 10,
-           display="↑/↓", bind=("option_move(-1)", "option_move(1)"),
+    Action("option.move", ("up", "down"), "key_move", frozenset({"option.check"}), 35,
+           display="↑/↓", aliases=("j", "k"),
+           bind=("option_move(-1)", "option_move(1)",
+                 "option_move(1)", "option_move(-1)"),
            binding_priority=True),   # the list's scroll binding would win otherwise
     Action("check.move", ("up", "down"), "key_select", frozenset({CHECKS}), 10,
-           display="↑/↓", bind=("checks_move(-1)", "checks_move(1)")),
+           display="↑/↓", aliases=("j", "k"),
+           bind=("checks_move(-1)", "checks_move(1)",
+                 "checks_move(1)", "checks_move(-1)")),
     Action("review.continue", ("enter",), "key_continue", frozenset({REVIEW}), 10),
-    Action("review.details", ("t",), "key_details", frozenset({REVIEW}), 10),
-    Action("review.retry", ("r",), "key_retry", frozenset({REVIEW}), 30),
-    Action("result.retry", ("r",), "key_retry", frozenset({RESULT}), 10),
-    Action("log.open", ("l",), "key_log", frozenset({REVIEW, RESULT}), 30),
+    Action("review.details", ("ctrl+e",), "key_details", frozenset({REVIEW}), 40),
+    Action("review.retry", ("ctrl+r",), "key_retry", frozenset({REVIEW}), 40),
+    Action("result.retry", ("ctrl+r",), "key_retry", frozenset({RESULT}), 40),
+    Action("log.open", ("ctrl+l",), "key_log", frozenset({REVIEW, RESULT}), 40),
     Action("confirm.pick", ("1", "2"), "key_select", frozenset({CONFIRM}), 10,
            display="1/2", bind=("confirm_pick(1)", "confirm_pick(2)")),
+    Action("confirm.move", ("up", "down"), "key_move", frozenset({CONFIRM}), 35,
+           display="↑/↓", aliases=("h", "l", "j", "k"),
+           bind=("confirm_move(-1)", "confirm_move(1)",
+                 "confirm_move(-1)", "confirm_move(1)",
+                 "confirm_move(1)", "confirm_move(-1)")),
     Action("menu.goto", ("1", "2", "3", "4", "5", "6"), "menu_goto",
            frozenset({MENU}), 10, display="1–6", bind=()),
-    Action("menu.move", ("up", "down"), "key_select", frozenset({MENU}) | LISTS, 10,
-           display="↑/↓", bind=()),
+    Action("menu.move", ("up", "down"), "key_select", frozenset({MENU}) | LISTS, 35,
+           display="↑/↓", aliases=("j", "k"),
+           bind=("menu_move(-1)", "menu_move(1)",
+                 "menu_move(1)", "menu_move(-1)")),
+    Action("menu.ends", ("g", "G"), "key_ends", frozenset({MENU}) | LISTS, 45,
+           display="g/G", bind=("menu_first", "menu_last")),
     Action("unit.toggle", ("enter",), "key_toggle", frozenset({"list.units"}), 10,
            aliases=("space",)),
     Action("snapshot.rollback", ("enter",), "key_rollback",
            frozenset({"list.snapshots"}), 10, danger=True),
-    Action("snapshot.create", ("c",), "key_create", frozenset({"list.snapshots"}), 30),
+    Action("snapshot.create", ("ctrl+n",), "key_create",
+           frozenset({"list.snapshots"}), 40),
     Action("logs.open", ("enter",), "key_open", frozenset({"list.logs"}), 10),
     Action("log.scroll", ("up", "down"), "key_scroll", frozenset({"log.view"}), 10,
-           display="↑/↓", aliases=("pageup", "pagedown"), bind=()),
+           display="↑/↓", aliases=("j", "k", "pageup", "pagedown"),
+           bind=("log_scroll(-1)", "log_scroll(1)",
+                 "log_scroll(1)", "log_scroll(-1)",
+                 "log_page(-1)", "log_page(1)")),
+    Action("log.halfpage", ("ctrl+u", "ctrl+d"), "key_page", frozenset({"log.view"}),
+           50, display="ctrl+u/d", bind=("log_half(-1)", "log_half(1)")),
+    Action("log.ends", ("g", "G"), "key_ends", frozenset({"log.view"}), 45,
+           display="g/G", bind=("log_top", "log_bottom")),
     Action("menu.item.units", ("1",), "", frozenset({MENU}), 30, hidden=True),
     Action("menu.item.snapshots", ("2",), "", frozenset({MENU}), 30, hidden=True),
     Action("menu.item.doctor", ("3",), "", frozenset({MENU}), 30, hidden=True),
@@ -109,28 +136,28 @@ ACTIONS: tuple[Action, ...] = (
     Action("wizard.next", ("enter",), "key_next", frozenset({WELCOME, CHECKS, OPTIONS}), 10),
     Action("review.install", ("enter",), "key_confirm", frozenset({CONFIRM}), 10,
            danger=True),
-    Action("check.refresh", ("r",), "key_refresh", frozenset({CHECKS}), 40),
+    Action("check.refresh", ("ctrl+r",), "key_refresh", frozenset({CHECKS}), 40),
     Action("welcome.language", ("left", "right"), "key_language",
-           frozenset({WELCOME}), 20, display="←/→"),
-    Action("menu.act", ("enter",), "key_open", frozenset({MENU}), 20),
+           frozenset({WELCOME}), 35, display="←/→", aliases=("h", "l")),
+    Action("menu.act", ("enter",), "key_open", frozenset({MENU}), 10),
     # The wizard's exit is a previous step; a menu's is one level up. Same key,
     # different word, so the footer reads as a pair with "next".
     Action("wizard.previous", ("escape",), "key_previous",
-           frozenset({CHECKS, OPTIONS, REVIEW, CONFIRM}), 20,
+           frozenset({CHECKS, OPTIONS, REVIEW, CONFIRM}), 15,
            bind=("wizard_back",)),
-    Action("wizard.back", ("escape",), "key_back", frozenset(MENUS), 20),
-    Action("app.manage", ("ctrl+p",), "key_manage", frozenset({WELCOME, RESULT}), 30,
-           display="^P"),
-    Action("app.quit", ("q",), "key_quit",
-           frozenset({WELCOME, CHECKS, OPTIONS, REVIEW}), 70),
-    Action("result.exit", ("q",), "key_exit", frozenset({RESULT}), 70),
+    Action("wizard.back", ("escape",), "key_back", frozenset(MENUS), 15),
+    Action("app.manage", ("ctrl+p",), "key_manage", frozenset({WELCOME, RESULT}), 50),
+    Action("app.quit", ("ctrl+x",), "key_quit",
+           frozenset({WELCOME, CHECKS, OPTIONS, REVIEW}), 20),
+    Action("result.exit", ("ctrl+x",), "key_exit", frozenset({RESULT}), 20),
     Action("run.abort", ("ctrl+c",), "key_abort", frozenset({RUN, MENU}) | LISTS, 5,
            danger=True),
     Action("focus.next", ("tab",), "key_focus_next", ALL, 80, hidden=True,
            display="Tab", bind=("focus_next",)),
     Action("focus.prev", ("shift+tab",), "key_focus_prev", ALL, 80, hidden=True,
            display="Shift+Tab", bind=("focus_prev",)),
-    Action("help.open", ("question_mark",), "key_help", ALL, 90, display="?"),
+    Action("help.open", ("ctrl+k",), "key_help", ALL, 1, display="ctrl+k",
+           aliases=("question_mark",)),
 )
 
 _BY_ID = {action.id: action for action in ACTIONS}
@@ -197,14 +224,18 @@ def resolve(contexts: set[str] | frozenset[str], overrides=None,
 
 
 def fit(rows: list[Row], budget: int, measure) -> list[Row]:
-    """Drop the least important rows until the footer fits the width."""
+    """Drop the least important rows until the footer fits the width.
+
+    Rows are joined by two spaces, so the total is the row widths plus a gap
+    between neighbours. ``measure`` gives one row's painted width.
+    """
     kept = list(rows)
     while any(not row.action.hidden for row in kept):
-        width = sum(measure(row) for row in kept if not row.action.hidden)
+        visible = [row for row in kept if not row.action.hidden]
+        width = sum(measure(row) for row in visible) + 2 * (len(visible) - 1)
         if width <= budget:
             break
-        lowest = max((row for row in kept if not row.action.hidden),
-                     key=lambda row: row.action.priority)
+        lowest = max(visible, key=lambda row: row.action.priority)
         kept.remove(lowest)
     return kept
 

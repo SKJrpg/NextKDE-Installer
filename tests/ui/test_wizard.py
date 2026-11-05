@@ -232,7 +232,7 @@ class WizardTest(unittest.IsolatedAsyncioTestCase):
             for step in steps:
                 self.assertIn(step.title, text)
 
-            await pilot.press("t")
+            await pilot.press("ctrl+e")
             await pilot.pause()
             argv = " ".join(steps[0].argv)
             self.assertIn(argv, str(app.screen.query_one("#steps").render()))

@@ -1,6 +1,6 @@
 # 键位与菜单设计（KOS 安装器 TUI）
 
-**已实现**（`installer/ui/keymap.py`、`installer/ui/widgets/footer.py`、`installer/ui/screens/confirm.py`）。第 8 节是当时的冲突清单，第 11 节记录实现与本稿的差异。
+**已实现**（`installer/ui/keymap.py`、`installer/ui/widgets/footer.py`、`installer/ui/screens/confirm.py`）。本轮把功能键统一成 `Ctrl+…`、把单字母让给 Vim 导航（§12 记录这次的改动与理由）；第 8 节是冲突清单，第 11 节是实现与本稿的历史差异。
 
 适用范围：`installer/ui/`（Textual 8.2.8，vendored）、`installer/__main__.py` 的 `--plain`/非 TTY 分支。所有可见文案进 `installer/strings.py`，zh/en 成对。
 
@@ -10,21 +10,21 @@
 
 | 议题 | 结论 | 一句话理由 |
 |---|---|---|
-| Esc / q | Esc 只做“返回”，任何页面都不退出；退出只走 q（向导有状态时先弹确认） | Esc 是 TUI 里最容易被误触的键，退出必须是显式意图 |
-| Review 的执行 | Enter 只进入**确认页**；确认页默认选中「返回」，选中「开始安装」后才由 Enter 执行 | 计划页与执行页分离：在计划页上按任何键都不会启动安装 |
-| Result | Enter = 执行当前聚焦的按钮（失败页默认聚焦「重试」）；q = 退出；新增 l = 日志 | 失败后最可能的动作是重试，不是退出 |
-| 向导数字跳转 1–5 | **删除**；数字只给有序选项（菜单、确认页）；侧栏保留鼠标点击跳转 | 线性向导的数字会与菜单数字撞义，且跳回前页会重问条件 |
-| Checks 刷新 | `r`（隐藏别名：无 F5） | 助记、单键；F5 在 macOS/tmux 里常被截走或拦截 |
-| 管理区 | Management 变成 `[1]…[6]` 栈式菜单；子页是列表（↑↓/Enter），Esc 弹一层 | 同一套“数字=菜单、列表=回车”模型，不再逐屏发明键位 |
+| 功能键 | 一律 `Ctrl+…`：重试/重检 `ctrl+r`、日志 `ctrl+l`、详情 `ctrl+e`、新建 `ctrl+n`、管理 `ctrl+p`、帮助 `ctrl+k`、中止 `ctrl+c`、退出 `ctrl+x` | 单字母键让给导航；功能键同一前缀，好记也好让路 |
+| 导航 | Vim：`j`/`k` 下/上、`h`/`l` 左/右、`g`/`G` 首/末；方向键、`Enter`/`Esc`/`Space`/`Tab`、菜单数字不变 | 导航是**别名**：同一个动作多绑几个键，不另立一套动作 |
+| Esc / 退出 | Esc 只“返回”，永不退出；退出只走 `ctrl+x`，向导有状态时先确认 | Esc 最易误触，退出必须是显式意图 |
+| Review 执行 | Enter 只进确认页；确认页默认「返回」，`1/2` 或 `h/l/j/k` 只移动，`Enter` 才执行 | 计划页与执行页分离，单键不能启动安装 |
+| 帮助 | `ctrl+k`（keys）；`?` 保留为**隐藏别名** | 终端里 `Ctrl+?` 打不出来；`?` 继续可用但不占底栏，帮助键与其它功能键同一前缀 |
+| 管理区 | `[1]…[6]` 数字菜单 + `j/k` + `g/G`，Esc 弹一层 | 数字直达，方向键与首末键与全站一致 |
 
 全局不变式（后面所有表都由它推出）：
 
-1. **Enter = 推进/确认**，永远不做“切换”。切换只用 Space（复选/单选）或 ↑↓（单选）。
+1. **Enter = 推进/确认**，模态框与输入框除外；永远不做“切换”。
 2. **Space = 切换/选中**，只作用于有布尔或选项的控件。
 3. **Esc = 后退一层**，没有后退时就不绑定（不出现、不响应）。
-4. **q = 退出**，向导有状态时 `ConfirmDialog` 确认，默认焦点「继续」。
-5. 单字符键（`r` 重试/重检、`l` 日志、`t` 详情、`c` 新建）只在**没有文本输入聚焦**时生效；`Input` 聚焦时全部让位。`^P` 是控制键，只出现在没有输入框的 Welcome / Result。只在菜单里出现的行（Doctor、卸载）不额外给字母——`[n]` 已足够，字母留给跨屏反复出现的动作。
-6. 数字只用于**有序选项**：菜单行（`[n]`）与确认页的两个选项（`1`/`2`）；不用于线性向导跳步。禁用项保留自己的槽位。
+4. **功能键一律 Ctrl**；单字母只做导航（`j k h l g G`），`?` 是唯一例外且不上海报。
+5. Ctrl 选键避开终端、shell、tmux 的冲突（§9.3）；`ctrl+c` 仍是中止。
+6. 数字只用于**有序选项**：菜单行（`[n]`）与确认页的两个选项（`1`/`2`）。
 
 ---
 
@@ -55,79 +55,84 @@
 
 ## 3. 动作注册表（action id → 键位）
 
-默认键位。`显示` 是底栏/帮助里的键名（ASCII 终端自动降级为 `Enter/Esc/Up/Down/Space/Tab`，见 `Strings.ascii`）。
+默认键位。底栏原样打印键名（`ctrl+r` 比 `^R` 长两格，但不用猜）；ASCII 终端把 `↑/↓`、`←/→`、`⏎` 降级成单词（`Strings.ascii`）。
 
-| 动作 ID | 默认键 | 上下文 | 标签（strings key） | 备注 |
-|---|---|---|---|---|
-| `app.quit` | `q` | app（`wizard.run` 除外） | `key_quit` 退出 / quit | 有状态时先确认 |
-| `app.manage` | `Ctrl+P`（底栏 `^P`） | `wizard.welcome`、`wizard.result` | `key_manage` 管理 / manage | 栈式进入管理区 |
-| `help.open` | `?` | app | `key_help` 帮助 / help | 覆盖层用当前上下文 |
-| `focus.next` | `Tab` | app | `key_focus_next` 下一项 / next field | 隐藏：不进底栏，只进帮助 |
-| `focus.prev` | `Shift+Tab` | app | `key_focus_prev` 上一项 / previous field | 隐藏，同上 |
-| `wizard.next` | `Enter` | `wizard.welcome` / `wizard.checks` / `wizard.options` | `key_next` 下一步 / next | 各屏自己实现“下一步是谁” |
-| `review.continue` | `Enter` | `wizard.review` | `key_continue` 继续 / continue | 进确认页，不执行 |
-| `wizard.previous` | `Esc` | checks / options / review / confirm | `key_previous` 上一步 / back | 向导页与“下一步”成对 |
-| `wizard.back` | `Esc` | menu / list.* / log.view | `key_back` 返回 / back | 无后退就不绑定 |
-| `welcome.language` | `←` `→` | `wizard.welcome` | `key_language` 语言 / language | **不再用 Tab**（Tab 归焦点） |
-| `check.move` | `↑` `↓` | `wizard.checks` | `key_select` 选择 / select | |
-| `check.refresh` | `r` | `wizard.checks` | `key_refresh` 重新检测 / re-check | F5 删除 |
-| `option.move` | `↑` `↓` | `option.check` | `key_move` 移动 / move | 复选组内移动焦点，不改值 |
-| `option.toggle` | `Space` | `option.check`、`option.radio` | `key_toggle` 切换 / toggle | 单选组也用它确认选中 |
-| `review.details` | `t` | `wizard.review` | `key_details` 命令详情 / commands | |
-| `review.retry` | `r` | `wizard.review`（仅准备失败） | `key_retry` 重试 / retry | 失败前不绑定 |
-| `log.open` | `l` | `wizard.review`（失败）、`wizard.result` | `key_log` 日志 / log | 复用 `LogViewerScreen` |
-| `review.install` | `Enter` | `wizard.confirm`（仅当选中「开始安装」） | `key_install` 开始安装 / install | **danger**，见 §5 |
-| `confirm.pick.install` | `1` | `wizard.confirm` | 行文本自带 | 只移动选中项，不执行 |
-| `confirm.pick.back` | `2` | `wizard.confirm` | 行文本自带 | 只移动选中项，不执行 |
-| `result.retry` | `r` | `wizard.result`（非成功） | `key_retry` 重试 / retry | |
-| `run.abort` | `Ctrl+C` | `wizard.run`、`menu`/`list.*`（动作运行中） | `key_abort` 中止 / abort | **danger**，先确认 |
-| `menu.move` | `↑` `↓` | `menu`、`list.*` | `key_select` 选择 / select | `OptionList` 原生 |
-| `menu.act` | `Enter` | `menu`、`list.*` | `key_open` 打开 / open | 列表里 = 该行的主动作 |
-| `menu.item.units` | `1` | `menu` | 行文本自带 | → `UnitsScreen` |
-| `menu.item.snapshots` | `2` | `menu` | | → `SnapshotsScreen` |
-| `menu.item.doctor` | `3` | `menu` | | 就地执行 |
-| `menu.item.logs` | `4` | `menu` | | → `LogsScreen` |
-| `menu.item.uninstall` | `5` | `menu` | | **danger**，需输入 `uninstall` |
-| `menu.item.back` | `6` | `menu` | `key_back` 返回 / back | 与 Esc 等价 |
-| `unit.toggle` | `Enter`（`Space` 为隐藏别名） | `list.units` | `key_toggle` 切换 / toggle | 关 `core` 已拒绝 |
-| `snapshot.create` | `c` | `list.snapshots` | `key_create` 新建 / create | |
-| `snapshot.rollback` | `Enter` | `list.snapshots` | `key_rollback` 回滚 / roll back | **danger**，确认框 |
-| `log.scroll` | `↑` `↓` `PgUp` `PgDn` | `log.view` | `key_scroll` 滚动 / scroll | |
-| `dialog.confirm.yes` / `.no` | `Enter`（按钮）/ `Esc` | `dialog.confirm` | `confirm` / `cancel` | 默认焦点 = 取消 |
-| `dialog.secret.submit` / `.cancel` | `Enter` / `Esc` | `dialog.secret` | `key_continue` / `cancel` | 密码对话框 |
+| 动作 ID | 主键 | 别名 | 上下文 | 标签（strings key） | 备注 |
+|---|---|---|---|---|---|
+| `app.quit` | `ctrl+x` | | welcome / checks / options / review | `key_quit` 退出 / quit | 有状态时先确认 |
+| `result.exit` | `ctrl+x` | | result | `key_exit` 退出 / exit | 成功页排第一 |
+| `app.manage` | `ctrl+p` | | welcome / result | `key_manage` 管理 / manage | 命令面板已关 |
+| `help.open` | `ctrl+k` | `?` | 全部 | `key_help` 帮助 / help | 别名不进底栏；底栏永远最后一项 |
+| `focus.next` | `Tab` | | 全部 | `key_focus_next` 下一项 / next field | 隐藏：只进帮助 |
+| `focus.prev` | `Shift+Tab` | | 全部 | `key_focus_prev` 上一项 / previous field | 隐藏 |
+| `wizard.next` | `Enter` | | welcome / checks / options | `key_next` 下一步 / next | 各屏实现“下一步是谁” |
+| `review.continue` | `Enter` | | review | `key_continue` 继续 / continue | 进确认页，不执行 |
+| `wizard.previous` | `Esc` | | checks / options / review / confirm | `key_previous` 上一步 / back | 与「下一步」成对 |
+| `wizard.back` | `Esc` | | menu / list.* / log.view | `key_back` 返回 / back | 无后退就不绑定 |
+| `welcome.language` | `←` `→` | `h` `l` | welcome | `key_language` 语言 / language | 仍然不用 Tab |
+| `check.move` | `↑` `↓` | `k` `j` | checks | `key_select` 选择 / select | |
+| `check.refresh` | `ctrl+r` | | checks | `key_refresh` 重新检测 / re-check | 删除 F5 |
+| `option.pick` | `↑` `↓` | `k` `j` | option.radio | `key_select` 选择 / select | 移动即选中来源 |
+| `option.move` | `↑` `↓` | `k` `j` | option.check | `key_move` 移动 / move | 只移焦点，不改值 |
+| `option.toggle` | `Space` | | option.check | `key_toggle` 切换 / toggle | |
+| `review.details` | `ctrl+e` | | review | `key_details` 命令详情 / commands | e = expand |
+| `review.retry` | `ctrl+r` | | review（仅失败） | `key_retry` 重试 / retry | 失败前不绑定 |
+| `log.open` | `ctrl+l` | | review（失败）、result | `key_log` 日志 / log | 复用 `LogViewerScreen` |
+| `review.install` | `Enter` | | confirm（仅选中「开始安装」） | `key_confirm` 确认 / confirm | **danger**，见 §5 |
+| `confirm.pick` | `1` `2` | | confirm | `key_select` 选择 / select | 只移动选中项，不执行 |
+| `confirm.move` | `↑` `↓` | `h` `l` `k` `j` | confirm | `key_move` 移动 / move | 移动即改选中项 |
+| `result.retry` | `ctrl+r` | | result（非成功） | `key_retry` 重试 / retry | |
+| `run.abort` | `ctrl+c` | | run / menu / list.*（运行中） | `key_abort` 中止 / abort | **danger**，先确认 |
+| `menu.move` | `↑` `↓` | `k` `j` | menu / list.* | `key_select` 选择 / select | `OptionList` 自带方向键 |
+| `menu.ends` | `g` `G` | | menu / list.* | `key_ends` 首末 / first/last | 列表首行/末行 |
+| `menu.act` | `Enter` | | menu | `key_open` 打开 / open | 列表里 = 行的主动作 |
+| `menu.goto` | `1`…`6` | | menu | `menu_goto` 直达 / go to | 只是说明行 |
+| `menu.item.units` … `menu.item.back` | `1`…`6` | | menu | — | 隐藏绑定；禁用项保留槽位 |
+| `unit.toggle` | `Enter` | `Space` | list.units | `key_toggle` 切换 / toggle | 关 `core` 已拒绝 |
+| `snapshot.rollback` | `Enter` | | list.snapshots | `key_rollback` 回滚 / roll back | **danger**，确认框 |
+| `snapshot.create` | `ctrl+n` | | list.snapshots | `key_create` 新建 / create | n = new |
+| `logs.open` | `Enter` | | list.logs | `key_open` 打开 / open | |
+| `log.scroll` | `↑` `↓` | `k` `j` `PgUp` `PgDn` | log.view | `key_scroll` 滚动 / scroll | |
+| `log.halfpage` | `ctrl+u` `ctrl+d` | | log.view | `key_page` 翻页 / page | 只读视图，`ctrl+d` 不会关程序 |
+| `log.ends` | `g` `G` | | log.view | `key_ends` 首末 / first/last | 顶部/底部 |
+| `dialog.confirm` | `←` `→` `h` `l` `j` `k` 移动焦点，`Enter` 确认，`Esc` 取消 | | 对话框 | `confirm` / `cancel` | 默认焦点 = 取消；有输入框时字母让位 |
+| `dialog.secret` | `Enter` / `Esc` | | 密码框 | `key_continue` / `cancel` | 输入框拥有全部字母 |
 
 绑定细则：
 
-- 一个动作可以有多键（`welcome.language` = ←,→）；同一上下文里不允许两动作抢同一个键（启动时断言）。
-- `hidden=True` 的动作（`unit.toggle` 的 Space、`log.scroll` 的 PgUp/PgDn）只在帮助覆盖层出现，不占底栏。
-- 禁用/不适用 = `check_action` 返回 `False`：底栏、帮助、按键三者同时消失，不会出现“写着但按了没反应”。
+- 一个动作可以有多把键；同一上下文里不允许两动作抢同一键（`resolve()` 直接 `raise`）。
+- 别名（`j`、`k`、`h`、`l`、`?`）只在帮助覆盖层展开成 `↑/↓ j/k`，不占底栏。
+- `hidden=True` 的动作（Tab、菜单数字）只进帮助。
+- 禁用/不适用 = `check_action` 返回 `False`：底栏、帮助、按键三者同时消失。
 
 ---
 
 ## 4. 逐屏键位与默认焦点
 
+`h/l` 不翻页：**向导的“上一步/下一步”仍然只有 Esc 与 Enter**。`h`/`l` 严格按方向键的语义（左/右），只出现在 Welcome 的语言、Options 的单选、Confirm 的选项；把 `l` 做成“下一页”会让一次误触跳过整页，且与“单字母只做导航”的约定冲突。
+
 | 屏幕 | 默认焦点 | 键位 | 禁用/例外 |
 |---|---|---|---|
-| Welcome | 无（`#language` 只是文本） | `←/→` 语言 · `Enter` 下一步 · `^P` 管理 · `q` 退出 · `?` | **没有 Esc**（无路可退）；q 直接退出 |
-| Checks | 第一行探针 | `↑/↓` 选择 · `Enter` 下一步 · `r` 重新检测 · `Esc` 上一步 · `q` 退出 · `?` | 无探针时 `check.move` 不绑定 |
-| Options | `source_stable` | `Tab/Shift+Tab` 换控件 · `↑/↓` 组内移动 · `Space` 切换 · `Enter` 下一步 · `Esc` 上一步 · `q` 退出 · `?` | `core` 行 disabled，Tab 跳过；后端不支持的项 disabled + 文字标记 |
-| Review（正常） | 页面本身 | `Enter` 进入确认页 · `t` 命令详情 · `Esc` 上一步 · `q` 退出 · `?` | 计划为空时 Enter 不绑定 |
-| Review（准备失败） | 页面本身 | 上一行去掉 `Enter`/`t`，加 `r` 重试 · `l` 日志 | 失败块本身写明这三个键 |
-| Confirm（新） | 「返回上一步」单选行 | `↑/↓` 或 `1`/`2` 选择 · `Enter` 确认 · `Esc` 上一步 · `?` | 未选「开始安装」时 Enter = 返回；`q` 不绑定（先返回再退，避免运行中被 q 打断） |
-| Installation | 无（`#cancel` 仅鼠标，`can_focus=False`） | `Ctrl+C` 中止（确认框） · `?` | 导航键全部不绑定：无 Esc、无 q、无 Tab、无数字。`?` 允许——只读覆盖层，不改运行状态 |
-| Result | 失败/取消 →「重试」；成功 →「退出」 | `Enter` 激活聚焦按钮 · `r` 重试（非成功） · `l` 日志 · `^P` 管理 · `q` 退出 · `?` | 成功页无 `r` |
-| Management | 第一行菜单项 | `1–6` 直达 · `↑/↓` 选择 · `Enter` 打开 · `Esc` 返回 · `?`；动作运行中另加 `Ctrl+C` 中止 | 禁用项保留编号、文字标注、按数字无动作 |
-| Units | 第一行单元 | `↑/↓` 选择 · `Enter`/`Space` 切换 · `Esc` 返回 · `?`；运行中加 `Ctrl+C` | `core` 关闭被拒绝并给一行原因 |
-| Snapshots | 第一行快照 | `↑/↓` 选择 · `Enter` 回滚（确认） · `c` 新建 · `Esc` 返回 · `?`；运行中加 `Ctrl+C` | 空列表时 `c` 仍可用 |
-| Logs（列表） | 第一个文件 | `↑/↓` 选择 · `Enter` 打开 · `Esc` 返回 · `?` | 无日志时列出空态文本 |
-| LogViewer | 日志区 | `↑/↓`/`PgUp`/`PgDn` 滚动 · `Esc` 返回 · `?` | 只读，无单字符动作 |
+| Welcome | 无（`#language` 只是文本） | `←/→` 或 `h/l` 语言 · `Enter` 下一步 · `ctrl+p` 管理 · `ctrl+x` 退出 · `ctrl+k` 帮助 | **没有 Esc**（无路可退） |
+| Checks | 第一行探针 | `↑/↓` 或 `j/k` 选择 · `Enter` 下一步 · `ctrl+r` 重新检测 · `Esc` 上一步 · `ctrl+x` 退出 · `ctrl+k` | 无探针时 movement 不绑定 |
+| Options | `source_stable` | `Tab/Shift+Tab` 换组 · `↑/↓` 或 `j/k` 组内移动 · `Space` 切换 · `Enter` 下一步 · `Esc` 上一步 · `ctrl+x` · `ctrl+k` | `core` 行 disabled，Tab 跳过；不支持的项 disabled + 文字标记 |
+| Review（正常） | 页面本身 | `Enter` 进确认页 · `ctrl+e` 命令详情 · `Esc` 上一步 · `ctrl+x` 退出 · `ctrl+k` | 计划为空时 Enter 不绑定 |
+| Review（准备失败） | 页面本身 | `ctrl+r` 重试 · `ctrl+l` 日志 · `Esc` 上一步 · `ctrl+x` · `ctrl+k` | 原来的 `Enter`/`ctrl+e` 在失败页禁用 |
+| Confirm | 「返回上一步」单选行 | `1`/`2` 或 `↑/↓` `h/l` `j/k` 选择 · `Enter` 确认 · `Esc` 上一步 · `ctrl+k` | 未选「开始安装」时 Enter = 返回；`ctrl+x` 不绑定 |
+| Installation | 无（`#cancel` 仅鼠标，`can_focus=False`） | `ctrl+c` 中止（确认框） · `ctrl+k` | 导航键全部不绑定：无 Esc、无 Ctrl+X、无 Tab、无数字 |
+| Result | 失败/取消 →「重试」；成功 →「退出」 | `Enter` 激活聚焦按钮 · `ctrl+r` 重试（非成功） · `ctrl+l` 日志 · `ctrl+p` 管理 · `ctrl+x` 退出 · `ctrl+k` | 成功页无 `ctrl+r` |
+| Management | 第一行菜单项 | `1–6` 直达 · `↑/↓` 或 `j/k` 选择 · `g/G` 首末 · `Enter` 打开 · `Esc` 返回 · `ctrl+k`；运行中另加 `ctrl+c` 中止 | 禁用项保留编号与文字标注，按数字无动作 |
+| Units | 第一行单元 | `↑/↓` `j/k` 选择 · `g/G` 首末 · `Enter`/`Space` 切换 · `Esc` 返回 · `ctrl+k`；运行中 `ctrl+c` | `core` 关闭被拒绝并给一行原因 |
+| Snapshots | 第一行快照 | `↑/↓` `j/k` 选择 · `g/G` 首末 · `Enter` 回滚（确认） · `ctrl+n` 新建 · `Esc` 返回 · `ctrl+k` | 空列表时 `ctrl+n` 仍可用 |
+| Logs（列表） | 第一个文件 | `↑/↓` `j/k` 选择 · `g/G` 首末 · `Enter` 打开 · `Esc` 返回 · `ctrl+k` | 无日志时列出空态文本 |
+| LogViewer | 日志区 | `↑/↓` `j/k` 滚动 · `PgUp/PgDn` · `ctrl+u/d` 翻页 · `g/G` 首末 · `Esc` 返回 · `ctrl+k` | 只读，无单字符功能键 |
 
-Options 的焦点模型（现状只有控件默认行为，这是要新写的部分）：
+Options 的焦点模型：
 
-- `Tab`/`Shift+Tab` 按组合顺序走：来源组 →（跳过 `core`）→ 应用组 → 高级组；组内用 `↑/↓`。
-- 来源组是 `RadioSet`：`↑/↓` 移动选中项（原生），`Space` 再次确认。
-- 应用组是若干 `CheckRow`：`↑/↓` 把**焦点**移到上/下一个复选行（屏幕级 `on_key` 实现），`Space` 改值，移动不改值。
-- `Enter` 必须在这些行上“穿透”到屏幕（`wizard.next`）：现状 `Checkbox`/`RadioButton` 自带 `enter,space` → `toggle_button`，会把 Enter 吃掉。最小改动是给 `CheckRow`/`SourceRow` 加 `BINDINGS = [("space", "toggle_button", "")]`。
+- `Tab`/`Shift+Tab` 按组合顺序走：来源组 →（跳过 `core`）→ 应用组 → 高级组；组内用 `↑/↓` 或 `j/k`。
+- 来源组是 `RadioSet`，但箭头与 j/k 由页面处理：Textual 的单选组只移动一个不可见的“光标”，等 Space 才改值；这里的 `CursorKeys` 丢掉那组绑定，页面按键直接改选中项，标记跟着动。
+- 应用组是若干 `CheckRow`：`↑/↓` `j/k` 把**焦点**移到上/下一个复选行，`Space` 改值，移动不改值。
+- `Enter` 必须“穿透”到屏幕（`wizard.next`）：`Checkbox`/`RadioButton` 自带 `enter,space`，`EnterPasses` 在构造时把 `enter` 从行控件自己的绑定里摘掉。
 
 ---
 
@@ -146,15 +151,16 @@ Options 的焦点模型（现状只有控件默认行为，这是要新写的部
    ( ) [1] 开始安装
    (•) [2] 返回上一步          ← 默认
 
- 1/2 选择   ⏎ 确认   esc 上一步   ? 帮助
+ 1/2 选择   ↑/↓ 移动   ⏎ 确认   esc 上一步   ctrl+k 帮助
 ```
 
 规则：
 
 - 默认选中「返回上一步」；`Enter` 在默认态 = 返回，不是安装。
-- 安装需要两步：先 `↓`（或 `1`）把选中移到「开始安装」，再 `Enter`。
+- 安装需要两步：先 `↓`/`j`/`h`（或 `1`）把选中移到「开始安装」，再 `Enter`。
+- `h/l` 与 `j/k` 都改选中项；在「返回」上按 `l`/`j` 不环绕，仍然是「返回」。
 - 只有「开始安装」被选中时 `Enter` 才走 `review.install`（`danger`）；该动作不再叠加第二个确认框——这一页本身就是计划的二次确认。
-- `q` 在这一页不绑定：要退出先 `Esc` 回 Review，从那里 `q`（确认后退出）。
+- `ctrl+x` 在这一页不绑定：要退出先 `Esc` 回 Review，从那里 `ctrl+x`（确认后退出）。
 - 计划正文留在 Review 页；确认页只放“会改什么”，因此 66×20 不需要滚动。
 
 ---
@@ -164,12 +170,12 @@ Options 的焦点模型（现状只有控件默认行为，这是要新写的部
 Management（`ManagementScreen`）是唯一菜单；子页是列表。
 
 ```
-管理  (从 Welcome/Result 按 m 进入)
-├─ [1] 单元 (3)            → UnitsScreen        列表：↑↓ 选择 · Enter/Space 切换 · Esc 返回
-├─ [2] 快照 (2)            → SnapshotsScreen    列表：↑↓ 选择 · Enter 回滚(确认) · c 新建 · Esc 返回
+管理  (从 Welcome/Result 按 ctrl+p 进入)
+├─ [1] 单元 (3)            → UnitsScreen        列表：↑↓ j/k 选择 · g/G 首末 · Enter/Space 切换 · Esc 返回
+├─ [2] 快照 (2)            → SnapshotsScreen    列表：↑↓ j/k · g/G · Enter 回滚(确认) · ctrl+n 新建 · Esc 返回
 ├─ [3] Doctor              → 就地执行，日志在下方动作区
-├─ [4] 日志                → LogsScreen          列表：↑↓ 选择 · Enter 打开 · Esc 返回
-│                             └─ LogViewerScreen  ↑↓/PgUp/PgDn 滚动 · Esc 返回
+├─ [4] 日志                → LogsScreen          列表：↑↓ j/k · g/G · Enter 打开 · Esc 返回
+│                             └─ LogViewerScreen  ↑↓ j/k · PgUp/PgDn · ctrl+u/d · g/G · Esc 返回
 ├─ [5] 卸载                不可用：未安装        （禁用，槽位保留）
 └─ [6] 返回                （= Esc）
 ```
@@ -177,84 +183,135 @@ Management（`ManagementScreen`）是唯一菜单；子页是列表。
 - 行文本固定带编号：`[1] 单元      3`、`[5] 卸载      不可用：未安装`。禁用行不只靠颜色：前缀 `·` + 明确文字；编号不变，按数字无动作。
 - 有两处可验证的禁用谓词：`[5]` 要求至少一个单元已安装；`[4]` 要求 `paths.log_dir` 里有文件。其余始终可用。
 - 子页不使用数字：列表长度随数据变，数字槽位会被数据推翻。行内动作一律 Enter，Esc 弹一层（`push_screen`/`pop_screen` 已是栈语义）。
+- 首末用 `g`/`G`：列表用 `OptionList.action_first/last`，日志用 `scroll_home/scroll_end`，两者都只在本页绑定。
 - 侧栏的 1–5 数字跳转删除；点击侧栏跳到已完成步骤**保留**（指针操作，不占键盘语义）。
 
 ---
 
-## 7. 底栏文案（一行，66 列内）
+## 7. 底栏文案（一行）
 
-格式：`键 词`，项间两空格；`? 帮助` 永远在最后。低于优先级的项在窄屏被裁掉，帮助覆盖层仍是全集。
+格式 `键 词`，项间两空格，帮助（`ctrl+k`）永远最后一项。宽度按**实际绘制**算：一行 = 键 + 空格 + 词，行间 2 格；`fit()` 放不下就按优先级整行裁掉，不裁字符。
 
-实测（Textual `Footer`，66 列，`ENABLE_COMMAND_PALETTE=False`）：最宽的是 Checks 与 Options（复选聚焦），各 58 格；表中其余行不超过它。
+优先级：帮助 1（最后被裁）→ 中止 5 → 主操作 10 → 上一步 15 → 退出 20 → 移动提示 35 → 次要功能 40 → 首末 45 / 翻页 50 / 管理 50。
 
-`Tab`/`Shift+Tab` 不占底栏（表单通用约定，占 9–14 格不值），只在 `?` 里列出，所以 Options 底栏仍是 5 项 + `?`。
+### 100×30（全量）
 
 | 场景 | zh | en |
 |---|---|---|
-| Welcome | `⏎ 下一步  ←/→ 语言  ^P 管理  q 退出  ? 帮助` | `⏎ next  ←/→ language  ^P manage  q quit  ? help` |
-| Checks | `↑↓ 选择  ⏎ 下一步  r 重新检测  esc 上一步  q 退出  ? 帮助` | `↑↓ select  ⏎ next  r re-check  esc back  q quit  ? help` |
-| Options（复选聚焦） | `空格 切换  ↑↓ 移动  ⏎ 下一步  esc 上一步  q 退出  ? 帮助` | `space toggle  ↑↓ move  ⏎ next  esc back  q quit  ? help` |
-| Options（单选聚焦） | `↑↓ 选择  ⏎ 下一步  esc 上一步  q 退出  ? 帮助` | `↑↓ select  ⏎ next  esc back  q quit  ? help` |
-| Review（正常） | `⏎ 继续  t 命令详情  esc 上一步  q 退出  ? 帮助` | `⏎ continue  t commands  esc back  q quit  ? help` |
-| Review（失败） | `r 重试  l 日志  esc 上一步  q 退出  ? 帮助` | `r retry  l log  esc back  q quit  ? help` |
-| Confirm | `1/2 选择  ⏎ 确认  esc 上一步  ? 帮助` | `1/2 choose  ⏎ confirm  esc back  ? help` |
-| Installation | `ctrl+c 中止  ? 帮助` | `ctrl+c abort  ? help` |
-| Result（成功） | `q 退出  l 日志  ^P 管理  ? 帮助` | `q exit  l log  ^P manage  ? help` |
-| Result（失败/取消） | `r 重试  l 日志  ^P 管理  q 退出  ? 帮助` | `r retry  l log  ^P manage  q exit  ? help` |
-| Management | `1–6 直达  ↑↓ 选择  ⏎ 打开  esc 返回  ? 帮助` | `1–6 go to  ↑↓ select  ⏎ open  esc back  ? help` |
-| Units | `↑↓ 选择  ⏎ 切换  esc 返回  ? 帮助` | `↑↓ select  ⏎ toggle  esc back  ? help` |
-| Snapshots | `↑↓ 选择  ⏎ 回滚  c 新建  esc 返回  ? 帮助` | `↑↓ select  ⏎ roll back  c create  esc back  ? help` |
-| Logs / LogViewer | `↑↓ 选择  ⏎ 打开  esc 返回  ? 帮助` / `↑↓ 滚动  esc 返回  ? 帮助` | `↑↓ select  ⏎ open  esc back  ? help` / `↑↓ scroll  esc back  ? help` |
-| ConfirmDialog / PasswordDialog | 底栏沿用下层页面；对话框正文末行写明 `⏎ 确认  esc 取消` | 同 |
+| Welcome | `⏎ 下一步  ←/→ 语言  ctrl+p 管理  ctrl+x 退出  ctrl+k 帮助` | `⏎ next  ←/→ language  ctrl+p manage  ctrl+x quit  ctrl+k help` |
+| Checks | `↑/↓ 选择  ⏎ 下一步  ctrl+r 重新检测  esc 上一步  ctrl+x 退出  ctrl+k 帮助` | `↑/↓ select  ⏎ next  ctrl+r re-check  esc back  ctrl+x quit  ctrl+k help` |
+| Options（单选聚焦） | `↑/↓ 选择  ⏎ 下一步  esc 上一步  ctrl+x 退出  ctrl+k 帮助` | `↑/↓ select  ⏎ next  esc back  ctrl+x quit  ctrl+k help` |
+| Options（复选聚焦） | `space 切换  ↑/↓ 移动  ⏎ 下一步  esc 上一步  ctrl+x 退出  ctrl+k 帮助` | `space toggle  ↑/↓ move  ⏎ next  esc back  ctrl+x quit  ctrl+k help` |
+| Review（正常） | `⏎ 继续  ctrl+e 命令详情  esc 上一步  ctrl+x 退出  ctrl+k 帮助` | `⏎ continue  ctrl+e commands  esc back  ctrl+x quit  ctrl+k help` |
+| Review（失败） | `ctrl+r 重试  ctrl+l 日志  esc 上一步  ctrl+x 退出  ctrl+k 帮助` | `ctrl+r retry  ctrl+l log  esc back  ctrl+x quit  ctrl+k help` |
+| Confirm | `1/2 选择  ↑/↓ 移动  ⏎ 确认  esc 上一步  ctrl+k 帮助` | `1/2 select  ↑/↓ move  ⏎ confirm  esc back  ctrl+k help` |
+| Installation | `ctrl+c 中止  ctrl+k 帮助` | `ctrl+c abort  ctrl+k help` |
+| Result（成功） | `ctrl+x 退出  ctrl+l 日志  ctrl+p 管理  ctrl+k 帮助` | `ctrl+x exit  ctrl+l log  ctrl+p manage  ctrl+k help` |
+| Result（失败/取消） | `ctrl+r 重试  ctrl+l 日志  ctrl+p 管理  ctrl+x 退出  ctrl+k 帮助` | `ctrl+r retry  ctrl+l log  ctrl+p manage  ctrl+x exit  ctrl+k help` |
+| Management | `1–6 直达  ↑/↓ 选择  g/G 首末  ⏎ 打开  esc 返回  ctrl+k 帮助` | `1–6 go to  ↑/↓ select  g/G first/last  ⏎ open  esc back  ctrl+k help` |
+| Units | `↑/↓ 选择  g/G 首末  ⏎ 切换  esc 返回  ctrl+k 帮助` | `↑/↓ select  g/G first/last  ⏎ toggle  esc back  ctrl+k help` |
+| Snapshots | `↑/↓ 选择  g/G 首末  ⏎ 回滚  ctrl+n 新建  esc 返回  ctrl+k 帮助` | `↑/↓ select  g/G first/last  ⏎ roll back  ctrl+n create  esc back  ctrl+k help` |
+| Logs | `↑/↓ 选择  g/G 首末  ⏎ 打开  esc 返回  ctrl+k 帮助` | `↑/↓ select  g/G first/last  ⏎ open  esc back  ctrl+k help` |
+| LogViewer | `↑/↓ 滚动  ctrl+u/d 翻页  g/G 首末  esc 返回  ctrl+k 帮助` | `↑/↓ scroll  ctrl+u/d page  g/G first/last  esc back  ctrl+k help` |
 
-现有 `key_*` 复用为主，新增：`key_next`（下一步/next）、`key_abort`（中止/abort）、`key_install`（开始安装/install）、`key_focus_next`（下一项/next field）、`key_focus_prev`（上一项/previous field）、`menu_goto`（直达/go to）。`key_jump` 删除；`hint_review`/`hint_install`/`hint_result` 三条死文案删除（底栏由注册表生成后它们不再有来源）。
+100 列最宽一行 71 格（Checks zh）。
+
+### 66×20（英文实测；中文通常多留一行，因为汉字标签更窄）
+
+| 场景 | 底栏 |
+|---|---|
+| Welcome | `⏎ next  ←/→ language  ctrl+p manage  ctrl+x quit  ctrl+k help` |
+| Checks | `↑/↓ select  ⏎ next  esc back  ctrl+x quit  ctrl+k help` |
+| Options（单选） | `↑/↓ select  ⏎ next  esc back  ctrl+x quit  ctrl+k help` |
+| Options（复选） | `space toggle  ⏎ next  esc back  ctrl+x quit  ctrl+k help` |
+| Review | `⏎ continue  ctrl+e commands  esc back  ctrl+x quit  ctrl+k help` |
+| Review（失败） | `ctrl+r retry  ctrl+l log  esc back  ctrl+x quit  ctrl+k help` |
+| Confirm | `1/2 select  ↑/↓ move  ⏎ confirm  esc back  ctrl+k help` |
+| Installation | `ctrl+c abort  ctrl+k help` |
+| Result（成功） | `ctrl+x exit  ctrl+l log  ctrl+p manage  ctrl+k help` |
+| Result（失败） | `ctrl+r retry  ctrl+l log  ctrl+x exit  ctrl+k help` |
+| Management | `1–6 go to  ↑/↓ select  ⏎ open  esc back  ctrl+k help` |
+| Units | `↑/↓ select  g/G first/last  ⏎ toggle  esc back  ctrl+k help` |
+| Snapshots | `↑/↓ select  ⏎ roll back  ctrl+n create  esc back  ctrl+k help` |
+| Logs | `↑/↓ select  g/G first/last  ⏎ open  esc back  ctrl+k help` |
+| LogViewer | `↑/↓ scroll  ctrl+u/d page  g/G first/last  esc back  ctrl+k help` |
+
+被裁的总是次要提示（`ctrl+r` 重检、`↑/↓` 移动、`g/G`、`ctrl+p` 管理）；`ctrl+k` 永远在，帮助覆盖层是全集。`Tab`/`Shift+Tab` 不占底栏，只在帮助里。
+
+`h/l/j/k/g/G` 不出现在底栏——帮助覆盖层把它们展开在方向键后面（`↑/↓ j/k`、`←/→ h/l`）。
+
+新增文案：`key_ends`（首末/first last）、`key_page`（翻页/page）。`key_jump`、`hint_*` 已删除。
 
 ---
 
-## 8. 与现状的冲突与迁移
+## 8. 冲突与迁移
 
-| # | 现状（文件） | 问题 | 最小改动 |
+### 8.1 本轮重绑（旧 → 新）
+
+| 动作 | 旧键 | 新键 | 说明 |
 |---|---|---|---|
-| 1 | Welcome `("escape,q","ask_quit")`，底栏只显示 `Esc`（`welcome.py`） | Esc 在退出，q 不可见；与“Esc=返回”冲突 | 键位改 `("q","app.quit")`；Welcome 不绑定 Esc |
-| 2 | `KEYS` 元组把键硬编码在每屏（`screens/*.py`） | 无法配置、底栏与帮助靠人工同步 | 见 §9 注册表；`KEYS` 退化为屏幕声明 context + 启用谓词 |
-| 3 | Review `Enter → start_install`（`review.py`） | 单键触发不可逆操作 | Enter 改为 `review.continue` → 推入 `ConfirmScreen`；新增 `review.install` 只在确认页执行 |
-| 4 | `ConfirmDialog.on_mount` 无 `word` 时聚焦 Confirm（`widgets/confirm.py`） | 默认焦点在危险按钮上 | 默认焦点改 `#confirm_cancel`；`word` 存在时仍聚焦输入框 |
-| 5 | Welcome `left,right,tab` 切语言（`welcome.py`） | Tab 是全局焦点键，被抢占 | 只留 `←/→`；Tab 归 `focus.next` |
-| 6 | `Checkbox`/`RadioButton` 自带 `enter,space → toggle_button` | Enter 被控件吃掉，Options 无法“Enter 下一步” | `CheckRow`/`SourceRow` 的 `BINDINGS` 只留 `space` |
-| 7 | 向导 `1–5` 跳步（`screens/__init__.py` `JUMP_KEYS`/`on_key`） | 数字与菜单撞义 | 删除数字绑定；保留侧栏点击 |
-| 8 | Checks `F5`（`system.py`） | 键盘可达性差，与“单字符助记”不一致 | 改 `r`；删除 F5 |
-| 9 | Result `Enter → quit`（`result.py`） | 失败后 Enter 直接退出 | `Enter` 激活聚焦按钮（失败默认「重试」）；退出改 `q`；加 `l` |
-| 10 | Management 无数字（`management.py`） | 不是菜单，无法直达 | 行文本加 `[n]`，绑 `menu.item.*`，禁用项保留槽位 |
-| 11 | App 级 `ctrl+q → quit`（Textual `App.BINDINGS`，隐藏） | 与 XON 冲突；一处看不见的退出 | `app.BINDINGS` 里移除；退出只走 `q` |
-| 12 | Installation `Ctrl+C → cancel_install` 立即中止（`installation.py`） | 运行中单键即中止 | Ctrl+C 先开确认框（默认「继续安装」），确认后才 `cancel_event.set()` |
-| 13 | Installation 的 `#cancel` 按钮可被自动聚焦（`AUTO_FOCUS`），Enter 即可中止 | 与“进度页屏蔽导航/确认键”冲突 | `can_focus=False`，改成鼠标专用；中止只走 Ctrl+C + 确认 |
-| 14 | `hint_*` 三条文案无引用 | 死文案，且与底栏可能不一致 | 删除；底栏全部由注册表生成 |
-| 15 | `?_help` 覆盖层列出按键，但不管禁用态（`widgets/help.py`） | 帮助可能列出不可用键 | 复用同一解析函数，只取 `check_action is not False` 的行 |
+| 退出 / 结果页退出 | `q` | `ctrl+x` | q 让给导航；`ctrl+q` 是 XON，不能用 |
+| 帮助 | `?` | `ctrl+k`（`?` 隐藏别名） | 终端里 `Ctrl+?` 无法可靠输入；`?` 继续可用但不上海报 |
+| 重试 / 重新检测 | `r` | `ctrl+r` | 单字母 r 不再占 |
+| 日志 | `l` | `ctrl+l` | l 让给“右” |
+| 命令详情 | `t` | `ctrl+e` | e = expand |
+| 新建快照 | `c` | `ctrl+n` | n = new |
+| 管理 | `^P` | `ctrl+p`（底栏写全） | 已经是 Ctrl；命令面板关闭 |
+| 导航 | 仅方向键 | 增加 `j/k`、`h/l`、`g/G` | 别名，挂在原动作上 |
 
-动作迁移对照（现有方法 → 新 ID）：
+### 8.2 Ctrl 选键与理由
+
+| 候选 | 结论 | 原因 |
+|---|---|---|
+| `ctrl+q` | 不用 | XON/流控，按键到不了应用 |
+| `ctrl+s` | 不用 | XOFF，冻结终端输出 |
+| `ctrl+m` / `ctrl+i` / `ctrl+j` / `ctrl+h` | 不用 | 分别是 Enter / Tab / LF / Backspace |
+| `ctrl+z` / `ctrl+\` | 不用 | 挂起 / SIGQUIT |
+| `ctrl+a` / `ctrl+b` | 不用 | tmux / screen 前缀 |
+| `ctrl+p` | 管理 | 命令面板已关（`ENABLE_COMMAND_PALETTE=False`）；shell 里是上一条历史，但 TUI 独占输入 |
+| `ctrl+x` | 退出 | X = exit；无终端含义 |
+| `ctrl+r` | 重试 / 重检 | R = retry；shell 的反向搜索在 TUI 里不生效 |
+| `ctrl+l` | 日志 | L = log；shell 的清屏同理 |
+| `ctrl+e` | 详情 | E = expand |
+| `ctrl+n` | 新建 | N = new |
+| `ctrl+k` | 帮助 | K = keys；`Ctrl+?` 打不出来，所以不选它 |
+| `ctrl+c` | 中止 | SIGINT 由 UI 接住；子进程在独立会话里 |
+| `ctrl+u` / `ctrl+d` | 日志翻页 | 只读视图；这里的 `ctrl+d` 不会结束程序。其它页面不绑 |
+
+### 8.3 Textual / 布局层面的冲突
+
+| 现象 | 修法 |
+|---|---|
+| `RadioSet` 的箭头只移动一个不可见的“光标”，等 Space 才改值 | `CursorKeys` 丢掉 `up/down/left/right` 绑定，页面按值移动（标记跟着动） |
+| `Checkbox`/`RadioButton` 自带 `enter,space`，会吃掉页面的 Enter | `EnterPasses` 在构造时把 `enter` 从行控件的绑定里摘掉 |
+| Textual `Footer` 按焦点控件合并绑定，会隐藏本页提示 | 自绘 `KeyFooter`，只读注册表 |
+| 窄屏按字符裁剪，提示被切一半 | `fit()` 按实际宽度整行裁，帮助优先级 1 |
+| 对话框里的字母键抢走输入 | 无 `word` 时 `h/l/j/k` 移焦点；有输入框时 `check_action` 禁用这组绑定 |
+
+### 8.4 历史迁移表（首版动作 → 新 ID）
 
 | 现有 action | 屏幕 | 新 ID | 新键 |
 |---|---|---|---|
-| `cycle_language` | Welcome | `welcome.language` | `←/→`（去掉 Tab） |
+| `cycle_language` | Welcome | `welcome.language` | `←/→`（`h/l` 别名） |
 | `open_system` | Welcome | `wizard.next` | `Enter` |
-| `open_manage` | Welcome / Result | `app.manage` | `Ctrl+P` |
-| `quit`（Welcome 屏） | Welcome | `app.quit` | `q` |
-| `move(±1)` | Checks | `check.move` | `↑/↓` |
-| `refresh` | Checks | `check.refresh` | `r` |
+| `open_manage` | Welcome / Result | `app.manage` | `ctrl+p` |
+| `quit`（Welcome 屏） | Welcome | `app.quit` | `ctrl+x` |
+| `move(±1)` | Checks | `check.move` | `↑/↓`（`j/k` 别名） |
+| `refresh` | Checks | `check.refresh` | `ctrl+r` |
 | `next` | Options | `wizard.next` | `Enter` |
-| `start` | Review | `review.continue`（Enter→确认页）+ `review.install`（确认页） | `Enter` |
-| `details` | Review | `review.details` | `t` |
-| `retry` | Review | `review.retry` | `r`（仅失败） |
-| `open_log` | Review | `log.open` | `l`（仅失败；Result 也绑） |
-| `cancel` | Installation | `run.abort` | `Ctrl+C`（先确认） |
-| `retry` | Result | `result.retry` | `r` |
-| `quit` | Result | `app.quit` | `q`（Enter 只激活聚焦按钮） |
-| `cancel_action` | Management / Units / Snapshots | `run.abort` | `Ctrl+C`（`busy` 时） |
+| `start` | Review | `review.continue` + `review.install` | `Enter`（两步） |
+| `details` | Review | `review.details` | `ctrl+e` |
+| `retry` | Review | `review.retry` | `ctrl+r`（仅失败） |
+| `open_log` | Review | `log.open` | `ctrl+l` |
+| `cancel` | Installation | `run.abort` | `ctrl+c`（先确认） |
+| `retry` | Result | `result.retry` | `ctrl+r` |
+| `quit` | Result | `result.exit` | `ctrl+x` |
+| `cancel_action` | Management / Units / Snapshots | `run.abort` | `ctrl+c`（运行中） |
 | `back` | 向导各屏 | `wizard.previous` | `Esc` |
 | `back` | 菜单 / 列表 / 日志 | `wizard.back` | `Esc` |
-| `toggle` | Units | `unit.toggle` | `Enter`（`Space` 隐藏别名） |
-| `create` | Snapshots | `snapshot.create` | `c` |
-| `help` | 全部 | `help.open` | `?` |
+| `toggle` | Units | `unit.toggle` | `Enter`（`Space` 别名） |
+| `create` | Snapshots | `snapshot.create` | `ctrl+n` |
+| `help` | 全部 | `help.open` | `ctrl+k`（`?` 隐藏别名） |
 | `goto_step` + `JUMP_KEYS` | 向导 | — | 删除 |
 | App `ctrl+q` | 全局 | — | 删除 |
 
@@ -308,14 +365,15 @@ def resolve(contexts, overrides=None, budget=None) -> list[tuple[str, str, str]]
 | 组合 | 冲突 | 处理 |
 |---|---|---|
 | `Ctrl+M` / `Ctrl+I` / `Ctrl+J` / `Ctrl+H` | 分别是 Enter / Tab / LF / Backspace，无法区分 | 不绑；只用 `Enter`/`Tab` 本体 |
-| `Ctrl+S` | XOFF，冻结终端输出 | 不绑（原本也没有） |
-| `Ctrl+Q` | XON；现有 App 还藏了 quit | 删掉 App 的 `ctrl+q`；退出只走 `q` |
-| `Ctrl+Z` / `Ctrl+\` / `Ctrl+D` | 挂起 / SIGQUIT / EOF | 不绑 |
-| `Ctrl+C` | SIGINT；同时是 Textual 的复制 | 只在 Installation（`run.abort`）和管理区动作运行中绑；其余屏交给复制 |
+| `Ctrl+S` | XOFF，冻结终端输出 | 不绑 |
+| `Ctrl+Q` | XON，按键到不了应用 | 不绑；退出用 `ctrl+x` |
+| `Ctrl+Z` / `Ctrl+\` | 挂起 / SIGQUIT | 不绑 |
+| `Ctrl+D` | shell 的 EOF | 只在日志视图做半页（只读，且没有 shell 在读） |
 | `Ctrl+A` / `Ctrl+B` | tmux/screen 前缀 | 不绑 |
-| `Ctrl+P` | 命令面板已关（`ENABLE_COMMAND_PALETTE=False`） | 绑 `app.manage`（Welcome / Result） |
+| `Ctrl+C` | SIGINT；同时是 Textual 的复制 | 只在 Installation 与管理区动作运行中绑；其余屏交给复制 |
+| `Ctrl+R` / `Ctrl+L` / `Ctrl+E` / `Ctrl+N` / `Ctrl+P` / `Ctrl+K` / `Ctrl+X` | shell/readline 的常用键，但 TUI 独占输入 | 全部只做功能键（§8.2） |
 | `Alt-<键>` | 终端/SSH 下常被拆成裸 Esc，产生误后退 | 不绑任何 Alt 组合 |
-| `Esc` 时序 | 真终端里裸 Esc 不等待；箭头是 `ESC [` 序列 | 只用裸 `Esc`；不要依赖“Esc 连按”语义 |
+| `Esc` 时序 | 真终端里裸 Esc 不等待；箭头是 `ESC [` 序列 | 只用裸 `Esc`；不依赖“Esc 连按” |
 | `F1–F12` | macOS/tmux/终端常拦截 | 默认不用（F5 已删） |
 
 ### 9.4 无 TTY / 弱终端降级
@@ -346,30 +404,81 @@ def resolve(contexts, overrides=None, budget=None) -> list[tuple[str, str, str]]
 
 ## 10. 未决 / 后续
 
-- `install_log_paused` / `key_pause` / `key_resume` 三条文案已存在但未实现（日志暂停）。若要做，动作是 `log.pause`（`p`），只在 Installation 页出现——与“进度页只留中止”冲突，建议**先不做**。
-- Result 的按钮与键位双入口（`r` 与「重试」按钮）保留；按钮文本用 `[r] 重试` 形式，让屏幕阅读与键位一致。
-- 侧栏数字删除后，`sidebar` 是否加行号仍待定；倾向不加（点击目标本来就可见），在 `?` 帮助里说明“可点击”。
+- 日志暂停（`key_pause`/`key_resume` 文案已在）仍未实现。若要做，只能占一个 Ctrl 键（建议 `ctrl+o`，`ctrl+p` 已被管理占用），且只出现在 Installation——与“进度页只留中止”相冲突，倾向**先不做**。
+- Result 的按钮文本保持单词（「重试」/「退出」），键位写在底栏与帮助里，不再在按钮上贴 `[r]`。
+- 侧栏数字删除后，`sidebar` 是否加行号仍待定；点击目标本来就可见，倾向不加。
 
 ---
 
-## 11. 实现记录（与 §1–§10 的差异）
+## 11. 实现记录（首版与 §1–§10 的差异）
 
-落地后只有下面这些偏离；其余按稿执行。
+> 这是**上一轮**的记录；本轮（§12）覆盖其中与 Ctrl/Vim 有关的行。
 
 | 项 | 差异 | 原因 |
 |---|---|---|
 | `resolve()` | 多一个可选 `measure`：`resolve(contexts, overrides, budget, measure)` | 行宽取决于当前语言的 `strings`，注册表不引 `Strings`；屏幕传入测量函数 |
 | 窄屏裁剪 | 只裁**底栏**（`keymap.fit`），绑定永不裁剪 | 提示可以少一行，按键不能因为终端窄而失效 |
 | 方向键 | 一个 id、两个方法：`check.move` → `checks_move(±1)`，`option.move` → `option_move(±1)` | Textual 的参数化 action 需要逐键目标，id 保持给配置用 |
-| 单选组箭头 | 新增 `option.pick`（只看不绑，RadioSet 自己处理） | 单选的词是“选择”，复选的是“移动”，一行动作一个词 |
+| 单选组箭头 | 新增 `option.pick`（**本轮起**由页面按值移动，见 §12） | 单选的词是“选择”，复选的是“移动”，一行动作一个词 |
 | Result 退出 | 新增 `result.exit`（`q`），与 `app.quit` 分开 | 结果页的词是“退出 / exit”，不是“quit”；成功页把它排到第一位 |
 | 菜单数字 | `menu.item.*` 是隐藏绑定；可见的说明行是 `menu.goto`（`1–6 直达`） | 六个动作各绑一个数字，底栏只需要一行说明 |
 | 列表回车 | 表的行只提供提示，实际由 `OptionList` 的 `Enter → OptionSelected` 落到同一个方法 | 列表控件已经拥有 Enter，重复绑定没有意义 |
 | 对话框 | 不进注册表；`ConfirmDialog` 增加 `confirm_label`/`cancel_label` | 模态屏幕只活在自己的栈帧里，文案按动作命名（中止/继续运行） |
 | 焦点 | `focus.next` 绑 `app.focus_next`，Options 覆写为“跳到下一组” | 表单要按组走，其它屏仍是逐控件 |
 | 进度页 | `#stages_box`、`#log`、`#cancel` 全部不可聚焦 | 误触 Enter 不能中止；中止只走 Ctrl+C + 确认 |
-| Ctrl+C | `KosApp` 用 `inherit_bindings=False` 真正去掉 Textual 自带的 `ctrl+q`；Ctrl+C 第一次只提示“再按一次 Ctrl+C 退出”，5 秒内第二次才退出；模态对话框内的 Ctrl+C 不穿透；toast 自适应宽度并靠右 | 继承的 `ctrl+q` 原来仍能退出；自带提示指向这个已删除的键，位置也悬在中间 |
+| Ctrl+C | `KosApp` 用 `inherit_bindings=False` 真正去掉 Textual 自带的 `ctrl+q`；**本轮起** Ctrl+C 只做中止，连按不再退出（§12） | 继承的 `ctrl+q` 原来仍能退出；双击退出的提示又把“退出”说成了 Ctrl+C |
 
 测试：`tests/ui/test_keymap.py`（表本身：重复键、双语标签、冲突键、覆写）与
 `tests/ui/test_navigation.py`（每屏整行底栏 100×30 / 66×20、帮助 ⊇ 底栏、禁用槽位、
 危险动作非单键、Esc 链、向导无数字、Options 的 Enter 穿透、中止确认）。
+
+---
+
+## 12. 本轮变更记录（Ctrl 功能键 + Vim 导航）
+
+用户的指示：**功能键全部 Ctrl，单字母让给 Vim 导航**。做法是把现有动作重绑，而不是再造一套按键。
+
+### 12.1 最终键位
+
+| 功能 | 键 | 理由 |
+|---|---|---|
+| 退出（向导 / 结果页） | `ctrl+x` | X = exit；`ctrl+q` 是 XON 到不了应用 |
+| 管理 | `ctrl+p` | 已是 Ctrl；命令面板关闭后无冲突（`ctrl+m` 是 Enter） |
+| 帮助 | `ctrl+k`，`?` 隐藏别名 | K = keys；`Ctrl+?` 在终端里打不出来，`?` 保留但不上底栏 |
+| 重试 / 重新检测 | `ctrl+r` | R = retry；`ctrl+r` 在 shell 里是反向搜索，TUI 独占输入 |
+| 日志 | `ctrl+l` | L = log；同一理由 |
+| 命令详情 | `ctrl+e` | E = expand |
+| 新建快照 | `ctrl+n` | N = new |
+| 中止 | `ctrl+c` | 不变；只在中止与运行中菜单动作上绑定 |
+| 日志翻页 | `ctrl+u` / `ctrl+d` | 只读视图；`ctrl+d` 的 EOF 语义在这里没有 shell |
+
+### 12.2 Vim 是别名，不是第二套动作
+
+`j/k` 挂在 `check.move`、`option.move`、`option.pick`、`confirm.move`、`menu.move`、`log.scroll` 上；`h/l` 挂在 `welcome.language`、`confirm.move`；`g/G` 是新动作 `menu.ends` / `log.ends`（列表首末、日志顶部/底部），因为它们没有现成动作可挂。
+
+`h/l` **不做翻页**：向导的“上一步/下一步”仍然只有 Esc / Enter。原因：`l` 翻页会让一次误触跳过整页，而且与“`h/l` = 左/右”的 Vim 语义打架。向导页不需要横向移动，所以 `h/l` 在 Checks / Options / Review 上没有绑定。
+
+### 12.3 为了 Vim 顺手而修的两处控件行为
+
+- **单选组**：Textual `RadioSet` 的箭头只移动一个不可见的 `_selected`，值要等 Space。`CursorKeys` 把 `up/down/left/right` 从集合的绑定里摘掉，页面按键直接改 `value`，标记（`(•)`）跟着动。Options 的来源组与 Confirm 的选项都因此“一按就变”。
+- **确认页不环绕**：在「返回」上按 `l`/`j` 不动，`h`/`k` 才移到「开始安装」——默认态永远是最安全的。
+
+### 12.4 底栏宽度
+
+`fit()` 现在按**实际绘制宽度**算（键 + 空格 + 词，行间 2 格），预算 = 终端宽度 − 2（底栏左右各 1 格内边距）。之前按 `键+2` 估算，66 列时会多裁一行。优先级：帮助 1 → 中止 5 → 主操作 10 → 上一步 15 → 退出 20 → 移动 35 → 次要功能 40 → 首末 45 → 翻页/管理 50。帮助永远是最后一项、也最后被裁。
+
+66×20 下英文会裁 1–3 行（`ctrl+r` 重检、`↑/↓` 移动、`g/G`、`ctrl+p` 管理、失败页的 `ctrl+n`），中文因为汉字标签更窄通常多留一行。两种语言的整行文本都在 `tests/ui/test_navigation.py` 里钉住。
+
+### 12.5 对话框
+
+`ConfirmDialog`：无输入框时 `←/→` 与 `h/l/j/k` 在「取消 / 确认」之间移焦点，`Enter` 按当前按钮，`Esc` 取消；**有输入框（卸载要输入的 `uninstall`）时这组字母被 `check_action` 关掉**，输入框拥有全部字母。密码框同理，不绑任何字母。
+
+### 12.6 去掉的
+
+- `ctrl+c` 双击退出与它的提示文案：退出只保留 `ctrl+x` 一条路。
+- `?` 不再是底栏上的帮助键（改成 `ctrl+k`），但按 `?` 仍然打开覆盖层。
+- 单字符功能键 `q`、`r`、`l`、`t`、`c`、`m` 全部移除。
+
+### 12.7 测试
+
+`tests/ui/test_keymap.py` 增加：功能键必须 `ctrl+`、导航不得用 `ctrl+`、Vim 别名齐全、`ctrl+q/s/z/…` 不被使用、帮助是 `ctrl+k` + `?` 别名。`tests/ui/test_navigation.py` 更新两种尺寸的整行底栏，并新增 Vim 用例（Checks 的 j/k、Options 的来源 j/k、Confirm 的 h/l、菜单/日志的 j/k/g/G/`ctrl+u/d`），以及“Ctrl+C 只中止、从不退出”。`tests/ui/test_app.py`、`test_wizard.py`、`test_sudo.py`、`test_manage.py` 里的旧键同步改成 `ctrl+r`/`ctrl+e`/`ctrl+p`。

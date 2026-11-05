@@ -303,7 +303,7 @@ class SudoPromptTest(unittest.IsolatedAsyncioTestCase):
                 await self.settle(pilot)
                 self.assertIsNone(app.askpass)   # retry starts a fresh channel
 
-                await pilot.press("r")           # Retry returns to Review
+                await pilot.press("ctrl+r")      # Retry returns to Review
                 await pilot.pause()
                 self.assertIsInstance(app.screen, ReviewScreen)
 
