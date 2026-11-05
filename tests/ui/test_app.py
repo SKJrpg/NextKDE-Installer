@@ -69,7 +69,7 @@ class AppShellTest(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertIsInstance(app.screen, WelcomeScreen)
             self.assertIn("Welcome", str(app.screen.query_one("#sidebar").render()))
-            self.assertIn("CachyOS", str(app.screen.query_one("#facts").render()))
+            self.assertIn("Quickshell", str(app.screen.query_one("#intro").render()))
 
     async def test_enter_opens_system(self) -> None:
         app = self.make_app()
@@ -122,20 +122,19 @@ class AppShellTest(unittest.IsolatedAsyncioTestCase):
         app = self.make_app(lang="zh")
         async with app.run_test(size=(100, 30)) as pilot:
             await pilot.pause()
-            self.assertIn("发行版", str(app.screen.query_one("#facts").render()))
+            self.assertIn("语言", str(app.screen.query_one("#language").render()))
             self.assertIn("下一步", footer_text(app))
 
             await pilot.press("right")
             await pilot.pause()
             self.assertEqual(app.lang, "en")
-            self.assertIn("Distribution", str(app.screen.query_one("#facts").render()))
             self.assertIn("next", footer_text(app))
             self.assertIn("Language", str(app.screen.query_one("#language").render()))
 
             await pilot.press("left")
             await pilot.pause()
             self.assertEqual(app.lang, "zh")
-            self.assertIn("发行版", str(app.screen.query_one("#facts").render()))
+            self.assertIn("语言", str(app.screen.query_one("#language").render()))
 
     async def test_buttons_are_one_line_and_focus_is_reverse(self) -> None:
         app = self.make_app()

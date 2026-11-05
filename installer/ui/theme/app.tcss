@@ -128,10 +128,6 @@ ProgressBar Bar > .bar--complete {
     padding-bottom: 1;
 }
 
-#facts {
-    height: auto;
-}
-
 #summary {
     height: auto;
     padding-bottom: 1;

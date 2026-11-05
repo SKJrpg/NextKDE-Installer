@@ -1,4 +1,4 @@
-"""Welcome: what this is, what was detected, and the key that moves on."""
+"""Welcome: what this is, the language, and the key that moves on."""
 
 from __future__ import annotations
 
@@ -16,7 +16,6 @@ class WelcomeScreen(WizardScreen):
 
     def body(self) -> ComposeResult:
         yield Static(self.strings("welcome_intro"), id="intro")
-        yield Static(self._facts(), id="facts")
         yield Static(self._language(), id="language")
 
     def _language(self) -> Text:
@@ -31,24 +30,6 @@ class WelcomeScreen(WizardScreen):
             text.append(on if self.app.lang == code else off,
                         style="bold" if self.app.lang == code else None)
             text.append(" " + name)
-        return text
-
-    def _facts(self) -> Text:
-        s = self.strings
-        system = self.app.system
-        session = next((p.detail for p in system.probes if p.key == "probe_session"), "?")
-        pairs = (
-            (s("label_distro"), system.label),
-            (s("label_arch"), system.arch),
-            (s("label_session"), session),
-            (s("label_path"), s("review_target")),
-        )
-        text = Text()
-        for index, (label, value) in enumerate(pairs):
-            text.append(f"{label:<16}", style=self.app.secondary_style)
-            text.append(value)
-            if index < len(pairs) - 1:
-                text.append("\n")
         return text
 
     async def action_welcome_language(self) -> None:

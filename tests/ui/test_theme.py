@@ -84,7 +84,7 @@ class AppModeTest(unittest.IsolatedAsyncioTestCase):
             app = self.make_app(mode)
             async with app.run_test(size=(100, 30)) as pilot:
                 await pilot.pause()
-                # The Welcome fact labels are secondary text.
-                text = app.screen.query_one("#facts").render()
+                # The Welcome language label is secondary text.
+                text = app.screen.query_one("#language").render()
                 styles = {str(span.style) for span in text.spans}
                 self.assertIn(expected, styles)
