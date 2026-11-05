@@ -278,6 +278,8 @@ _TEXT = {
     "confirm_summary": ("将执行 %d 个步骤", "Steps to run: %d"),
     "confirm_install": ("开始安装", "Start the install"),
     "confirm_back": ("返回上一步", "Go back"),
+    "confirm_yes": ("确认（开始安装）", "Confirm (install)"),
+    "confirm_no": ("取消（返回上一步）", "Cancel (back)"),
     "backend_label": ("后端", "Backend"),
     "backend_incompatible": ("后端不兼容：%s", "Incompatible backend: %s"),
     "cap_unavailable": ("不可用，后端未提供 %s", "unavailable, backend lacks %s"),

@@ -30,12 +30,12 @@ class ConfirmScreen(WizardScreen):
 
     # -- drawing -----------------------------------------------------------
     def _prompt(self) -> Text:
-        """`Y 开始安装    N 返回上一步` — the two keys are the whole page."""
+        """`Y 确认（开始安装）    N 取消（返回上一步）` — the whole page."""
         s = self.strings
         return Text.assemble(
-            ("Y", "bold"), " " + s("confirm_install"),
+            ("Y", "bold"), " " + s("confirm_yes"),
             "    ",
-            ("N", "bold"), " " + s("confirm_back"),
+            ("N", "bold"), " " + s("confirm_no"),
         )
 
     def _summary(self) -> Text:

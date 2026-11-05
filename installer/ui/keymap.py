@@ -122,9 +122,9 @@ ACTIONS: tuple[Action, ...] = (
     # Y installs, N goes back; Enter/Tab/arrows/digits are deliberately inert.
     # Uppercase is an alias because the prompt prints Y/N and a shifted letter
     # reaches the terminal as its uppercase form on some terminals.
-    Action("confirm.install", ("y",), "key_install", frozenset({CONFIRM}), 10,
+    Action("confirm.install", ("y",), "key_confirm", frozenset({CONFIRM}), 10,
            danger=True, aliases=("Y",)),
-    Action("confirm.back", ("n",), "key_previous", frozenset({CONFIRM}), 10,
+    Action("confirm.back", ("n",), "key_cancel", frozenset({CONFIRM}), 10,
            aliases=("N", "escape", "shift+tab")),
     Action("menu.goto", ("1", "2", "3", "4", "5", "6"), "menu_goto",
            frozenset({MENU}), 10, display="1–6", bind=()),

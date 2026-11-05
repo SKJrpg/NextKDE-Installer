@@ -63,7 +63,7 @@ FOOTERS = {
               "ctrl+x quit  ctrl+k help",
     "review_failed": "ctrl+r retry  ctrl+l log  Shift+Tab back  "
                      "ctrl+x quit  ctrl+k help",
-    "confirm": "y install  n back  ctrl+k help",
+    "confirm": "y confirm  n cancel  ctrl+k help",
     "installation": "ctrl+c abort  ctrl+k help",
     "result_ok": "ctrl+x exit  ctrl+l log  ctrl+p manage  ctrl+k help",
     "result_failed": "ctrl+r retry  ctrl+l log  ctrl+p manage  ctrl+x exit  "
@@ -85,7 +85,7 @@ FOOTERS_NARROW = {
     "options_check": "⏎ confirm  Tab next  Shift+Tab back  ctrl+x quit  ctrl+k help",
     "review": "⏎ continue  Tab next  Shift+Tab back  ctrl+x quit  ctrl+k help",
     "review_failed": "ctrl+r retry  Shift+Tab back  ctrl+x quit  ctrl+k help",
-    "confirm": "y install  n back  ctrl+k help",
+    "confirm": "y confirm  n cancel  ctrl+k help",
     "installation": "ctrl+c abort  ctrl+k help",
     "result_ok": "ctrl+x exit  ctrl+l log  ctrl+p manage  ctrl+k help",
     "result_failed": "ctrl+r retry  ctrl+l log  ctrl+x exit  ctrl+k help",

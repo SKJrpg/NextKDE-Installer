@@ -82,8 +82,8 @@
 | `review.details` | `ctrl+e` | | review | `key_details` 命令详情 / commands | e = expand |
 | `review.retry` | `ctrl+r` | | review（仅失败） | `key_retry` 重试 / retry | 失败前不绑定 |
 | `log.open` | `ctrl+l` | | review（失败）、result | `key_log` 日志 / log | 复用 `LogViewerScreen` |
-| `confirm.install` | `y` | | confirm | `key_install` 开始安装 / install | **danger**；这一页唯一的安装键 |
-| `confirm.back` | `n` | `Esc` `Shift+Tab` | confirm | `key_previous` 上一步 / back | 别名不上底栏 |
+| `confirm.install` | `y` | | confirm | `key_confirm` 确认 / confirm | **danger**；这一页唯一的安装键 |
+| `confirm.back` | `n` | `Esc` `Shift+Tab` | confirm | `key_cancel` 取消 / cancel | 别名不上底栏 |
 | `result.retry` | `ctrl+r` | | result（非成功） | `key_retry` 重试 / retry | |
 | `run.abort` | `ctrl+c` | | run / menu / list.*（运行中） | `key_abort` 中止 / abort | **danger**，先确认 |
 | `menu.move` | `↑` `↓` | `k` `j` | menu / list.* | `key_select` 选择 / select | `OptionList` 自带方向键 |
@@ -154,7 +154,7 @@ Options 的两块模型：
 
  安装会接管 plasmashell，注销重新登录后生效。
 
- Y 开始安装    N 返回上一步
+ Y 确认（开始安装）    N 取消（返回上一步）
 ```
 
 规则：
@@ -206,7 +206,7 @@ Management（`ManagementScreen`）是唯一菜单；子页是列表。
 | Options（下方行） | `↑/↓ 移动  ⏎ 确认  space 切换  Tab 下一步  Shift+Tab 上一步  ctrl+x 退出  ctrl+k 帮助` | `↑/↓ move  ⏎ confirm  space toggle  Tab next  Shift+Tab back  ctrl+x quit  ctrl+k help` |
 | Review（正常） | `⏎ 继续  Tab 下一步  ctrl+e 命令详情  Shift+Tab 上一步  ctrl+x 退出  ctrl+k 帮助` | `⏎ continue  Tab next  ctrl+e commands  Shift+Tab back  ctrl+x quit  ctrl+k help` |
 | Review（失败） | `ctrl+r 重试  ctrl+l 日志  Shift+Tab 上一步  ctrl+x 退出  ctrl+k 帮助` | `ctrl+r retry  ctrl+l log  Shift+Tab back  ctrl+x quit  ctrl+k help` |
-| Confirm | `y 开始安装  n 上一步  ctrl+k 帮助` | `y install  n back  ctrl+k help` |
+| Confirm | `y 确认  n 取消  ctrl+k 帮助` | `y confirm  n cancel  ctrl+k help` |
 | Installation | `ctrl+c 中止  ctrl+k 帮助` | `ctrl+c abort  ctrl+k help` |
 | Result（成功） | `ctrl+x 退出  ctrl+l 日志  ctrl+p 管理  ctrl+k 帮助` | `ctrl+x exit  ctrl+l log  ctrl+p manage  ctrl+k help` |
 | Result（失败/取消） | `ctrl+r 重试  ctrl+l 日志  ctrl+p 管理  ctrl+x 退出  ctrl+k 帮助` | `ctrl+r retry  ctrl+l log  ctrl+p manage  ctrl+x exit  ctrl+k help` |
@@ -226,7 +226,7 @@ Management（`ManagementScreen`）是唯一菜单；子页是列表。
 | Options（下方行） | `⏎ confirm  Tab next  Shift+Tab back  ctrl+x quit  ctrl+k help` |
 | Review | `⏎ continue  Tab next  Shift+Tab back  ctrl+x quit  ctrl+k help` |
 | Review（失败） | `ctrl+r retry  Shift+Tab back  ctrl+x quit  ctrl+k help` |
-| Confirm | `y install  n back  ctrl+k help` |
+| Confirm | `y confirm  n cancel  ctrl+k help` |
 | Installation | `ctrl+c abort  ctrl+k help` |
 | Result（成功） | `ctrl+x exit  ctrl+l log  ctrl+p manage  ctrl+k help` |
 | Result（失败） | `ctrl+r retry  ctrl+l log  ctrl+x exit  ctrl+k help` |
@@ -549,9 +549,9 @@ def resolve(contexts, overrides=None, budget=None) -> list[tuple[str, str, str]]
 
 ## 14. 本轮变更记录（确认页改成 Y / N）
 
-- 确认页删掉 `RadioSet` 与 `1`/`2` 选择，只剩摘要 + 一行提示：`Y 开始安装    N 返回上一步`。
+- 确认页删掉 `RadioSet` 与 `1`/`2` 选择，只剩摘要 + 一行提示：`Y 确认（开始安装）    N 取消（返回上一步）`。
 - 按键：`confirm.install` = `y`（`danger`，调 `app.start_install()`），`confirm.back` = `n`（`Esc`/`Shift+Tab` 为别名）。`review.install`、`confirm.pick`、`confirm.move` 删除；`wizard.previous` 不再覆盖 Confirm。
 - 页面保持惰性：`Enter`、`Tab`、方向键、`j/k/h/l`、`1/2` 都不响应；Tab 仍然因为向导页摘掉继承绑定而为空。
-- 底栏：`y 开始安装  n 上一步  ctrl+k 帮助`（en: `y install  n back  ctrl+k help`），两种尺寸都只有三项。
+- 底栏：`y 确认  n 取消  ctrl+k 帮助`（en: `y confirm  n cancel  ctrl+k help`），两种尺寸都只有三项。
 - “不可用单键安装”的旧规则被用户本轮显式推翻：Y 是单键，但只在这一页、只在这一屏可选；其余危险动作仍需确认框。
 - 测试：`test_confirm_is_inert_until_y_or_n`（Enter/Tab/1/2/方向/vim 全部无动作、N 返回）、`test_y_installs_and_n_goes_back`、`test_shift_tab_and_escape_both_leave_the_confirm_page`；`start_install` 辅助函数改为 `y`；危险动作集合改为 `confirm.install`。
