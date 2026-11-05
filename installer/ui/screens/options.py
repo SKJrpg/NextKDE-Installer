@@ -205,6 +205,7 @@ class OptionsScreen(WizardScreen):
             self._relabel(row, radio=True)
         if source != self.app.opts.source:
             self.app.opts.source = source
+            self.app.remember_source(source)
             self.app.invalidate_prepared()
             self._bind_keys()          # Ctrl+E is offered for local only
             if source == "local":

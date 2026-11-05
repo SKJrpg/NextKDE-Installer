@@ -16,7 +16,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from . import VERSION, workflow
+from . import VERSION, settings, workflow
 from .backend import contract, probe
 from .backend.models import BackendIncompatible
 from .core.askpass import Askpass, sudo_ready
@@ -52,8 +52,10 @@ def _apply_apps(opts: Options, value) -> None:
         opts.apps = bool(value)
 
 
-def _options(args, config: dict) -> Options:
+def _options(args, config: dict, remembered_source: str | None = None) -> Options:
     opts = Options()
+    if remembered_source in settings.SOURCES:
+        opts.source = remembered_source
     if "source" in config:
         opts.source = str(config["source"])
     if "apps" in config:
@@ -114,20 +116,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
     args = parser.parse_args(argv)
 
-    lang, no_cjk = choose_language(args.lang)
+    # The installer is its own repository: the product checkout is an input,
+    # never something inferred from __file__.
+    paths = Paths.resolve(args.root)
+    remembered = settings.load(paths)
+    lang, no_cjk = choose_language(args.lang or remembered.get("lang"))
     strings = Strings(lang)
     if no_cjk:
         # Say why the interface is English; otherwise it looks like a missing translation.
         print(strings("note_no_cjk"), file=sys.stderr)
-    # The installer is its own repository: the product checkout is an input,
-    # never something inferred from __file__.
-    paths = Paths.resolve(args.root)
     config = _load_config(args.config) if args.config else {}
     if config.get("source") not in (None, "stable", "main", "local"):
         parser.error("config source must be 'stable', 'main' or 'local'")
     if config.get("theme") not in (None, "system", "dark", "light"):
         parser.error("config theme must be 'system', 'dark' or 'light'")
-    opts = _options(args, config)
+    opts = _options(args, config, remembered.get("source"))
     unknown = opts.app_set - set(ALL_APPS)
     if unknown:
         parser.error("unknown apps: " + ", ".join(sorted(unknown)))
@@ -252,6 +255,7 @@ def main(argv: list[str] | None = None) -> int:
     # `--source local --apps todo` is already selected when it opens. The theme
     # defaults to dark; the flag wins over the config, both over KOS_THEME.
     return int(KosApp(opts=opts, paths=paths, lang=lang, system=system,
+                      remember=True,
                       mode=args.theme or config.get("theme")).run() or 0)
 
 

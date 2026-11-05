@@ -80,6 +80,58 @@ class EntryTest(unittest.TestCase):
         self.assertIn(captured["lang"], ("en", "zh"))
 
     @unittest.skipUnless(HAS_TEXTUAL, "textual is not vendored (run tools/vendor.py)")
+    def test_remembered_language_and_source_are_defaults(self) -> None:
+        captured = {}
+
+        class FakeApp:
+            def __init__(self, **kwargs):
+                captured.update(kwargs)
+
+            def run(self) -> int:
+                return 0
+
+        with tempfile.TemporaryDirectory() as directory, \
+                mock.patch.object(sys, "stdout", Tty()), \
+                mock.patch.object(sys, "stdin", Tty()), \
+                mock.patch("installer.__main__.settings.load",
+                           return_value={"lang": "zh", "source": "main"}), \
+                mock.patch("installer.__main__.choose_language",
+                           return_value=("zh", False)), \
+                mock.patch("installer.__main__.detect", return_value=fake_system()), \
+                mock.patch("installer.__main__.build_plan", return_value=fake_plan()), \
+                mock.patch("installer.ui.app.KosApp", FakeApp):
+            code = main(["--root", directory])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(captured["lang"], "zh")
+        self.assertEqual(captured["opts"].source, "main")
+        self.assertTrue(captured["remember"])
+
+    @unittest.skipUnless(HAS_TEXTUAL, "textual is not vendored (run tools/vendor.py)")
+    def test_cli_source_beats_the_remembered_source(self) -> None:
+        captured = {}
+
+        class FakeApp:
+            def __init__(self, **kwargs):
+                captured.update(kwargs)
+
+            def run(self) -> int:
+                return 0
+
+        with tempfile.TemporaryDirectory() as directory, \
+                mock.patch.object(sys, "stdout", Tty()), \
+                mock.patch.object(sys, "stdin", Tty()), \
+                mock.patch("installer.__main__.settings.load",
+                           return_value={"source": "main"}), \
+                mock.patch("installer.__main__.detect", return_value=fake_system()), \
+                mock.patch("installer.__main__.build_plan", return_value=fake_plan()), \
+                mock.patch("installer.ui.app.KosApp", FakeApp):
+            code = main(["--root", directory, "--source", "local"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(captured["opts"].source, "local")
+
+    @unittest.skipUnless(HAS_TEXTUAL, "textual is not vendored (run tools/vendor.py)")
     def test_config_keys_are_applied_before_the_app_starts(self) -> None:
         seen = {}
 

@@ -18,7 +18,7 @@ from textual import work
 from textual.app import App
 from textual.screen import ModalScreen
 
-from .. import VERSION, workflow
+from .. import VERSION, settings, workflow
 from ..backend import contract, probe
 from ..backend.models import BackendIncompatible, BackendInfo
 from ..core.askpass import Askpass
@@ -51,7 +51,7 @@ class KosApp(App, inherit_bindings=False):
                  paths: Paths | None = None, *, opts: Options | None = None,
                  backend: BackendInfo | None = None,
                  prepare=None, session_factory=None, mode: str | None = None,
-                 **kwargs) -> None:
+                 remember: bool = False, **kwargs) -> None:
         # Native ANSI so the terminal's own background and palette show through
         # instead of Textual painting its theme's colours over them.
         super().__init__(ansi_color=True, **kwargs)
@@ -65,6 +65,9 @@ class KosApp(App, inherit_bindings=False):
         self.lang, _ = choose_language(lang)
         self.strings = Strings(self.lang)
         self.paths = paths or Paths.resolve()
+        # Only the real interactive entry point opts in; tests and embedders do
+        # not get to rewrite the user's remembered choices.
+        self._remember = remember
         self.system = system or detect(root=self.paths.source_root)
         self.title = f"{self.strings('title')} · NextKDE"
         self.sub_title = f"v{VERSION}"
@@ -146,11 +149,18 @@ class KosApp(App, inherit_bindings=False):
         self.lang = lang
         self.strings = Strings(lang)
         self.title = f"{self.strings('title')} · NextKDE"
+        if self._remember:
+            settings.save(self.paths, lang=lang)
         for screen in self._screen_stack:
             if hasattr(screen, "apply_language"):
                 screen.apply_language(self.strings)
         await self.screen.recompose()
         self.screen.refresh_bindings()   # the fresh footer reads them on compose
+
+    def remember_source(self, source: str) -> None:
+        """Persist a source chosen in the UI for the next launch."""
+        if self._remember:
+            settings.save(self.paths, source=source)
 
     def _new_log_path(self, prefix: str = "install"):
         self._log_seq += 1

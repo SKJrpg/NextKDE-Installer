@@ -25,8 +25,9 @@ HAS_TEXTUAL = importlib.util.find_spec("textual") is not None
 
 if HAS_TEXTUAL:
     from rich.cells import cell_len
-    from textual.widgets import Button, Checkbox
+    from textual.widgets import Button, Checkbox, RadioButton
 
+    from installer import settings
     from installer.detect import OsInfo, Probe, System
     from installer.paths import Paths
     from installer.strings import Strings
@@ -130,6 +131,23 @@ class AppShellTest(unittest.IsolatedAsyncioTestCase):
             await pilot.press("escape")
             await pilot.pause()
             self.assertIsInstance(app.screen, WelcomeScreen)
+
+    async def test_language_and_source_are_remembered_when_enabled(self) -> None:
+        directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, directory, ignore_errors=True)
+        paths = Paths.resolve(source_root=ROOT,
+                              env={"XDG_STATE_HOME": directory})
+        app = KosApp(lang="en", system=fake_system(), paths=paths,
+                     remember=True)
+        async with app.run_test(size=(100, 30)) as pilot:
+            app.push_screen(OptionsScreen(Strings("en")))
+            await pilot.pause()
+            app.screen.query_one("#source_main", RadioButton).value = True
+            await pilot.pause()
+            await app.set_language("zh")
+            await pilot.pause()
+
+        self.assertEqual(settings.load(paths), {"lang": "zh", "source": "main"})
 
     async def test_language_switch_rewrites_the_page_and_the_footer(self) -> None:
         app = self.make_app(lang="zh")

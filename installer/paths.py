@@ -35,6 +35,11 @@ class Paths:
         return self.state_root / "logs"
 
     @property
+    def settings_file(self) -> Path:
+        """The small set of choices worth remembering between launches."""
+        return self.state_root / "settings.json"
+
+    @property
     def installer_runtime(self) -> Path:
         return self._data_home / "nextkde-installer"
 
