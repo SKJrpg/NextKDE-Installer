@@ -71,6 +71,19 @@ class AppShellTest(unittest.IsolatedAsyncioTestCase):
             self.assertIn("Welcome", str(app.screen.query_one("#sidebar").render()))
             self.assertIn("Quickshell", str(app.screen.query_one("#intro").render()))
 
+    async def test_welcome_banner_is_the_mark_only_when_it_fits(self) -> None:
+        for size, full in (((100, 30), True), ((66, 20), False)):
+            with self.subTest(size=size):
+                app = self.make_app()
+                async with app.run_test(size=size) as pilot:
+                    await pilot.pause()
+                    banner = str(app.screen.query_one("#banner").render())
+                    if full:
+                        self.assertIn("███", banner)
+                    else:
+                        self.assertIn("NextKDE", banner)
+                        self.assertNotIn("███", banner)
+
     async def test_enter_opens_system(self) -> None:
         app = self.make_app()
         async with app.run_test(size=(100, 30)) as pilot:

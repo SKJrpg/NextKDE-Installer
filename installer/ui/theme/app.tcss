@@ -123,6 +123,11 @@ ProgressBar Bar > .bar--complete {
     padding: 1 2;
 }
 
+#banner {
+    height: auto;
+    padding-bottom: 1;
+}
+
 #intro {
     height: auto;
     padding-bottom: 1;

@@ -8,6 +8,18 @@ from textual.widgets import Static
 
 from . import WizardScreen
 
+# The NextKDE mark from the installer research note: an ANSI Shadow wordmark.
+# It needs 62 cells, so the split layout (sidebar + padding) can only show it
+# from 88 columns; below that, the word alone.
+BANNER = (
+    "███╗   ██╗███████╗██╗  ██╗████████╗  ██╗  ██╗██████╗ ███████╗",
+    "████╗  ██║██╔════╝╚██╗██╔╝╚══██╔══╝  ██║ ██╔╝██╔══██╗██╔════╝",
+    "██╔██╗ ██║█████╗   ╚███╔╝    ██║     █████╔╝ ██║  ██║█████╗",
+    "██║╚██╗██║██╔══╝   ██╔██╗    ██║     ██╔═██╗ ██║  ██║██╔══╝",
+    "██║ ╚████║███████╗██╔╝ ██╗   ██║     ██║  ██╗██████╔╝███████╗",
+    "╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝   ╚═╝     ╚═╝  ╚═╝╚═════╝ ╚══════╝",
+)
+
 
 class WelcomeScreen(WizardScreen):
     STEP = 0
@@ -15,8 +27,24 @@ class WelcomeScreen(WizardScreen):
     QUIT_DIRECT = True      # nothing has run yet
 
     def body(self) -> ComposeResult:
+        yield Static(id="banner")
         yield Static(self.strings("welcome_intro"), id="intro")
         yield Static(self._language(), id="language")
+
+    def on_mount(self) -> None:
+        self._paint_banner()
+
+    def on_resize(self, event) -> None:
+        super().on_resize(event)
+        self._paint_banner()
+
+    def _paint_banner(self) -> None:
+        """The wordmark needs the room; otherwise the word, never a wrapped mark."""
+        banner = self.query_one("#banner", Static)
+        if self.strings.ascii or self.app.size.width < 88:
+            banner.update(Text("NextKDE", style="bold"))
+        else:
+            banner.update(Text("\n".join(BANNER)))
 
     def _language(self) -> Text:
         s = self.strings
