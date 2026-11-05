@@ -129,6 +129,15 @@ def _run(argv: list[str], timeout: float = 5.0) -> tuple[int, str]:
     return proc.returncode, (proc.stdout or proc.stderr).strip()
 
 
+_VERSION = re.compile(r"\d+(?:\.\d+)+")
+
+
+def _version(text: str) -> str:
+    """Just the first dotted number in a tool's banner, or ""."""
+    match = _VERSION.search(text or "")
+    return match.group(0) if match else ""
+
+
 def _major_minor(text: str) -> tuple[int, int] | None:
     for chunk in text.split():
         stripped = chunk.strip("v")
@@ -199,14 +208,16 @@ def detect(fixed_os_release: str | None = None, root: Path | None = None) -> Sys
     rc, kwin_out = _run(["kwin_wayland", "--version"])
     ver = _major_minor(kwin_out) if rc == 0 else None
     kwin_ok = ver is not None and ver >= (6, 6)
-    system.probes.append(_probe("probe_kwin", kwin_ok, kwin_out or "kwin_wayland not found",
+    system.probes.append(_probe("probe_kwin", kwin_ok,
+                                _version(kwin_out) or kwin_out or "kwin_wayland not found",
                                 "KWin 6.6+ is required for the native plugins."))
 
     rc, qs_out = _run(["qs", "--version"]) if shutil.which("qs") else (127, "")
     if rc != 0:
         rc, qs_out = _run(["quickshell", "--version"]) if shutil.which("quickshell") else (127, "")
     qs_ok = rc == 0 and "0.3" in qs_out
-    system.probes.append(_probe("probe_quickshell", qs_ok, qs_out or "not found",
+    system.probes.append(_probe("probe_quickshell", qs_ok,
+                                _version(qs_out) or qs_out or "not found",
                                 "Quickshell 0.3.x is required; the install step can provide it.",
                                 warn=True))
 
