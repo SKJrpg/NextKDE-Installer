@@ -16,6 +16,7 @@ from pathlib import Path
 
 from textual import work
 from textual.app import App
+from textual.screen import ModalScreen
 
 from .. import VERSION, workflow
 from ..backend import contract, probe
@@ -32,13 +33,14 @@ from .screens.installation import InstallationScreen
 from .screens.result import ResultScreen
 from .screens.review import ReviewScreen
 from .screens.welcome import WelcomeScreen
-from . import keymap
 from .theme import resolve_mode
 from .widgets.confirm import ConfirmDialog
 from .widgets.password import PasswordDialog
 
 
 class KosApp(App, inherit_bindings=False):
+    # The first Ctrl+C only warns; a second one within this window quits.
+    CTRL_C_QUIT_WINDOW = 5.0
     CSS_PATH = "theme/app.tcss"
     # A developer affordance; its footer hint has no place in an installer.
     ENABLE_COMMAND_PALETTE = False
@@ -91,6 +93,7 @@ class KosApp(App, inherit_bindings=False):
         self.install_worker = None
         self.prepare_worker = None
         self.action_worker = None
+        self._ctrl_c_at = 0.0          # time.monotonic() of the last Ctrl+C
         self.action_event = threading.Event()
         self.action_screen = None       # where the running action reports
         self.log_tail: deque[str] = deque(maxlen=8)
@@ -102,19 +105,19 @@ class KosApp(App, inherit_bindings=False):
         self._session_factory = session_factory
 
     def action_help_quit(self) -> None:
-        """Ctrl+C is not a quit key: point at the one the current page offers."""
-        rows = getattr(self.screen, "key_rows", lambda: [])()
-        row = next((row for row in rows
-                    if row.action.id in ("app.quit", "result.exit")), None)
-        if row is not None:
-            key = keymap.display_key(row.keys[0], self.strings.ascii)
-            self.notify(self.strings("quit_hint") % key)
+        """Ctrl+C twice quits; the first press only says so.
+
+        A modal owns its own keys (the abort and quit questions, the password
+        prompt), so a second press there must not bypass the question.
+        """
+        if isinstance(self.screen, ModalScreen):
             return
-        # The confirmation and menu pages have no q: their way out is Esc.
-        back = next((row for row in rows if row.action.id == "wizard.back"), None)
-        if back is not None:
-            key = keymap.display_key(back.keys[0], self.strings.ascii)
-            self.notify(self.strings("back_hint") % key)
+        now = time.monotonic()
+        if now - self._ctrl_c_at <= self.CTRL_C_QUIT_WINDOW:
+            self.exit()
+            return
+        self._ctrl_c_at = now
+        self.notify(self.strings("ctrl_c_hint"))
 
     def on_mount(self) -> None:
         self.push_screen(WelcomeScreen(self.strings))

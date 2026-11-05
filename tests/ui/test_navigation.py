@@ -276,21 +276,31 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertIs(app.screen, screen)   # no inherited ctrl+q quit
 
-    async def test_ctrl_c_hint_names_the_pages_exit_key(self) -> None:
+    async def test_ctrl_c_twice_quits(self) -> None:
         app = self.make_app()
         async with app.run_test(size=(100, 30), notifications=True) as pilot:
             await self.to_review(pilot)
             await pilot.press("ctrl+c")
             await pilot.pause()
-            self.assertIn(Strings("en")("quit_hint") % "q",
+            self.assertFalse(app._exit)
+            self.assertIn(Strings("en")("ctrl_c_hint"),
                           [note.message for note in app._notifications])
-            app.clear_notifications()
-            await pilot.press("enter")          # Review -> Confirm
-            await pilot.pause()
             await pilot.press("ctrl+c")
             await pilot.pause()
-            self.assertIn(Strings("en")("back_hint") % "esc",
-                          [note.message for note in app._notifications])
+            self.assertTrue(app._exit)
+
+    async def test_ctrl_c_does_not_quit_through_a_question(self) -> None:
+        app = self.make_app()
+        async with app.run_test(size=(100, 30)) as pilot:
+            await self.to_review(pilot)
+            await pilot.press("q")              # the quit question
+            await pilot.pause()
+            self.assertIsInstance(app.screen, ConfirmDialog)
+            await pilot.press("ctrl+c")
+            await pilot.press("ctrl+c")
+            await pilot.pause()
+            self.assertFalse(app._exit)
+            self.assertIsInstance(app.screen, ConfirmDialog)
 
     # -- help overlay ------------------------------------------------------
     async def test_help_lists_what_the_footer_offers(self) -> None:
