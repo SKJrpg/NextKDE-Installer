@@ -13,10 +13,11 @@
 | 换页 | 向导页 `Tab` 下一页、`Shift+Tab` 上一页；其余屏幕 `Tab` 仍是焦点 | 线性向导用 Tab 最自然；表单/列表自己还要用 Tab 走焦点 |
 | Enter | 只做“确认/激活”：Options 上作用于当前行，Review 进确认页，别的页不做页面切换；**Confirm 上 Enter 不做任何事** | 换页归 Tab；最后一页只认 Y 和 N |
 | 确认页 | `Y` 开始安装、`N` 返回上一步（`Shift+Tab`/`Esc` 是 N 的别名）；Enter/Tab/方向键/数字都不响应 | 一屏两键，比“移动选中再确认”少一步，也不会被误触 |
-| 功能键 | 一律 `Ctrl+…`：重试/重检 `ctrl+r`、日志 `ctrl+l`、详情 `ctrl+e`、新建 `ctrl+n`、管理 `ctrl+p`、帮助 `ctrl+k`、中止 `ctrl+z` | 单字母键让给导航；功能键同一前缀 |
+| 功能键 | 一律 `Ctrl+…`：重试/重检 `ctrl+r`、日志 `ctrl+l`、详情/路径 `ctrl+e`、新建 `ctrl+n`、管理 `ctrl+p`、帮助 `ctrl+k`、中止 `ctrl+z` | 单字母键让给导航；功能键同一前缀 |
 | 退出 | **连按两次 `ctrl+c`**：第一次只提示，5 秒内第二次退出；模态问题里不生效 | Ctrl+C 已经在手边；两次按下既好记又不会误触，`ctrl+x` 不再绑定 |
 | 导航 | Vim：`j`/`k` 下/上、`h`/`l` 左/右、`g`/`G` 首/末；方向键、`Space`、菜单数字不变 | 导航是**别名**，挂在已有动作上 |
 | 安装来源 | 独立成块：`↑/↓` 只换来源，`Enter` 下到下方选项；下方块有自己的光标，首行 `↑` 回到来源 | 来源是单选且会重写工作区，和复选项不是一类东西 |
+| 本地源码 | 自动检测（`--root`/`KOS_ROOT` → 当前目录 → `~/Projects/NextKde` → `~/NextKde`），找不到就留空；`ctrl+e` 手输路径 | 装到一半才发现 checkout 不对最贵；只试这四个路径，不扫 `$HOME` |
 | Esc | Esc 只“返回”（向导页是 `Shift+Tab` 的别名），永不退出 | Esc 最易误触，退出必须是另一个手势 |
 | 帮助 | `ctrl+k`（keys）；`?` 保留为**隐藏别名** | `Ctrl+?` 打不出来；`?` 可用但不上海报 |
 
@@ -78,6 +79,7 @@
 | `option.move` | `↑` `↓` | `k` `j` | option.check | `key_move` 移动 / move | 下方块内移动；首行 `↑` 回来源 |
 | `option.activate` | `Enter` | | option.check | `key_confirm` 确认 / confirm | 切换当前复选框 |
 | `option.toggle` | `Space` | | option.check | `key_toggle` 切换 / toggle | 不选来源 |
+| `option.local_path` | `ctrl+e` | | options（仅本地源码） | `key_path` 路径 / path | 弹出路径输入框；别的来源不绑定 |
 | `review.details` | `ctrl+e` | | review | `key_details` 命令详情 / commands | e = expand |
 | `review.retry` | `ctrl+r` | | review（仅失败） | `key_retry` 重试 / retry | 失败前不绑定 |
 | `log.open` | `ctrl+l` | | review（失败）、result | `key_log` 日志 / log | 复用 `LogViewerScreen` |
@@ -118,8 +120,8 @@
 |---|---|---|---|
 | Welcome | 无（`#language` 只是文本） | `←/→` 或 `h/l` 语言 · `Tab` 下一步 · `ctrl+p` 管理 · `ctrl+k` 帮助 · `ctrl+c`×2 退出 | **Enter 不做任何事**（没有可确认的东西）；没有 Esc |
 | Checks | 第一行探针 | `↑/↓` 或 `j/k` 选择 · `Tab` 下一步 · `ctrl+r` 重新检测 · `Shift+Tab` 上一步 · `ctrl+k` · `ctrl+c`×2 退出 | Enter 不做任何事 |
-| Options（来源块） | 当前来源行 | `↑/↓` 或 `j/k` 选来源 · `Enter` 下到下方选项 · `Tab` 下一步 · `Shift+Tab` 上一步 · `ctrl+k` | 来源块不越界；`core` 不可选、Tab 不经过；`ctrl+c`×2 退出 |
-| Options（下方块） | 第一个可用行 | `↑/↓` 或 `j/k` 移动 · `Enter` 切换复选框 · `Space` 同上（别名） · `Tab` 下一步 · `Shift+Tab` 上一步 · `ctrl+k` | 首行 `↑` 回到当前来源行；末行 `↓` 停住；`ctrl+c`×2 退出 |
+| Options（来源块） | 当前来源行 | `↑/↓` 或 `j/k` 选来源 · `Enter` 下到下方选项 · `Tab` 下一步 · `Shift+Tab` 上一步 · `ctrl+k`；本地源码时 `ctrl+e` 路径 | 来源块不越界；`core` 不可选、Tab 不经过；`ctrl+c`×2 退出 |
+| Options（下方块） | 第一个可用行 | `↑/↓` 或 `j/k` 移动 · `Enter` 切换复选框 · `Space` 同上（别名） · `Tab` 下一步 · `Shift+Tab` 上一步 · `ctrl+k`；本地源码时 `ctrl+e` 路径 | 首行 `↑` 回到当前来源行；末行 `↓` 停住；`ctrl+c`×2 退出 |
 | Review（正常） | 页面本身 | `Enter` 进确认页 · `Tab` 同上（下一页） · `ctrl+e` 命令详情 · `Shift+Tab` 上一步 · `ctrl+k` · `ctrl+c`×2 退出 | Enter 进的是确认页，不安装 |
 | Review（准备失败） | 页面本身 | `ctrl+r` 重试 · `ctrl+l` 日志 · `Shift+Tab` 上一步 · `ctrl+k` · `ctrl+c`×2 退出 | `Enter`/`Tab`/`ctrl+e` 在失败页禁用 |
 | Confirm | 页面本身 | `y` 开始安装 · `n` 返回上一步（`Shift+Tab`/`Esc` 同义） · `ctrl+k` | **Enter、Tab、方向键、数字都不响应**，整页保持原样 |
@@ -203,7 +205,9 @@ Management（`ManagementScreen`）是唯一菜单；子页是列表。
 | Welcome | `Tab 下一步  ←/→ 语言  ctrl+p 管理  ctrl+k 帮助` | `Tab next  ←/→ language  ctrl+p manage  ctrl+k help` |
 | Checks | `↑/↓ 选择  Tab 下一步  ctrl+r 重新检测  Shift+Tab 上一步  ctrl+k 帮助` | `↑/↓ select  Tab next  ctrl+r re-check  Shift+Tab back  ctrl+k help` |
 | Options（来源行） | `↑/↓ 选择  ⏎ 下方选项  Tab 下一步  Shift+Tab 上一步  ctrl+k 帮助` | `↑/↓ select  ⏎ options below  Tab next  Shift+Tab back  ctrl+k help` |
+| Options（来源行，本地源码） | `↑/↓ 选择  ⏎ 下方选项  ctrl+e 路径  Tab 下一步  Shift+Tab 上一步  ctrl+k 帮助` | `↑/↓ select  ⏎ options below  ctrl+e path  Tab next  Shift+Tab back  ctrl+k help` |
 | Options（下方行） | `↑/↓ 移动  ⏎ 确认  space 切换  Tab 下一步  Shift+Tab 上一步  ctrl+k 帮助` | `↑/↓ move  ⏎ confirm  space toggle  Tab next  Shift+Tab back  ctrl+k help` |
+| Options（下方行，本地源码） | `↑/↓ 移动  ⏎ 确认  space 切换  ctrl+e 路径  Tab 下一步  Shift+Tab 上一步  ctrl+k 帮助` | `↑/↓ move  ⏎ confirm  space toggle  ctrl+e path  Tab next  Shift+Tab back  ctrl+k help` |
 | Review（正常） | `⏎ 继续  Tab 下一步  ctrl+e 命令详情  Shift+Tab 上一步  ctrl+k 帮助` | `⏎ continue  Tab next  ctrl+e commands  Shift+Tab back  ctrl+k help` |
 | Review（失败） | `ctrl+r 重试  ctrl+l 日志  Shift+Tab 上一步  ctrl+k 帮助` | `ctrl+r retry  ctrl+l log  Shift+Tab back  ctrl+k help` |
 | Confirm | `y 确认  n 取消  ctrl+k 帮助` | `y confirm  n cancel  ctrl+k help` |
@@ -238,7 +242,7 @@ Management（`ManagementScreen`）是唯一菜单；子页是列表。
 | Logs | `↑/↓ select  g/G first/last  ⏎ open  esc back  ctrl+k help` |
 | LogViewer | `↑/↓ scroll  ctrl+u/d page  g/G first/last  esc back  ctrl+k help` |
 
-66 列最先被裁的是移动提示（`↑/↓`）与 `ctrl+r`；`Tab`、`Shift+Tab` 与 `ctrl+k` 始终保留。退出不在底栏：它是 Ctrl+C 两下，第一次会自己弹提示。中文底栏因为汉字更窄，那几行通常能多留一项。
+66 列最先被裁的是移动提示（`↑/↓`）与 `ctrl+r`；`Tab`、`Shift+Tab` 与 `ctrl+k` 始终保留。本地源码的 `ctrl+e 路径`（优先级 30）只在 100 列出现，66 列被裁掉，但帮助里仍然列出。退出不在底栏：它是 Ctrl+C 两下，第一次会自己弹提示。中文底栏因为汉字更窄，那几行通常能多留一项。
 
 新增文案：`key_below`（下方选项 / options below）；`key_ends`（首末）、`key_page`（翻页）沿用上一轮。
 
@@ -284,7 +288,7 @@ Management（`ManagementScreen`）是唯一菜单；子页是列表。
 | `ctrl+x` | 不绑 | 退出改用 Ctrl+C×2；`ctrl+x` 留空，避免两个退出键 |
 | `ctrl+r` | 重试 / 重检 | R = retry；shell 的反向搜索在 TUI 里不生效 |
 | `ctrl+l` | 日志 | L = log；shell 的清屏同理 |
-| `ctrl+e` | 详情 | E = expand |
+| `ctrl+e` | 详情 / 本地路径 | E = expand / edit；两处上下文不重叠 |
 | `ctrl+n` | 新建 | N = new |
 | `ctrl+k` | 帮助 | K = keys；`Ctrl+?` 打不出来，所以不选它 |
 | `ctrl+c` | 退出（两次） | 其它页面由 App 接住：一次提示、5 秒内第二次退出；运行页与运行中的菜单动作被隐藏的 `run.guard` 吞掉（不中止也不退出）；模态问题里被屏蔽 |
@@ -428,6 +432,7 @@ def resolve(contexts, overrides=None, budget=None) -> list[tuple[str, str, str]]
 3. 一致性：底栏出现的每一段文本都能在 `resolve()` 里找到同名 label 的动作，且该动作有 `action_*` 方法；帮助行 ⊇ 底栏行。
 4. 禁用：构造“无单元/无日志”的管理区，断言 `[5]`/`[4]` 仍在行文本里、带文字标记、`check_action` 为 False、底栏不出现其主动作。
 5. 危险动作：`confirm.install`、`run.abort`、`menu.item.uninstall`、`snapshot.rollback`；`confirm.install` 只存在于确认页（`Y` 之前必须经过 Review），卸载与回滚经过 `ConfirmDialog`，`run.abort` 直接生效。
+5b. 本地源码：`tests/ui/test_local_source.py` 断言检测顺序、脏工作区、找不到时留空并提示、`ctrl+e` 只在本地源码时可开、空路径与非法路径留在对话框并给原因、`~` 展开、接受后进入 `opts.local_path` 并出现在 Review 的计划里，以及 66 列底栏裁掉提示而帮助仍列；`tests/test_source.py`（`detect_local`/`local_candidates`/`inspect_local`）与 `tests/test_workflow.py`（`local_path` 覆盖 `--root`，其它模式忽略它）补后端一半。
 6. 键位覆盖：`{"wizard.previous": "b"}` 后底栏出现 `b 上一步`，`esc` 不再后退。
 7. 导航链：Welcome（Esc 不动）→ Checks → Options → Review → Confirm（`N` 回 Review）→ Esc/Shift+Tab 逐层回到 Welcome。
 8. 数字：向导页没有数字绑定；管理区 `1..6` 命中对应行；禁用行按数字无状态变化。
@@ -480,7 +485,7 @@ def resolve(contexts, overrides=None, budget=None) -> list[tuple[str, str, str]]
 | 帮助 | `ctrl+k`，`?` 隐藏别名 | K = keys；`Ctrl+?` 在终端里打不出来，`?` 保留但不上底栏 |
 | 重试 / 重新检测 | `ctrl+r` | R = retry；`ctrl+r` 在 shell 里是反向搜索，TUI 独占输入 |
 | 日志 | `ctrl+l` | L = log；同一理由 |
-| 命令详情 | `ctrl+e` | E = expand |
+| 命令详情 / 本地路径 | `ctrl+e` | E = expand / edit；Review 是详情，Options 的本地源码是路径 |
 | 新建快照 | `ctrl+n` | N = new |
 | 中止 | `ctrl+c`（**§16 起改为 `ctrl+z`**） | 当时不变；只在中止与运行中菜单动作上绑定 |
 | 日志翻页 | `ctrl+u` / `ctrl+d` | 只读视图；`ctrl+d` 的 EOF 语义在这里没有 shell |
@@ -592,3 +597,18 @@ def resolve(contexts, overrides=None, budget=None) -> list[tuple[str, str, str]]
   ```
   其余键位、底栏与帮助会一起跟着换。
 - 测试：`test_abort_is_immediate_on_the_run_page`（`ctrl+z` 后事件立即置位、Result 为 `cancelled`/130）、`test_ctrl_c_does_nothing_while_a_run_owns_it`（运行中连按不退出也不中止）、`test_abort_on_a_busy_menu_stops_the_action`（运行中底栏有 `ctrl+z abort`，Ctrl+C 被吞，`ctrl+z` 停掉动作）、`test_ctrl_z_cancels_a_running_action`（test_manage）、`test_ctrl_c_is_guarded_where_abort_runs`（test_keymap：guard 与 abort 同上下文、guard 隐藏且可解析）、`test_a_modal_question_suppresses_the_quit_gesture` 改用卸载问题框；`abort_the_run` 改为直接按 `ctrl+z`。
+
+---
+
+## 17. 本轮变更记录（本地源码：自动检测 + 手输路径）
+
+用户的指示：**路径手动输入功能以及智能检测功能**，针对 Options → 安装来源 → 本地源码。
+
+- 检测（`manager.detect_local`，在工作线程里跑）：候选顺序 = 显式 `--root`/`KOS_ROOT`（`Paths.source_root_explicit`）→ 当前目录 → `~/Projects/NextKde` → `~/NextKde`，重复路径只试一次；不扫 `$HOME`。每个候选都过 `manager.inspect_local`（由原 `_local` 提取成公开函数，仍是唯一校验：工作树顶层、`tools/kosctl`、至少一个提交）。第一个通过的即选中，其余忽略。
+- 结果落在 `Options.local_path`：检测成功写入；检测不到就保持 `None`，块里写“未找到 NextKDE 检出；按 ctrl+e 输入路径”。检测在 Options 挂载时跑一次，选中本地源码时若还没有路径再跑一次；已有路径（检测或手输）不覆盖，所以手输永远不会被后台结果盖掉。
+- 展示：来源块下方一行 `路径  ~/Projects/NextKde`（其他来源模式不显示）；右侧明细在本地源码时补全 `路径`、`版本 main @ 4869abcd`、`干净 / 有未提交修改`。检测运行中显示“正在检测本地源码…”。
+- 手输：`ctrl+e` 打开 `LocalPathDialog`（模态、一个输入框，不做文件浏览器），预填当前路径（`~` 缩写）；`Enter` 或「使用此路径」提交，`Esc` 取消。提交在对话框自己的线程里过 `inspect_local`：失败把原因写在框里并保持打开，空输入直接提示；成功回传 `PreparedSource`，于是路径、分支、提交、脏状态一次到位，不会在校验后再次跑 git。
+- 生效：`workflow.begin()`/`identity()` 的本地分支用 `Options.local_path or paths.source_root`。CLI/plain 从不设 `local_path`，所以 `--root` 语义不变；选了别的 source 时 `local_path` 被忽略。
+- 键位：`option.local_path` = `ctrl+e`（上下文 `wizard.options`，`check_action` 只在本地源码时允许）。所以底栏和帮助都只在本地源码时出现 `ctrl+e 路径`；其它来源按 `ctrl+e` 什么也不做。`review.details` 仍是 Review 的 `ctrl+e`，两处上下文不重叠。
+- 布局：66×20 时该提示按优先级 30 被裁掉（底栏仍是 `⏎ options below  Tab next  Shift+Tab back  ctrl+k help`），帮助里仍列；来源块多出的那一行在 66 列只占一行。
+- 测试：`tests/ui/test_local_source.py`（检测、脏状态、找不到、手输拒绝/接受/`~`/Esc、Review 计划、66 列）；`tests/test_source.py` 的 `LocalDetectionTest`；`tests/test_workflow.py` 的 `local_path` 覆盖与忽略。整套 247 项全绿。

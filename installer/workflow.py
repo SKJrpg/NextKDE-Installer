@@ -50,6 +50,11 @@ class Preparation:
         return self.prepared
 
 
+def _checkout(opts, paths: Paths) -> Path:
+    """The checkout a local install uses: the chosen one, else --root."""
+    return Path(getattr(opts, "local_path", None) or paths.source_root)
+
+
 def _mode(mode: str, opts) -> str:
     mode = mode or getattr(opts, "source", "")
     if mode not in MODES:
@@ -64,7 +69,7 @@ def begin(mode: str, opts, paths: Paths,
     if mode == "local":
         # The user's checkout is the source: no clone, no writes.
         return Preparation(paths, prepared=manager.prepare(
-            "local", checkout=paths.source_root, paths=paths))
+            "local", checkout=_checkout(opts, paths), paths=paths))
     stage = manager.stage_for(mode, repository)
     prepared = manager.existing(stage, paths)
     if prepared is not None:
@@ -84,7 +89,7 @@ def identity(mode: str, opts, paths: Paths,
     """The source an install would use, resolved without fetching it."""
     mode = _mode(mode, opts)
     if mode == "local":
-        return manager.prepare("local", checkout=paths.source_root, paths=paths)
+        return manager.prepare("local", checkout=_checkout(opts, paths), paths=paths)
     stage = manager.stage_for(mode, repository)
     return manager.existing(stage, paths) or PreparedSource(
         mode=mode, repository=stage.repository, ref=stage.ref, commit=stage.commit,

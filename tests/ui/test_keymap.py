@@ -79,7 +79,8 @@ class RegistryTest(unittest.TestCase):
     def test_function_keys_are_ctrl_and_letters_are_navigation(self) -> None:
         functions = ("review.details", "review.retry", "result.retry", "log.open",
                      "check.refresh", "snapshot.create", "app.manage",
-                     "run.abort", "help.open", "log.halfpage")
+                     "run.abort", "help.open", "log.halfpage",
+                     "option.local_path")
         for action_id in functions:
             action = next(a for a in keymap.ACTIONS if a.id == action_id)
             for key in action.keys:

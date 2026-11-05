@@ -109,6 +109,8 @@ ACTIONS: tuple[Action, ...] = (
     Action("option.below", ("enter",), "key_below", frozenset({SOURCE}), 10),
     Action("option.activate", ("enter",), "key_confirm", frozenset({CHECK}), 10),
     Action("option.toggle", ("space",), "key_toggle", frozenset({CHECK}), 30),
+    # Local checkout only; the screen disables it for the other source modes.
+    Action("option.local_path", ("ctrl+e",), "key_path", frozenset({OPTIONS}), 30),
     Action("review.continue", ("enter",), "key_continue", frozenset({REVIEW}), 10),
     Action("wizard.next", ("tab",), "key_next",
            frozenset({WELCOME, CHECKS, OPTIONS, REVIEW}), 5, display="Tab"),

@@ -11,7 +11,10 @@ That stays in the product repository (`NextKde/NextKde`): `tools/kosctl`,
 `tools/install-debian13.sh`, `tools/kos-state.py`.
 
 The product checkout is an input (`--root`, `KOS_ROOT`, default `~/NextKde`), never inferred
-from `__file__`.
+from `__file__`. The wizard may instead take the checkout chosen on Options (`Options.local_path`):
+it is detected from `--root`/`KOS_ROOT`, the current directory, `~/Projects/NextKde` and
+`~/NextKde`, or typed with `ctrl+e`. CLI and plain runs never set it, so `--root` keeps its
+meaning there.
 
 ## 2. Layout
 
@@ -21,8 +24,8 @@ tools/vendor.py         unpacks the pinned wheels (Textual, rich, deps) into ven
 installer/
   __init__.py           VERSION
   __main__.py           argparse, config file, plan, entry-point choice, exit codes
-  paths.py              Paths: installer_root, source_root, build_root, state_root,
-                        log_dir, sources_root, installer_runtime
+  paths.py              Paths: installer_root, source_root (+ source_root_explicit),
+                        build_root, state_root, log_dir, sources_root, installer_runtime
   detect.py             /etc/os-release parsing, family map, 13 probes, blocked flag
   plan.py               Options -> [Step]; source/components/start ordering; argv only
   runner.py             StepRunner: argv, process group, streamed output, cancel
@@ -105,7 +108,7 @@ commands. Today's steps:
 |---|---|---|
 | stable | newest release tag of the configured repository (`NextKde/NextKde`) | clone only |
 | development | the `main` branch of that repository | clone only |
-| local | the `--root` checkout as it is | none: no fetch, checkout, reset or remote edit |
+| local | the checkout chosen on Options (`Options.local_path`), else `--root`, as it is | none: no fetch, checkout, reset or remote edit |
 
 - The ref is resolved with `git ls-remote` **before** anything is cloned; the commit is the
   identity.
@@ -114,6 +117,10 @@ commands. Today's steps:
   renamed into place. A prepared commit is never rewritten.
 - Reuse requires the directory's HEAD and the manifest's repository to match; otherwise the
   error says to remove it.
+- `manager.inspect_local(path)` is the one local validation: top of a work tree, `tools/kosctl`
+  present, at least one commit; it reads branch, commit, origin and dirty state and writes
+  nothing. `manager.detect_local(paths)` tries the candidates above through it (in a worker, from
+  the UI) and `local_candidates()` is the order; `$HOME` itself is never scanned.
 - Wired: `workflow.begin()` resolves the channel and returns a `Preparation` (already prepared
   for local or a reused workspace, otherwise one streamable clone step); `finish()` verifies,
   records and renames. `plan.build_plan(..., prepared=...)` runs every step inside the prepared

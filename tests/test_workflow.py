@@ -84,6 +84,29 @@ class PreparationTest(SourceTestCase):
         self.assertFalse(prepared.managed)
         self.assertFalse(self.paths.sources_root.exists())
 
+    def test_a_chosen_local_path_wins_over_the_root(self) -> None:
+        chosen = make_checkout(self.base / "chosen")
+        opts = Options(source="local", local_path=chosen)
+
+        identity = workflow.identity("local", opts, self.paths)
+        self.assertEqual(identity.path, chosen.resolve())
+        prepared = workflow.begin("local", opts, self.paths).finish()
+        self.assertEqual(prepared.path, chosen.resolve())
+
+        steps = build_plan("arch", opts, self.paths, prepared)
+        self.assertTrue(steps[0].argv[0].startswith(str(chosen.resolve())),
+                        steps[0].argv)
+
+    def test_a_local_path_is_ignored_for_other_sources(self) -> None:
+        bare, _work = make_repository(self.base)
+        chosen = make_checkout(self.base / "chosen")
+        opts = Options(source="development", local_path=chosen)
+        preparation = workflow.begin("development", opts, self.paths,
+                                     repository=url(bare))
+        self.assertIsNone(preparation.prepared)       # a clone, not the checkout
+        self.assertEqual(preparation.stage.mode, "development")
+        self.assertEqual(preparation.stage.repository, url(bare))
+
     def test_a_failed_fetch_leaves_no_workspace_and_raises_on_finish(self) -> None:
         bare, work = make_repository(self.base)
         commit = git("rev-parse", "HEAD", cwd=work).stdout.strip()

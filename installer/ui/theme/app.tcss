@@ -184,7 +184,7 @@ ProgressBar Bar > .bar--complete {
 }
 
 #options_head, #status, #steps, #side, #hint,
-#install_head, #progress_state, #log_path {
+#install_head, #progress_state, #log_path, #local_state {
     height: auto;
 }
 
@@ -331,6 +331,52 @@ ConfirmDialog {
 }
 
 #confirm_buttons Button {
+    min-width: 12;
+    margin-right: 1;
+    color: $text;
+}
+
+/* -- local checkout path prompt -------------------------------------- */
+LocalPathDialog {
+    align: center middle;
+    background: transparent;
+}
+
+#path_box {
+    width: 62;
+    height: auto;
+    border: round $foreground;
+    background: $surface;
+    color: $text;
+    padding: 1 2;
+}
+
+#path_title {
+    height: auto;
+    text-style: bold;
+}
+
+#path_body, #path_error {
+    height: auto;
+    margin-top: 1;
+}
+
+#path_error {
+    color: ansi_red;
+}
+
+#path_input {
+    margin-top: 1;
+    background: $surface;
+    color: $foreground;
+}
+
+#path_buttons {
+    height: auto;
+    margin-top: 1;
+}
+
+#path_buttons Button {
     min-width: 12;
     margin-right: 1;
     color: $text;

@@ -117,7 +117,7 @@ def prepare(mode: str, repository: str = CANONICAL_REPO, checkout=None,
     env = os.environ if env is None else env
     paths = paths or Paths.resolve(env=env)
     if mode == "local":
-        return _local(Path(resolve("local", repository, checkout, tag)[0]))
+        return inspect_local(Path(resolve("local", repository, checkout, tag)[0]))
     stage = stage_for(mode, repository, tag)
     prepared = existing(stage, paths)
     if prepared is not None:
@@ -141,8 +141,12 @@ def _recorded(workspace: Path) -> dict:
         return {}
 
 
-def _local(root: Path) -> PreparedSource:
-    """The user's own checkout: read its identity, change nothing."""
+def inspect_local(root: Path) -> PreparedSource:
+    """The user's own checkout: read its identity, change nothing.
+
+    The one local validation: top of a work tree, ``tools/kosctl`` present and
+    at least one commit. Raises ValueError with a reason a user can act on.
+    """
     try:
         result = git.run(root, "rev-parse", "--show-toplevel")
     except OSError as error:
@@ -166,3 +170,36 @@ def _local(root: Path) -> PreparedSource:
         managed=False,
         manifest_path=None,
     )
+
+
+def local_candidates(paths: Paths, cwd: Path | None = None,
+                     home: Path | None = None) -> list[Path]:
+    """Where a NextKDE checkout may live, most explicit first.
+
+    ``$HOME`` itself is never scanned: only these paths, in this order.
+    """
+    cwd = Path.cwd() if cwd is None else Path(cwd)
+    home = Path.home() if home is None else Path(home)
+    found = [paths.source_root] if paths.source_root_explicit else []
+    found += [cwd, home / "Projects" / "NextKde", home / "NextKde"]
+    unique: list[Path] = []
+    for candidate in found:
+        path = Path(candidate).expanduser().resolve()
+        if path not in unique:
+            unique.append(path)
+    return unique
+
+
+def detect_local(paths: Paths, cwd: Path | None = None,
+                 home: Path | None = None) -> tuple[PreparedSource | None, list[Path]]:
+    """The first candidate that passes ``inspect_local``, and all paths tried.
+
+    Git runs here: call it from a worker, never from an event loop.
+    """
+    tried = local_candidates(paths, cwd, home)
+    for path in tried:
+        try:
+            return inspect_local(path), tried
+        except (OSError, ValueError):
+            continue
+    return None, tried

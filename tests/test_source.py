@@ -18,7 +18,8 @@ sys.path.insert(0, str(HERE))
 
 from installer.paths import Paths  # noqa: E402
 from installer.source import manifest  # noqa: E402
-from installer.source.manager import prepare  # noqa: E402
+from installer.source.manager import (detect_local, inspect_local,  # noqa: E402
+                                      local_candidates, prepare)
 from installer.source.resolver import (CANONICAL_REPO, latest_tag,  # noqa: E402
                                        repository_id, resolve)
 
@@ -300,3 +301,77 @@ class AnnotatedTagTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LocalDetectionTest(SourceTestCase):
+    """Where the installer looks for a checkout, and what it accepts."""
+
+    def checkout(self, root: Path, *, kosctl: bool = True) -> Path:
+        git("init", "-q", "-b", "main", str(root))
+        (root / "README.md").write_text("NextKDE\n", encoding="utf-8")
+        if kosctl:
+            (root / "tools").mkdir()
+            (root / "tools" / "kosctl").write_text("#!/bin/sh\n", encoding="utf-8")
+        commit_all(root, "first")
+        return root
+
+    def paths_for(self, root: Path, *, explicit: bool = True) -> Paths:
+        return Paths(installer_root=HERE, source_root=root,
+                     build_root=self.base / "build", state_root=self.base / "state",
+                     data_home=self.base / "data", source_root_explicit=explicit)
+
+    def test_the_explicit_root_is_the_first_candidate(self) -> None:
+        explicit = self.checkout(self.base / "explicit")
+        cwd = self.checkout(self.base / "cwd")
+        home = self.base / "home"          # nothing there
+        paths = self.paths_for(explicit)
+        self.assertEqual(local_candidates(paths, cwd=cwd, home=home)[0],
+                         explicit.resolve())
+        source, _tried = detect_local(paths, cwd=cwd, home=home)
+        self.assertEqual(source.path, explicit.resolve())
+
+    def test_without_an_explicit_root_cwd_then_projects_then_home(self) -> None:
+        cwd = self.checkout(self.base / "cwd")
+        projects = self.checkout(self.base / "home" / "Projects" / "NextKde")
+        home_checkout = self.checkout(self.base / "home" / "NextKde")
+        home = self.base / "home"
+        paths = self.paths_for(self.base / "ignored", explicit=False)
+        tried = local_candidates(paths, cwd=cwd, home=home)
+        self.assertEqual(tried, [cwd.resolve(), projects.resolve(),
+                                 home_checkout.resolve()])
+        self.assertEqual(detect_local(paths, cwd=cwd, home=home)[0].path,
+                         cwd.resolve())
+
+    def test_an_invalid_candidate_is_skipped(self) -> None:
+        explicit = self.checkout(self.base / "explicit", kosctl=False)
+        cwd = self.checkout(self.base / "cwd")
+        paths = self.paths_for(explicit)
+        source, tried = detect_local(paths, cwd=cwd, home=self.base / "home")
+        self.assertEqual(source.path, cwd.resolve())
+        self.assertEqual(tried[:2], [explicit.resolve(), cwd.resolve()])
+
+    def test_nothing_valid_leaves_no_source(self) -> None:
+        plain = self.base / "plain"
+        (plain / "tools").mkdir(parents=True)
+        (plain / "tools" / "kosctl").write_text("", encoding="utf-8")
+        paths = self.paths_for(plain)
+        source, tried = detect_local(paths, cwd=plain, home=self.base / "home")
+        self.assertIsNone(source)
+        # The explicit root and the cwd are the same directory: looked at once.
+        self.assertEqual(len(tried), 3)
+
+    def test_inspect_local_is_the_one_validation(self) -> None:
+        work = self.checkout(self.base / "work")
+        source = inspect_local(work)
+        self.assertEqual(source.mode, "local")
+        self.assertEqual(source.path, work.resolve())
+        self.assertEqual(source.commit,
+                         git("rev-parse", "HEAD", cwd=work).stdout.strip())
+        self.assertFalse(source.dirty)
+
+        (work / "README.md").write_text("changed\n", encoding="utf-8")
+        self.assertTrue(inspect_local(work).dirty)
+        with self.assertRaises(ValueError):
+            inspect_local(self.checkout(self.base / "no-kosctl", kosctl=False))
+        with self.assertRaises(ValueError):
+            inspect_local(self.base / "missing")

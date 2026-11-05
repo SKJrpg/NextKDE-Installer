@@ -45,6 +45,8 @@ class Options:
     proxy: bool = True
     spatial: bool = False  # ONNX + OpenCV depth engine, a wallpaper feature
     app_set: set[str] = field(default_factory=set)
+    # Chosen on the Options page; None means --root / $KOS_ROOT / ~/NextKde.
+    local_path: Path | None = None
 
 
 @dataclass

@@ -27,6 +27,8 @@ class Paths:
     build_root: Path       # ~/.cache/nextkde/build; not passed to the backend yet
     state_root: Path       # ~/.local/state/nextkde-installer
     data_home: Path | None = None   # kept so installer_runtime matches resolve(env)
+    # --root or $KOS_ROOT named the checkout: it is the first detection candidate.
+    source_root_explicit: bool = False
 
     @property
     def log_dir(self) -> Path:
@@ -48,10 +50,12 @@ class Paths:
     @classmethod
     def resolve(cls, source_root=None, env=None, installer_root=None) -> "Paths":
         env = os.environ if env is None else env
-        source = source_root or env.get("KOS_ROOT") or Path.home() / "NextKde"
+        given = source_root or env.get("KOS_ROOT")
+        source = given or Path.home() / "NextKde"
         return cls(
             installer_root=Path(installer_root or INSTALLER_ROOT).resolve(),
             source_root=Path(source).expanduser().resolve(),
+            source_root_explicit=bool(given),
             build_root=_xdg(env, "XDG_CACHE_HOME", ".cache") / "nextkde" / "build",
             state_root=_xdg(env, "XDG_STATE_HOME", ".local/state") / "nextkde-installer",
             data_home=_xdg(env, "XDG_DATA_HOME", ".local/share"),
