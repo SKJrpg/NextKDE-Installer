@@ -93,6 +93,8 @@ ToggleButton.-on > .toggle--button {
 /* The scrollbar rail must not paint a pane; its thumb is the terminal's own
    foreground. */
 Widget {
+    /* Textual defaults the vertical bar to 2 cells; one is enough. */
+    scrollbar-size: 1 1;
     scrollbar-background: transparent;
     scrollbar-background-hover: transparent;
     scrollbar-background-active: transparent;
