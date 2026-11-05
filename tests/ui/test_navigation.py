@@ -369,7 +369,7 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
             self.assertIn("move", body)
 
     async def test_a_config_override_changes_the_footer_and_the_key(self) -> None:
-        keymap.apply_overrides({"wizard.back": "b"})
+        keymap.apply_overrides({"wizard.previous": "b"})
         app = self.make_app()
         async with app.run_test(size=(100, 30)) as pilot:
             await pilot.press("enter")

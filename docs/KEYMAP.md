@@ -66,7 +66,8 @@
 | `focus.prev` | `Shift+Tab` | app | `key_focus_prev` 上一项 / previous field | 隐藏，同上 |
 | `wizard.next` | `Enter` | `wizard.welcome` / `wizard.checks` / `wizard.options` | `key_next` 下一步 / next | 各屏自己实现“下一步是谁” |
 | `review.continue` | `Enter` | `wizard.review` | `key_continue` 继续 / continue | 进确认页，不执行 |
-| `wizard.back` | `Esc` | checks / options / review / confirm / menu / list.* / log.view | `key_back` 返回 / back | 无后退就不绑定 |
+| `wizard.previous` | `Esc` | checks / options / review / confirm | `key_previous` 上一步 / back | 向导页与“下一步”成对 |
+| `wizard.back` | `Esc` | menu / list.* / log.view | `key_back` 返回 / back | 无后退就不绑定 |
 | `welcome.language` | `←` `→` | `wizard.welcome` | `key_language` 语言 / language | **不再用 Tab**（Tab 归焦点） |
 | `check.move` | `↑` `↓` | `wizard.checks` | `key_select` 选择 / select | |
 | `check.refresh` | `r` | `wizard.checks` | `key_refresh` 重新检测 / re-check | F5 删除 |
@@ -108,11 +109,11 @@
 | 屏幕 | 默认焦点 | 键位 | 禁用/例外 |
 |---|---|---|---|
 | Welcome | 无（`#language` 只是文本） | `←/→` 语言 · `Enter` 下一步 · `^P` 管理 · `q` 退出 · `?` | **没有 Esc**（无路可退）；q 直接退出 |
-| Checks | 第一行探针 | `↑/↓` 选择 · `Enter` 下一步 · `r` 重新检测 · `Esc` 返回 · `q` 退出 · `?` | 无探针时 `check.move` 不绑定 |
-| Options | `source_stable` | `Tab/Shift+Tab` 换控件 · `↑/↓` 组内移动 · `Space` 切换 · `Enter` 下一步 · `Esc` 返回 · `q` 退出 · `?` | `core` 行 disabled，Tab 跳过；后端不支持的项 disabled + 文字标记 |
-| Review（正常） | 页面本身 | `Enter` 进入确认页 · `t` 命令详情 · `Esc` 返回 · `q` 退出 · `?` | 计划为空时 Enter 不绑定 |
+| Checks | 第一行探针 | `↑/↓` 选择 · `Enter` 下一步 · `r` 重新检测 · `Esc` 上一步 · `q` 退出 · `?` | 无探针时 `check.move` 不绑定 |
+| Options | `source_stable` | `Tab/Shift+Tab` 换控件 · `↑/↓` 组内移动 · `Space` 切换 · `Enter` 下一步 · `Esc` 上一步 · `q` 退出 · `?` | `core` 行 disabled，Tab 跳过；后端不支持的项 disabled + 文字标记 |
+| Review（正常） | 页面本身 | `Enter` 进入确认页 · `t` 命令详情 · `Esc` 上一步 · `q` 退出 · `?` | 计划为空时 Enter 不绑定 |
 | Review（准备失败） | 页面本身 | 上一行去掉 `Enter`/`t`，加 `r` 重试 · `l` 日志 | 失败块本身写明这三个键 |
-| Confirm（新） | 「返回上一步」单选行 | `↑/↓` 或 `1`/`2` 选择 · `Enter` 确认 · `Esc` 返回 · `?` | 未选「开始安装」时 Enter = 返回；`q` 不绑定（先返回再退，避免运行中被 q 打断） |
+| Confirm（新） | 「返回上一步」单选行 | `↑/↓` 或 `1`/`2` 选择 · `Enter` 确认 · `Esc` 上一步 · `?` | 未选「开始安装」时 Enter = 返回；`q` 不绑定（先返回再退，避免运行中被 q 打断） |
 | Installation | 无（`#cancel` 仅鼠标，`can_focus=False`） | `Ctrl+C` 中止（确认框） · `?` | 导航键全部不绑定：无 Esc、无 q、无 Tab、无数字。`?` 允许——只读覆盖层，不改运行状态 |
 | Result | 失败/取消 →「重试」；成功 →「退出」 | `Enter` 激活聚焦按钮 · `r` 重试（非成功） · `l` 日志 · `^P` 管理 · `q` 退出 · `?` | 成功页无 `r` |
 | Management | 第一行菜单项 | `1–6` 直达 · `↑/↓` 选择 · `Enter` 打开 · `Esc` 返回 · `?`；动作运行中另加 `Ctrl+C` 中止 | 禁用项保留编号、文字标注、按数字无动作 |
@@ -145,7 +146,7 @@ Options 的焦点模型（现状只有控件默认行为，这是要新写的部
    ( ) [1] 开始安装
    (•) [2] 返回上一步          ← 默认
 
- 1/2 选择   ⏎ 确认   esc 返回   ? 帮助
+ 1/2 选择   ⏎ 确认   esc 上一步   ? 帮助
 ```
 
 规则：
@@ -191,12 +192,12 @@ Management（`ManagementScreen`）是唯一菜单；子页是列表。
 | 场景 | zh | en |
 |---|---|---|
 | Welcome | `⏎ 下一步  ←/→ 语言  ^P 管理  q 退出  ? 帮助` | `⏎ next  ←/→ language  ^P manage  q quit  ? help` |
-| Checks | `↑↓ 选择  ⏎ 下一步  r 重新检测  esc 返回  q 退出  ? 帮助` | `↑↓ select  ⏎ next  r re-check  esc back  q quit  ? help` |
-| Options（复选聚焦） | `空格 切换  ↑↓ 移动  ⏎ 下一步  esc 返回  q 退出  ? 帮助` | `space toggle  ↑↓ move  ⏎ next  esc back  q quit  ? help` |
-| Options（单选聚焦） | `↑↓ 选择  ⏎ 下一步  esc 返回  q 退出  ? 帮助` | `↑↓ select  ⏎ next  esc back  q quit  ? help` |
-| Review（正常） | `⏎ 继续  t 命令详情  esc 返回  q 退出  ? 帮助` | `⏎ continue  t commands  esc back  q quit  ? help` |
-| Review（失败） | `r 重试  l 日志  esc 返回  q 退出  ? 帮助` | `r retry  l log  esc back  q quit  ? help` |
-| Confirm | `1/2 选择  ⏎ 确认  esc 返回  ? 帮助` | `1/2 choose  ⏎ confirm  esc back  ? help` |
+| Checks | `↑↓ 选择  ⏎ 下一步  r 重新检测  esc 上一步  q 退出  ? 帮助` | `↑↓ select  ⏎ next  r re-check  esc back  q quit  ? help` |
+| Options（复选聚焦） | `空格 切换  ↑↓ 移动  ⏎ 下一步  esc 上一步  q 退出  ? 帮助` | `space toggle  ↑↓ move  ⏎ next  esc back  q quit  ? help` |
+| Options（单选聚焦） | `↑↓ 选择  ⏎ 下一步  esc 上一步  q 退出  ? 帮助` | `↑↓ select  ⏎ next  esc back  q quit  ? help` |
+| Review（正常） | `⏎ 继续  t 命令详情  esc 上一步  q 退出  ? 帮助` | `⏎ continue  t commands  esc back  q quit  ? help` |
+| Review（失败） | `r 重试  l 日志  esc 上一步  q 退出  ? 帮助` | `r retry  l log  esc back  q quit  ? help` |
+| Confirm | `1/2 选择  ⏎ 确认  esc 上一步  ? 帮助` | `1/2 choose  ⏎ confirm  esc back  ? help` |
 | Installation | `ctrl+c 中止  ? 帮助` | `ctrl+c abort  ? help` |
 | Result（成功） | `q 退出  l 日志  ^P 管理  ? 帮助` | `q exit  l log  ^P manage  ? help` |
 | Result（失败/取消） | `r 重试  l 日志  ^P 管理  q 退出  ? 帮助` | `r retry  l log  ^P manage  q exit  ? help` |
@@ -249,7 +250,8 @@ Management（`ManagementScreen`）是唯一菜单；子页是列表。
 | `retry` | Result | `result.retry` | `r` |
 | `quit` | Result | `app.quit` | `q`（Enter 只激活聚焦按钮） |
 | `cancel_action` | Management / Units / Snapshots | `run.abort` | `Ctrl+C`（`busy` 时） |
-| `back` | 各屏 | `wizard.back` | `Esc` |
+| `back` | 向导各屏 | `wizard.previous` | `Esc` |
+| `back` | 菜单 / 列表 / 日志 | `wizard.back` | `Esc` |
 | `toggle` | Units | `unit.toggle` | `Enter`（`Space` 隐藏别名） |
 | `create` | Snapshots | `snapshot.create` | `c` |
 | `help` | 全部 | `help.open` | `?` |
@@ -294,7 +296,7 @@ def resolve(contexts, overrides=None, budget=None) -> list[tuple[str, str, str]]
 `installer/__main__.py` 的 `CONFIG_KEYS` 增加 `"keys"`：
 
 ```json
-{ "keys": { "wizard.back": "esc", "menu.item.logs": "l", "unit.toggle": "space" } }
+{ "keys": { "wizard.previous": "esc", "menu.item.logs": "l", "unit.toggle": "space" } }
 ```
 
 - 未知动作 ID 与配置里其它未知键一样 `SystemExit`，并列出合法 ID。
@@ -335,7 +337,7 @@ def resolve(contexts, overrides=None, budget=None) -> list[tuple[str, str, str]]
 3. 一致性：底栏出现的每一段文本都能在 `resolve()` 里找到同名 label 的动作，且该动作有 `action_*` 方法；帮助行 ⊇ 底栏行。
 4. 禁用：构造“无单元/无日志”的管理区，断言 `[5]`/`[4]` 仍在行文本里、带文字标记、`check_action` 为 False、底栏不出现其主动作。
 5. 危险动作：`review.install`、`run.abort`、`menu.item.uninstall`、`snapshot.rollback` 的入口都经过 `ConfirmDialog`（用 `push_screen` spy 或断言首个按键不改变状态）。
-6. 键位覆盖：`{"wizard.back": "b"}` 后底栏出现 `b 返回`，`esc` 不再后退。
+6. 键位覆盖：`{"wizard.previous": "b"}` 后底栏出现 `b 上一步`，`esc` 不再后退。
 7. 导航链：Welcome（Esc 不动）→ Checks → Options → Review → Confirm（默认返回）→ Esc 逐层回到 Welcome。
 8. 数字：向导页没有数字绑定；管理区 `1..6` 命中对应行；禁用行按数字无状态变化。
 9. 焦点穿透：Options 里 Enter = 下一步（不切换任何复选框），Space 才切换；`Tab` 走组。

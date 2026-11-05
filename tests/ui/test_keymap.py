@@ -57,9 +57,9 @@ class RegistryTest(unittest.TestCase):
         self.assertEqual(keymap.display_key("1–6", ascii_only=True), "1-6")
 
     def test_overrides_replace_keys_and_drop_aliases(self) -> None:
-        keymap.apply_overrides({"wizard.back": "b", "unit.toggle": "x"})
+        keymap.apply_overrides({"wizard.previous": "b", "unit.toggle": "x"})
         rows = {row.action.id: row for row in keymap.resolve({"wizard.checks"})}
-        self.assertEqual(rows["wizard.back"].keys, ("b",))
+        self.assertEqual(rows["wizard.previous"].keys, ("b",))
         units = {row.action.id: row for row in keymap.resolve({"list.units"})}
         self.assertEqual(units["unit.toggle"].keys, ("x",))
         self.assertEqual(units["unit.toggle"].aliases, ())

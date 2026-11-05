@@ -319,6 +319,7 @@ _TEXT = {
     "key_cycle": ("选择", "choose"),
     "key_continue": ("继续", "continue"),
     "key_back": ("返回", "back"),
+    "key_previous": ("上一步", "back"),
     "key_quit": ("退出", "quit"),
     "key_start": ("开始安装", "start install"),
     "key_help": ("帮助", "help"),
