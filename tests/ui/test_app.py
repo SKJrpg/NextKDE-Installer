@@ -194,6 +194,12 @@ class AppShellTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(app.screen.query_one("Header").styles.background.a, 0)
             self.assertEqual(app.screen.query_one("#footer").styles.background.a, 0)
 
+    async def test_header_has_no_inert_command_palette_icon(self) -> None:
+        app = self.make_app()
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.pause()
+            self.assertFalse(app.screen.query_one("HeaderIcon").display)
+
     async def test_footer_offers_no_command_palette(self) -> None:
         app = self.make_app()
         async with app.run_test(size=(100, 30)) as pilot:

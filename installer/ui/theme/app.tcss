@@ -14,6 +14,12 @@ Header, Footer {
     color: ansi_default;
 }
 
+/* Textual's command-palette button; this installer has its own Ctrl+P menu
+   and disables the palette, so the default ⭘ is inert clutter. */
+HeaderIcon {
+    display: none;
+}
+
 /* The hint line is painted from the key table, not from Textual's footer. */
 KeyFooter {
     height: 1;
