@@ -237,9 +237,12 @@ class SudoPromptTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(self.bars(app)), 1)
             self.assertIsInstance(app.screen, InstallationScreen)
             self.assertNotIsInstance(app.screen, ModalScreen)
-            self.assertIs(app.focused, bar.screen.query_one("#sudo_input", Input))
+            field = bar.screen.query_one("#sudo_input", Input)
+            self.assertIs(app.focused, field)
 
-            bar.screen.query_one("#sudo_input", Input).value = PASSWORD
+            field.value = PASSWORD
+            self.assertEqual(field.value, PASSWORD)
+            self.assertEqual(field._value.plain, "")      # no echo, not even dots
             await pilot.press("enter")
             # Off the event loop, as the bar never blocks it either.
             out, _err = await asyncio.to_thread(helper.communicate, 30)

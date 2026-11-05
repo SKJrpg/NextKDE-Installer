@@ -16,9 +16,15 @@ from textual.widgets import Input, Static
 
 
 class SudoInput(Input):
-    """Not focusable until the bar is shown, so a hidden bar takes no focus."""
+    """Not focusable until shown, and silent: no characters, not even their count."""
 
     can_focus = False
+
+    @property
+    def _value(self) -> Text:
+        # Textual's password mode paints one bullet per character; the sudo bar
+        # echoes nothing at all, so neither the secret nor its length is shown.
+        return Text("", no_wrap=True, overflow="ignore", end="")
 
 
 class SudoBar(Vertical):
