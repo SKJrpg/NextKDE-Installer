@@ -2,8 +2,9 @@
 
 A screen declares a context (``CONTEXT``); ``installer/ui/keymap.py`` turns it
 into bindings, the footer words and the help overlay, so the three cannot
-disagree. Esc only steps back; quitting goes through ``ctrl+x``, and every
-other function key is Ctrl too, which leaves the letters to Vim navigation.
+disagree. Tab pages the wizard forward and Shift+Tab back (Esc stays as an
+alias); everywhere else Tab still moves focus. Quitting goes through
+``ctrl+x``, every other function key is Ctrl, and the letters are Vim.
 """
 
 from __future__ import annotations
@@ -85,13 +86,18 @@ class ChromeScreen(Screen):
 
     def _row_width(self, row: keymap.Row) -> int:
         """One row exactly as the footer paints it: "key label"."""
-        display = (row.action.display
+        display = (row.display
                    or keymap.display_key(row.keys[0], self.strings.ascii))
         return cell_len(display) + 1 + cell_len(self.strings(row.action.label))
 
     def _bind_keys(self) -> None:
         """(Re)bind the resolved rows; the footer is painted from the same rows."""
         self._bindings = self._base_bindings.copy()
+        if self.CONTEXT in keymap.PAGES:
+            # On a page, Tab pages; it must not fall back to focus movement
+            # (Confirm deliberately binds no forward page).
+            for key in ("tab", "shift+tab"):
+                self._bindings.key_to_bindings.pop(key, None)
         self.paint_footer()
         for row in self.key_rows():
             if not row.targets:          # a hint for keys the widget owns

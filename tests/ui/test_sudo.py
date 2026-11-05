@@ -129,11 +129,11 @@ class SudoPromptTest(unittest.IsolatedAsyncioTestCase):
         return helper
 
     async def to_installation(self, pilot) -> None:
-        await pilot.press("enter")   # Welcome -> Checks
+        await pilot.press("tab")     # Welcome -> Checks
         await pilot.pause()
-        await pilot.press("enter")   # Checks -> Options
+        await pilot.press("tab")     # Checks -> Options
         await pilot.pause()
-        await pilot.press("enter")   # Options -> Review
+        await pilot.press("tab")     # Options -> Review
         await pilot.pause()
         await pilot.press("enter")   # Review -> confirmation page
         await pilot.pause()

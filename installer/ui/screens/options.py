@@ -1,8 +1,9 @@
 """Options: source channel, the required core, apps and advanced toggles.
 
-Focus model: Tab/Shift+Tab move between groups, arrows inside one, Space
-toggles, Enter belongs to the page. The rows therefore keep Enter for the
-screen (``EnterPasses``) instead of swallowing it with Textual's default.
+Tab pages forward here (it is a page key now), so the form has two blocks:
+the source group is its own cursor (arrows choose, Enter steps down to the
+options below), and the lower block is one cursor of its own (its first row
+goes back up to the chosen source). Space toggles checkboxes only.
 """
 
 from __future__ import annotations
@@ -10,11 +11,11 @@ from __future__ import annotations
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Container, VerticalScroll
-from textual.widgets import Checkbox, RadioButton, RadioSet, Static
+from textual.widgets import Checkbox, RadioButton, Static
 
 from ...backend.models import ACTIVATION_START, INSTALL_APPS, INSTALL_LOCKSCREEN
 from ...plan import ALL_APPS
-from . import ChoicePasses, CursorKeys, EnterPasses, WizardScreen
+from . import ChoicePasses, EnterPasses, WizardScreen
 
 SOURCES = ("stable", "main", "local")
 WIDE_AT = 110
@@ -23,11 +24,10 @@ WIDE_AT = 110
 DETAILS = {"core": "detail_core", "lockscreen": "detail_lockscreen",
            "spatial": "detail_spatial", "start": "detail_start"}
 
-GROUPS = (
-    ("sources", ("source_stable", "source_main", "source_local")),
-    ("apps", tuple("app_" + name for name in ALL_APPS)),
-    ("advanced", ("lockscreen", "spatial", "start")),
-)
+SOURCE_ROWS = tuple("source_" + name for name in SOURCES)
+# The disabled core row is deliberately absent: it is not reachable.
+LOWER_ROWS = (tuple("app_" + name for name in ALL_APPS)
+              + ("lockscreen", "spatial", "start"))
 
 
 class CheckRow(EnterPasses, Checkbox):
@@ -38,26 +38,32 @@ class CheckRow(EnterPasses, Checkbox):
 
 
 class SourceRow(ChoicePasses, RadioButton):
-    """The same, for the source radio rows."""
+    """The same, for the source radio rows.
+
+    No radio set: the cursor is the page's, and moving onto a source row
+    selects it, so the marker and the value never disagree.
+    """
 
     BUTTON_LEFT = BUTTON_INNER = BUTTON_RIGHT = ""
-    context = "option.radio"
+    context = "option.source"
 
-
-class SourceSet(CursorKeys, RadioSet):
-    """Arrows and j/k move the choice; Enter is the page's."""
-
-    context = "option.radio"
+    async def _on_click(self, _event) -> None:
+        # A radio is a choice, not a toggle: clicking never unchecks it.
+        self.value = True
 
 
 class OptionsScreen(WizardScreen):
     STEP = 2
     CONTEXT = "wizard.options"
 
+    def __init__(self, strings, **kwargs) -> None:
+        super().__init__(strings, **kwargs)
+        self._labels: dict[str, str] = {}
+
     def body(self) -> ComposeResult:
         s = self.strings
         opts = self.app.opts
-        self._labels: dict[str, str] = {}
+        self._labels = {}
 
         def row(label: str, ident: str, value: bool, *,
                 radio: bool = False, disabled: bool = False,
@@ -77,7 +83,7 @@ class OptionsScreen(WizardScreen):
             with VerticalScroll(id="options", can_focus=False):
                 yield Static(s("options_head"), id="options_head")
                 yield Static(s("group_source"), classes="group")
-                with SourceSet(id="sources", compact=True):
+                with Container(id="sources"):
                     for name in SOURCES:
                         yield row(s("source_" + name), "source_" + name,
                                   name == opts.source, radio=True)
@@ -157,28 +163,37 @@ class OptionsScreen(WizardScreen):
             widget.label = self._row(self._labels[widget.id], widget.value, radio)
 
     def on_mount(self) -> None:
-        self.query_one("#source_" + self.app.opts.source, RadioButton).value = True
         self._apply_layout(self.app.size.width, self.app.size.height)
+        first = self.query_one("#source_" + self.app.opts.source, RadioButton)
+        first.value = True
         self._show_detail("source_" + self.app.opts.source)
         # The form always has a row: the footer describes what it can do.
-        self.query_one("#source_" + self.app.opts.source, RadioButton).focus()
+        first.focus()
 
     def on_resize(self, event) -> None:
         super().on_resize(event)
         self._apply_layout(event.size.width, event.size.height)
 
-    def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
-        if event.radio_set.id != "sources":
-            return
-        for button in event.radio_set.query(RadioButton):
-            self._relabel(button, radio=True)
-        if event.pressed.id is None:
-            return
-        source = event.pressed.id.removeprefix("source_")
+    def on_radio_button_changed(self, event: RadioButton.Changed) -> None:
+        """A source was chosen (click, j/k or Enter): it is the only choice.
+
+        Unchecked events are the ones this screen posts to clear the others;
+        acting on them would undo the choice just made.
+        """
+        row = event.radio_button
+        if event.value and row.id is not None and row.id.startswith("source_"):
+            self._select_source(row.id.removeprefix("source_"))
+
+    def _select_source(self, source: str) -> None:
+        ident = "source_" + source
+        for row in self.query(SourceRow):
+            if row.value != (row.id == ident):
+                row.value = row.id == ident
+            self._relabel(row, radio=True)
         if source != self.app.opts.source:
             self.app.opts.source = source
             self.app.invalidate_prepared()
-        self._show_detail("source_" + source)
+        self._show_detail(ident)
 
     def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
         box = event.checkbox
@@ -197,75 +212,70 @@ class OptionsScreen(WizardScreen):
         else:
             setattr(self.app.opts, box.id, box.value)
 
-    # -- focus: Tab between groups, arrows inside one ---------------------
-    def _widget(self, ident: str):
-        found = self.query("#" + ident)
-        return found.first() if found else None
+    # -- two blocks: the source choice, then the options below -------------
+    def _rows(self, idents) -> list[Checkbox | RadioButton]:
+        rows = []
+        for ident in idents:
+            found = self.query("#" + ident)
+            widget = found.first() if found else None
+            if widget is not None and not widget.disabled:
+                rows.append(widget)
+        return rows
 
-    def _usable(self, ident: str):
-        widget = self._widget(ident)
-        return widget if widget is not None and not widget.disabled else None
+    def _source_rows(self) -> list[RadioButton]:
+        return self._rows(SOURCE_ROWS)
 
-    def _group_of(self, ident: str | None) -> str | None:
-        """The group a focused widget belongs to; the radio set is its group."""
-        for name, idents in GROUPS:
-            if ident == name or ident in idents:
-                return name
-        return None
+    def _lower_rows(self) -> list[Checkbox]:
+        return self._rows(LOWER_ROWS)
 
-    def _focus_group(self, step: int) -> None:
-        names = [name for name, _ in GROUPS]
-        current = self._group_of(self.focused.id if self.focused else None)
-        index = names.index(current) if current in names else (-1 if step > 0 else len(names))
-        order = range(index + step, len(names), step) if step > 0 \
-            else range(index + step, -1, -1)
-        for position in order:
-            if self._focus_first(names[position]):
-                return
-
-    def _focus_first(self, group: str) -> bool:
-        for ident in dict(GROUPS)[group]:
-            widget = self._usable(ident)
-            if widget is not None:
-                widget.focus()
-                return True
-        return False
-
-    def _focus_sibling(self, step: int) -> None:
-        group = self._group_of(self.focused.id if self.focused else None)
-        if group is None or group == "sources":
-            return              # the radio set owns its own arrows
-        rows = [widget for widget in (self._usable(ident)
-                                      for ident in dict(GROUPS)[group])
-                if widget is not None]
-        if self.focused not in rows:
-            return
-        index = rows.index(self.focused) + step
-        if 0 <= index < len(rows):
-            rows[index].focus()
-
-    def action_focus_next(self) -> None:
-        self._focus_group(1)
-
-    def action_focus_prev(self) -> None:
-        self._focus_group(-1)
-
-    def action_option_move(self, step: int) -> None:
-        self._focus_sibling(step)
+    def _selected_source(self) -> RadioButton:
+        return self.query_one("#source_" + self.app.opts.source, RadioButton)
 
     def action_option_pick(self, step: int) -> None:
-        """Arrows and j/k pick a source; the marker moves with the choice."""
-        rows = [row for row in self.query_one("#sources", SourceSet).query(SourceRow)
-                if not row.disabled]
+        """Inside 安装来源 the arrows only change the source; no crossing."""
+        rows = self._source_rows()
         if not rows:
             return
-        current = next((index for index, row in enumerate(rows) if row.value), 0)
-        index = max(0, min(current + step, len(rows) - 1))
-        rows[index].value = True
+        current = self.focused if self.focused in rows else None
+        if current is not None:
+            index = rows.index(current) + step
+        else:
+            index = next((i for i, row in enumerate(rows) if row.value), 0)
+        target = rows[max(0, min(index, len(rows) - 1))]
+        target.focus()
+        self._select_source(target.id.removeprefix("source_"))
+
+    def action_option_below(self) -> None:
+        """Enter on a source steps down into the options below."""
+        rows = self._lower_rows()
+        if rows:
+            rows[0].focus()
+
+    def action_option_move(self, step: int) -> None:
+        """The lower block keeps its own cursor; its first row leads back up."""
+        rows = self._lower_rows()
+        if not rows:
+            return
+        current = self.focused
+        if current not in rows:
+            rows[0].focus()
+            return
+        index = rows.index(current)
+        if index == 0 and step < 0:
+            self._selected_source().focus()
+            return
+        rows[max(0, min(index + step, len(rows) - 1))].focus()
+
+    def action_option_activate(self) -> None:
+        """Enter on a lower row toggles its checkbox."""
+        row = self.focused
+        if isinstance(row, CheckRow) and not row.disabled:
+            row.value = not row.value
 
     def action_option_toggle(self) -> None:
+        """Space keeps its checkbox meaning; it never selects a source."""
         widget = self.focused
-        if isinstance(widget, Checkbox) and not widget.disabled:
+        if isinstance(widget, CheckRow) and not widget.disabled:
             widget.value = not widget.value
 
     def action_wizard_next(self) -> None:

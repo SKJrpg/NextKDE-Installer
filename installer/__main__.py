@@ -75,6 +75,8 @@ def _options(args, config: dict) -> Options:
         opts.lockscreen = True
     if args.start:
         opts.start = True
+    if getattr(args, "no_start", False):
+        opts.start = False
     if args.all:
         opts.apps = True
         opts.lockscreen = True
@@ -103,7 +105,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--apps", nargs="?", const="all", metavar="LIST",
                         help="also install the standalone apps; LIST narrows it (calendar,todo)")
     parser.add_argument("--lockscreen", action="store_true", help="also install the lock screen theme")
-    parser.add_argument("--start", action="store_true", help="start services after install")
+    parser.add_argument("--start", action="store_true",
+                        help="start services after install (the default)")
+    parser.add_argument("--no-start", action="store_true",
+                        help="do not start services after install")
     parser.add_argument("--all", action="store_true", help="include apps and lock screen")
     parser.add_argument("--no-proxy", action="store_true", help="do not pass proxy variables through")
     parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")

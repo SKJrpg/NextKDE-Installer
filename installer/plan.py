@@ -41,7 +41,7 @@ class Options:
     source: str = "stable"
     apps: bool = False
     lockscreen: bool = False
-    start: bool = False
+    start: bool = True      # the desktop is started after a successful install
     proxy: bool = True
     spatial: bool = False  # ONNX + OpenCV depth engine, a wallpaper feature
     app_set: set[str] = field(default_factory=set)

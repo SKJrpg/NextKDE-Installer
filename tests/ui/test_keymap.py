@@ -64,12 +64,13 @@ class RegistryTest(unittest.TestCase):
             for key in action.keys:
                 self.assertTrue(key.startswith("ctrl+"), f"{action_id} -> {key}")
 
-        navigation = ("check.move", "option.move", "option.pick", "confirm.move",
-                      "menu.move", "menu.ends", "log.scroll", "log.ends",
-                      "welcome.language", "unit.toggle", "snapshot.rollback",
-                      "logs.open", "menu.act", "wizard.next", "wizard.previous",
-                      "wizard.back", "review.continue", "review.install",
-                      "confirm.pick")
+        navigation = ("check.move", "option.pick", "option.move", "option.activate",
+                      "option.below", "option.toggle", "confirm.move",
+                      "menu.move", "menu.ends",
+                      "log.scroll", "log.ends", "welcome.language",
+                      "unit.toggle", "snapshot.rollback", "logs.open", "menu.act",
+                      "wizard.next", "wizard.previous", "wizard.back",
+                      "review.continue", "review.install", "confirm.pick")
         for action_id in navigation:
             action = next(a for a in keymap.ACTIONS if a.id == action_id)
             for key in action.keys + action.aliases:
@@ -78,8 +79,8 @@ class RegistryTest(unittest.TestCase):
     def test_vim_aliases_cover_the_movement_rows(self) -> None:
         expected = {
             "check.move": ("j", "k"),
-            "option.move": ("j", "k"),
             "option.pick": ("j", "k"),
+            "option.move": ("j", "k"),
             "confirm.move": ("h", "l", "j", "k"),
             "menu.move": ("j", "k"),
             "menu.ends": (),        # g/G are its primary keys
@@ -93,6 +94,38 @@ class RegistryTest(unittest.TestCase):
                               if a.id == "menu.ends").keys, ("g", "G"))
         self.assertEqual(next(a for a in keymap.ACTIONS
                               if a.id == "log.scroll").aliases[:2], ("j", "k"))
+
+    def test_tab_pages_the_wizard_and_focuses_everywhere_else(self) -> None:
+        pages = keymap.PAGES
+        self.assertEqual(keymap.resolve({keymap.WELCOME}).__class__, list)
+        next_page = next(a for a in keymap.ACTIONS if a.id == "wizard.next")
+        self.assertEqual(next_page.keys, ("tab",))
+        self.assertTrue(next_page.contexts < pages)
+        self.assertNotIn(keymap.CONFIRM, next_page.contexts)   # Tab never installs
+        previous = next(a for a in keymap.ACTIONS if a.id == "wizard.previous")
+        self.assertEqual(previous.keys, ("shift+tab",))
+        self.assertEqual(previous.aliases, ("escape",))
+        focus_next = next(a for a in keymap.ACTIONS if a.id == "focus.next")
+        self.assertEqual(focus_next.keys, ("tab",))
+        self.assertFalse(focus_next.contexts & pages)          # no double binding
+
+    def test_enter_activates_on_options_and_pages_nowhere(self) -> None:
+        for context in (keymap.WELCOME, keymap.CHECKS):
+            self.assertFalse(any("enter" in row.keys + row.aliases
+                                 for row in keymap.resolve({context})), context)
+        source = {row.action.id: row for row in
+                  keymap.resolve({keymap.OPTIONS, keymap.SOURCE})}
+        lower = {row.action.id: row for row in
+                 keymap.resolve({keymap.OPTIONS, keymap.CHECK})}
+        self.assertEqual(source["option.below"].keys, ("enter",))
+        self.assertEqual(lower["option.activate"].keys, ("enter",))
+        self.assertEqual(source["wizard.next"].keys, ("tab",))
+        self.assertEqual(source["option.pick"].keys, ("up", "down"))
+        self.assertNotIn("option.move", source)     # the blocks do not share a cursor
+        self.assertEqual(lower["option.move"].keys, ("up", "down"))
+        self.assertNotIn("option.pick", lower)
+        confirm = keymap.resolve({keymap.CONFIRM})
+        self.assertFalse(any("tab" in row.keys for row in confirm))
 
     def test_help_is_a_ctrl_key_with_the_question_mark_alias(self) -> None:
         action = next(a for a in keymap.ACTIONS if a.id == "help.open")

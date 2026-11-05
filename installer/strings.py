@@ -344,6 +344,7 @@ _TEXT = {
     "key_abort": ("中止", "abort"),
     "key_install": ("开始安装", "install"),
     "key_ends": ("首末", "first/last"),
+    "key_below": ("下方选项", "options below"),
     "key_page": ("翻页", "page"),
     "key_focus_next": ("下一项", "next field"),
     "key_focus_prev": ("上一项", "previous field"),

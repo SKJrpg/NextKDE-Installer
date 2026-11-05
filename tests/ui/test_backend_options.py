@@ -45,9 +45,9 @@ def backend(*capabilities: str) -> "BackendInfo":
 @unittest.skipUnless(HAS_TEXTUAL, "textual is not vendored (run tools/vendor.py)")
 class OptionsCapabilityTest(unittest.IsolatedAsyncioTestCase):
     async def to_options(self, pilot) -> None:
-        await pilot.press("enter")
+        await pilot.press("tab")
         await pilot.pause()
-        await pilot.press("enter")
+        await pilot.press("tab")
         await pilot.pause()
 
     def make_app(self, info: "BackendInfo") -> "KosApp":
@@ -82,7 +82,7 @@ class OptionsCapabilityTest(unittest.IsolatedAsyncioTestCase):
         app.backend_error = "nextkde 1.0.0 requires installer API 2-3"
         async with app.run_test(size=(66, 20)) as pilot:
             await self.to_options(pilot)
-            await pilot.press("enter")
+            await pilot.press("tab")
             await pilot.pause()
             self.assertIsInstance(app.screen, OptionsScreen)
             self.assertNotIsInstance(app.screen, ReviewScreen)

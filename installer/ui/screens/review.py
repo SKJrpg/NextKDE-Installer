@@ -102,8 +102,8 @@ class ReviewScreen(WizardScreen):
         # not what the user can act on any more.
         if action in ("review_retry", "log_open"):
             return failed
-        if action in ("review_continue", "review_details"):
-            return not failed
+        if action in ("review_continue", "review_details", "wizard_next"):
+            return not failed   # a failed page has nothing to confirm
         return True
 
     def set_status(self, text: str) -> None:
@@ -232,6 +232,10 @@ class ReviewScreen(WizardScreen):
         from .confirm import ConfirmScreen
 
         self.app.push_screen(ConfirmScreen(self.strings, len(self._plan_steps())))
+
+    def action_wizard_next(self) -> None:
+        """Tab pages forward, exactly like Enter on this page."""
+        self.action_review_continue()
 
     def action_review_retry(self) -> None:
         """Same as Enter on a failed page: preparation is what failed."""

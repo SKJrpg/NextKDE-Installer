@@ -28,6 +28,7 @@ if HAS_TEXTUAL:
     from installer.paths import Paths
     from installer.plan import Options, build_plan
     from installer.source.models import PreparedSource
+    from installer.strings import Strings
     from installer.ui.app import KosApp
     from installer.ui.screens.installation import InstallationScreen
     from installer.ui.screens.options import OptionsScreen
@@ -117,9 +118,9 @@ class WizardTest(unittest.IsolatedAsyncioTestCase):
                           steps, log_path, root, mode))
 
     async def to_options(self, pilot) -> None:
-        await pilot.press("enter")   # Welcome -> Checks
+        await pilot.press("tab")     # Welcome -> Checks
         await pilot.pause()
-        await pilot.press("enter")   # Checks -> Options
+        await pilot.press("tab")     # Checks -> Options
         await pilot.pause()
 
     async def start_install(self, pilot) -> None:
@@ -175,7 +176,7 @@ class WizardTest(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertIsInstance(app.screen, SystemScreen)
 
-            await pilot.press("enter")
+            await pilot.press("tab")
             await pilot.pause()
             self.assertIsInstance(app.screen, OptionsScreen)
             self.assertIn("[x]", app.screen.query_one("#app_todo", Checkbox).label.plain)
@@ -219,11 +220,26 @@ class WizardTest(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(label("source_local").startswith("( ) "))
             self.assertTrue(label("app_calendar").startswith("[x] "))
 
+    async def test_start_after_install_is_on_by_default(self) -> None:
+        app = self.make_app()
+        async with app.run_test(size=(100, 30)) as pilot:
+            await self.to_options(pilot)
+            self.assertTrue(app.opts.start)
+            self.assertTrue(app.screen.query_one("#start", Checkbox).value)
+
+            await pilot.press("tab")      # Options -> Review
+            await pilot.pause()
+            self.assertIsInstance(app.screen, ReviewScreen)
+            side = str(app.screen.query_one("#side").render())
+            self.assertIn(Strings("en")("review_side_session")[:20], side)
+            steps = str(app.screen.query_one("#steps").render())
+            self.assertIn("kosctl start", steps)
+
     async def test_review_lists_the_real_plan(self) -> None:
         app = self.make_app()
         async with app.run_test(size=(100, 30)) as pilot:
             await self.to_options(pilot)
-            await pilot.press("enter")
+            await pilot.press("tab")
             await pilot.pause()
             self.assertIsInstance(app.screen, ReviewScreen)
             steps = build_plan(app.system.family, app.opts, app.paths,
@@ -241,7 +257,7 @@ class WizardTest(unittest.IsolatedAsyncioTestCase):
         app = self.make_app()
         async with app.run_test(size=(100, 30)) as pilot:
             await self.to_options(pilot)
-            await pilot.press("enter")
+            await pilot.press("tab")
             await pilot.pause()
             self.assertIsInstance(app.screen, ReviewScreen)
             text = str(app.screen.query_one("#steps").render())
@@ -256,7 +272,7 @@ class WizardTest(unittest.IsolatedAsyncioTestCase):
         app = self.make_app()
         async with app.run_test(size=(100, 30)) as pilot:
             await self.to_options(pilot)
-            await pilot.press("enter")   # Options -> Review
+            await pilot.press("tab")     # Options -> Review
             await pilot.pause()
             await self.start_install(pilot)
             await self.wait_screen(app, ResultScreen)
@@ -272,7 +288,7 @@ class WizardTest(unittest.IsolatedAsyncioTestCase):
         app = self.make_app(mode="cancel")
         async with app.run_test(size=(100, 30)) as pilot:
             await self.to_options(pilot)
-            await pilot.press("enter")
+            await pilot.press("tab")
             await pilot.pause()
             await self.start_install(pilot)
             for _ in range(200):
@@ -289,7 +305,7 @@ class WizardTest(unittest.IsolatedAsyncioTestCase):
         app = self.make_app(mode="cancel")
         async with app.run_test(size=(100, 30)) as pilot:
             await self.to_options(pilot)
-            await pilot.press("enter")
+            await pilot.press("tab")
             await pilot.pause()
             await self.start_install(pilot)
             for _ in range(200):
@@ -308,7 +324,7 @@ class WizardTest(unittest.IsolatedAsyncioTestCase):
         app = self.make_app()
         async with app.run_test(size=(100, 30)) as pilot:
             await self.to_options(pilot)
-            await pilot.press("enter")
+            await pilot.press("tab")
             await pilot.pause()
             await self.start_install(pilot)
             await self.wait_screen(app, ResultScreen)

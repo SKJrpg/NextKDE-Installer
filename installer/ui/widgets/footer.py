@@ -29,7 +29,7 @@ class KeyFooter(Static):
                 continue
             if len(text):
                 text.append("  ")
-            key = action.display or keymap.display_key(row.keys[0], strings.ascii)
+            key = row.display or keymap.display_key(row.keys[0], strings.ascii)
             text.append(keymap.display_key(key, strings.ascii), style="bold")
             text.append(" " + strings(action.label))
         self.update(text)

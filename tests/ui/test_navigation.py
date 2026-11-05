@@ -36,7 +36,7 @@ if HAS_TEXTUAL:
     from installer.ui.screens.installation import InstallationScreen
     from installer.ui.screens.logs import LogViewerScreen, LogsScreen
     from installer.ui.screens.management import ManagementScreen
-    from installer.ui.screens.options import OptionsScreen
+    from installer.ui.screens.options import OptionsScreen, SourceRow
     from installer.ui.screens.result import ResultScreen
     from installer.ui.screens.review import ReviewScreen, advice_for
     from installer.ui.screens.snapshots import SnapshotsScreen
@@ -52,32 +52,40 @@ UNITS = [manage.Unit("core", "1.0", "dirs", 4, "2026-01-01T00:00:00"),
 SNAPSHOTS = [manage.Snapshot("s1", "2026-01-01T00:00:00", "before", "config")]
 
 FOOTERS = {
-    "welcome": "⏎ next  ←/→ language  ctrl+p manage  ctrl+x quit  ctrl+k help",
-    "checks": "↑/↓ select  ⏎ next  ctrl+r re-check  esc back  ctrl+x quit  ctrl+k help",
-    "options_radio": "↑/↓ select  ⏎ next  esc back  ctrl+x quit  ctrl+k help",
-    "options_check": "space toggle  ↑/↓ move  ⏎ next  esc back  ctrl+x quit  ctrl+k help",
-    "review": "⏎ continue  ctrl+e commands  esc back  ctrl+x quit  ctrl+k help",
-    "review_failed": "ctrl+r retry  ctrl+l log  esc back  ctrl+x quit  ctrl+k help",
-    "confirm": "1/2 select  ↑/↓ move  ⏎ confirm  esc back  ctrl+k help",
+    "welcome": "Tab next  ←/→ language  ctrl+p manage  ctrl+x quit  ctrl+k help",
+    "checks": "↑/↓ select  Tab next  ctrl+r re-check  Shift+Tab back  "
+              "ctrl+x quit  ctrl+k help",
+    "options_source": "↑/↓ select  ⏎ options below  Tab next  Shift+Tab back  "
+                      "ctrl+x quit  ctrl+k help",
+    "options_check": "↑/↓ move  ⏎ confirm  space toggle  Tab next  "
+                     "Shift+Tab back  ctrl+x quit  ctrl+k help",
+    "review": "⏎ continue  Tab next  ctrl+e commands  Shift+Tab back  "
+              "ctrl+x quit  ctrl+k help",
+    "review_failed": "ctrl+r retry  ctrl+l log  Shift+Tab back  "
+                     "ctrl+x quit  ctrl+k help",
+    "confirm": "1/2 select  ↑/↓ move  ⏎ confirm  Shift+Tab back  ctrl+k help",
     "installation": "ctrl+c abort  ctrl+k help",
     "result_ok": "ctrl+x exit  ctrl+l log  ctrl+p manage  ctrl+k help",
-    "result_failed": "ctrl+r retry  ctrl+l log  ctrl+p manage  ctrl+x exit  ctrl+k help",
-    "management": "1–6 go to  ↑/↓ select  g/G first/last  ⏎ open  esc back  ctrl+k help",
+    "result_failed": "ctrl+r retry  ctrl+l log  ctrl+p manage  ctrl+x exit  "
+                     "ctrl+k help",
+    "management": "1–6 go to  ↑/↓ select  g/G first/last  ⏎ open  esc back  "
+                  "ctrl+k help",
     "units": "↑/↓ select  g/G first/last  ⏎ toggle  esc back  ctrl+k help",
-    "snapshots": "↑/↓ select  g/G first/last  ⏎ roll back  ctrl+n create  esc back  ctrl+k help",
+    "snapshots": "↑/↓ select  g/G first/last  ⏎ roll back  ctrl+n create  "
+                 "esc back  ctrl+k help",
     "logs": "↑/↓ select  g/G first/last  ⏎ open  esc back  ctrl+k help",
     "log_view": "↑/↓ scroll  ctrl+u/d page  g/G first/last  esc back  ctrl+k help",
 }
 
 # At 66 columns the fit drops the secondary hints first; help always stays.
 FOOTERS_NARROW = {
-    "welcome": "⏎ next  ←/→ language  ctrl+p manage  ctrl+x quit  ctrl+k help",
-    "checks": "↑/↓ select  ⏎ next  esc back  ctrl+x quit  ctrl+k help",
-    "options_radio": "↑/↓ select  ⏎ next  esc back  ctrl+x quit  ctrl+k help",
-    "options_check": "space toggle  ⏎ next  esc back  ctrl+x quit  ctrl+k help",
-    "review": "⏎ continue  ctrl+e commands  esc back  ctrl+x quit  ctrl+k help",
-    "review_failed": "ctrl+r retry  ctrl+l log  esc back  ctrl+x quit  ctrl+k help",
-    "confirm": "1/2 select  ↑/↓ move  ⏎ confirm  esc back  ctrl+k help",
+    "welcome": "Tab next  ←/→ language  ctrl+p manage  ctrl+x quit  ctrl+k help",
+    "checks": "↑/↓ select  Tab next  Shift+Tab back  ctrl+x quit  ctrl+k help",
+    "options_source": "⏎ options below  Tab next  Shift+Tab back  ctrl+k help",
+    "options_check": "⏎ confirm  Tab next  Shift+Tab back  ctrl+x quit  ctrl+k help",
+    "review": "⏎ continue  Tab next  Shift+Tab back  ctrl+x quit  ctrl+k help",
+    "review_failed": "ctrl+r retry  Shift+Tab back  ctrl+x quit  ctrl+k help",
+    "confirm": "1/2 select  ↑/↓ move  ⏎ confirm  Shift+Tab back  ctrl+k help",
     "installation": "ctrl+c abort  ctrl+k help",
     "result_ok": "ctrl+x exit  ctrl+l log  ctrl+p manage  ctrl+k help",
     "result_failed": "ctrl+r retry  ctrl+l log  ctrl+x exit  ctrl+k help",
@@ -156,7 +164,7 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
 
     async def to_review(self, pilot) -> None:
         for _ in range(3):          # Welcome -> Checks -> Options -> Review
-            await pilot.press("enter")
+            await pilot.press("tab")
             await pilot.pause()
 
     async def to_confirm(self, pilot) -> None:
@@ -179,17 +187,20 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
                 async with app.run_test(size=size) as pilot:
                     await pilot.pause()
                     self.assertEqual(foot(app), table["welcome"])
-                    await pilot.press("enter")
+                    await pilot.press("enter")     # no page on Enter now
+                    await pilot.pause()
+                    self.assertEqual(foot(app), table["welcome"])
+                    await pilot.press("tab")
                     await pilot.pause()
                     self.assertEqual(foot(app), table["checks"])
-                    await pilot.press("enter")
-                    await pilot.pause()
-                    self.assertEqual(foot(app), table["options_radio"])
                     await pilot.press("tab")
+                    await pilot.pause()
+                    self.assertEqual(foot(app), table["options_source"])
+                    await pilot.press("enter")     # down into the options below
                     await pilot.pause()
                     self.assertEqual(foot(app), table["options_check"])
                     self.assertLessEqual(cell_len(foot(app)), size[0])
-                    await pilot.press("enter")
+                    await pilot.press("tab")
                     await pilot.pause()
                     self.assertEqual(foot(app), table["review"])
                     await pilot.press("enter")
@@ -267,7 +278,7 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
     async def test_the_quit_question_takes_arrows_and_vim_keys(self) -> None:
         app = self.make_app()
         async with app.run_test(size=(100, 30)) as pilot:
-            await pilot.press("enter")
+            await pilot.press("tab")
             await pilot.pause()
             await pilot.press("ctrl+x")
             await pilot.pause()
@@ -298,7 +309,7 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
     async def test_q_asks_mid_wizard_and_leaves_on_welcome(self) -> None:
         app = self.make_app()
         async with app.run_test(size=(100, 30)) as pilot:
-            await pilot.press("enter")
+            await pilot.press("tab")
             await pilot.pause()
             await pilot.press("ctrl+x")
             await pilot.pause()
@@ -356,7 +367,7 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
     async def test_help_is_ctrl_k_and_question_mark_still_works(self) -> None:
         app = self.make_app()
         async with app.run_test(size=(100, 30)) as pilot:
-            await pilot.press("enter")
+            await pilot.press("tab")
             await pilot.pause()
             self.assertIn("ctrl+k help", foot(app))
             self.assertNotIn("? help", foot(app))
@@ -399,7 +410,7 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             screens = [app.screen]
             for _ in range(3):
-                await pilot.press("enter")
+                await pilot.press("tab")
                 await pilot.pause()
                 screens.append(app.screen)
             for screen in screens:
@@ -415,7 +426,7 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
     async def test_help_on_checks_and_options(self) -> None:
         app = self.make_app()
         async with app.run_test(size=(66, 20)) as pilot:
-            await pilot.press("enter")
+            await pilot.press("tab")
             await pilot.pause()
             await pilot.press("?")
             await pilot.pause()
@@ -425,24 +436,26 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn("commands", body)      # that key lives on Review
             await pilot.press("escape")
             await pilot.pause()
-            await pilot.press("enter")
+            await pilot.press("tab")               # Options
             await pilot.pause()
-            await pilot.press("tab")
+            await pilot.press("enter")             # down to the first app row
             await pilot.pause()
+            self.assertTrue(app.focused.id.startswith("app_"))
             await pilot.press("?")
             await pilot.pause()
             body = str(app.screen.query_one("#help_body").render())
             self.assertIn("toggle", body)
             self.assertIn("move", body)
+            self.assertIn("confirm", body)
 
     async def test_a_config_override_changes_the_footer_and_the_key(self) -> None:
         keymap.apply_overrides({"wizard.previous": "b"})
         app = self.make_app()
         async with app.run_test(size=(100, 30)) as pilot:
-            await pilot.press("enter")
+            await pilot.press("tab")
             await pilot.pause()
             self.assertEqual(foot(app),
-                             "↑/↓ select  ⏎ next  ctrl+r re-check  b back  "
+                             "↑/↓ select  Tab next  ctrl+r re-check  b back  "
                              "ctrl+x quit  ctrl+k help")
             await pilot.press("b")
             await pilot.pause()
@@ -452,7 +465,7 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
     async def test_vim_keys_move_checks_and_the_source_choice(self) -> None:
         app = self.make_app()
         async with app.run_test(size=(100, 30)) as pilot:
-            await pilot.press("enter")          # Checks
+            await pilot.press("tab")            # Checks
             await pilot.pause()
             self.assertEqual(app.screen.row, 0)
             await pilot.press("j")
@@ -461,7 +474,7 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
             await pilot.press("k")
             await pilot.pause()
             self.assertEqual(app.screen.row, 0)
-            await pilot.press("enter")          # Options
+            await pilot.press("tab")            # Options
             await pilot.pause()
             self.assertEqual(app.opts.source, "stable")
             await pilot.press("j")
@@ -530,44 +543,111 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertEqual(view.scroll_y, 0)
 
-    # -- options focus model ----------------------------------------------
-    async def test_enter_advances_and_space_toggles(self) -> None:
+    # -- page keys: Tab pages, Enter activates ------------------------------
+    async def test_tab_pages_and_enter_does_not(self) -> None:
         app = self.make_app()
         async with app.run_test(size=(100, 30)) as pilot:
-            await pilot.press("enter")       # Checks
-            await pilot.press("enter")       # Options
+            await pilot.pause()
+            self.assertIsInstance(app.screen, WelcomeScreen)
+            await pilot.press("enter")           # no page on Enter here
+            await pilot.pause()
+            self.assertIsInstance(app.screen, WelcomeScreen)
+            await pilot.press("tab")
+            await pilot.pause()
+            self.assertIsInstance(app.screen, SystemScreen)
+            await pilot.press("enter")
+            await pilot.pause()
+            self.assertIsInstance(app.screen, SystemScreen)
+            await pilot.press("tab")
             await pilot.pause()
             self.assertIsInstance(app.screen, OptionsScreen)
-            self.assertFalse(app.opts.app_set)
-            await pilot.press("tab")         # first app row
+            await pilot.press("enter")           # activates a row, does not page
             await pilot.pause()
-            self.assertTrue(app.focused.id.startswith("app_"))
-            await pilot.press("space")
-            await pilot.pause()
-            self.assertTrue(app.opts.app_set)          # space toggled it
-            await pilot.press("enter")                 # Enter is the page's
+            self.assertIsInstance(app.screen, OptionsScreen)
+            await pilot.press("tab")
             await pilot.pause()
             self.assertIsInstance(app.screen, ReviewScreen)
-            self.assertTrue(app.opts.app_set)          # and toggled nothing
+            await pilot.press("shift+tab")
+            await pilot.pause()
+            self.assertIsInstance(app.screen, OptionsScreen)
 
-    async def test_tab_moves_between_groups_and_arrows_within(self) -> None:
+    async def test_confirm_tab_never_installs_and_shift_tab_goes_back(self) -> None:
         app = self.make_app()
         async with app.run_test(size=(100, 30)) as pilot:
-            await pilot.press("enter")
-            await pilot.press("enter")
+            await self.to_confirm(pilot)
+            screen = app.screen
+            self.assertIsInstance(screen, ConfirmScreen)
+            self.assertEqual(screen.choice, "back")
+            await pilot.press("tab")             # no forward page from here
             await pilot.pause()
-            self.assertEqual(app.focused.id, "sources")
-            await pilot.press("tab")
+            self.assertIs(app.screen, screen)
+            self.assertEqual(screen.choice, "back")
+            self.assertTrue(all(not isinstance(s, InstallationScreen)
+                                for s in app._screen_stack))
+            await pilot.press("shift+tab")
             await pilot.pause()
-            first = app.focused.id
-            self.assertTrue(first.startswith("app_"), first)
+            self.assertIsInstance(app.screen, ReviewScreen)
+
+    # -- options: the source block, then the options below ------------------
+    async def test_options_source_block_does_not_cross_down(self) -> None:
+        app = self.make_app()
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.press("tab")             # Checks
+            await pilot.press("tab")             # Options
+            await pilot.pause()
+            self.assertIsInstance(app.screen, OptionsScreen)
+            self.assertEqual(app.focused.id, "source_stable")
             await pilot.press("down")
             await pilot.pause()
-            self.assertNotEqual(app.focused.id, first)
-            self.assertTrue(app.focused.id.startswith("app_"))
+            self.assertEqual(app.focused.id, "source_main")
+            self.assertEqual(app.opts.source, "main")      # moving selects it
+            await pilot.press("down")
+            await pilot.pause()
+            self.assertEqual(app.focused.id, "source_local")
+            await pilot.press("down")                      # stays in the block
+            await pilot.pause()
+            self.assertEqual(app.focused.id, "source_local")
+            await pilot.press("up")
+            await pilot.pause()
+            self.assertEqual(app.focused.id, "source_main")
+            self.assertEqual(app.opts.source, "main")
+
+    async def test_enter_on_a_source_steps_down_and_up_returns(self) -> None:
+        app = self.make_app()
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.press("tab")
             await pilot.press("tab")
             await pilot.pause()
-            self.assertIn(app.focused.id, ("lockscreen", "spatial", "start"))
+            await pilot.press("down")            # main
+            await pilot.pause()
+            await pilot.press("enter")           # down into the options
+            await pilot.pause()
+            first_lower = app.focused.id
+            self.assertTrue(first_lower.startswith("app_"), first_lower)
+            self.assertEqual(app.opts.source, "main")
+            await pilot.press("enter")           # Enter toggles that checkbox
+            await pilot.pause()
+            self.assertIn(first_lower.removeprefix("app_"), app.opts.app_set)
+            await pilot.press("up")              # first lower row leads back up
+            await pilot.pause()
+            self.assertEqual(app.focused.id, "source_main")
+            self.assertIsInstance(app.focused, SourceRow)
+
+    async def test_options_space_toggles_checkboxes_only(self) -> None:
+        app = self.make_app()
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.press("tab")
+            await pilot.press("tab")
+            await pilot.pause()
+            await pilot.press("space")           # on a source row: nothing
+            await pilot.pause()
+            self.assertEqual(app.opts.source, "stable")
+            await pilot.press("enter")           # step down into the options
+            await pilot.pause()
+            self.assertTrue(app.focused.id.startswith("app_"))
+            await pilot.press("space")           # on a checkbox: toggles
+            await pilot.pause()
+            self.assertTrue(app.opts.app_set)
 
     # -- review failure ----------------------------------------------------
     async def test_a_failed_review_swaps_the_keys_and_explains(self) -> None:

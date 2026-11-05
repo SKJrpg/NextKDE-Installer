@@ -84,10 +84,10 @@ class AppShellTest(unittest.IsolatedAsyncioTestCase):
                         self.assertIn("NextKDE", banner)
                         self.assertNotIn("███", banner)
 
-    async def test_enter_opens_system(self) -> None:
+    async def test_tab_opens_system(self) -> None:
         app = self.make_app()
         async with app.run_test(size=(100, 30)) as pilot:
-            await pilot.press("enter")
+            await pilot.press("tab")
             await pilot.pause()
             self.assertIsInstance(app.screen, SystemScreen)
             self.assertIn("Checks", str(app.screen.query_one("#sidebar").render()))
@@ -95,7 +95,7 @@ class AppShellTest(unittest.IsolatedAsyncioTestCase):
     async def test_probe_rows_show_the_status_word(self) -> None:
         app = self.make_app()
         async with app.run_test(size=(100, 30)) as pilot:
-            await pilot.press("enter")
+            await pilot.press("tab")
             await pilot.pause()
             rows = app.screen.query_one("#probes").children
             text = " ".join(str(row.render()) for row in rows)
@@ -106,7 +106,7 @@ class AppShellTest(unittest.IsolatedAsyncioTestCase):
     async def test_zh_status_words(self) -> None:
         app = self.make_app(lang="zh")
         async with app.run_test(size=(100, 30)) as pilot:
-            await pilot.press("enter")
+            await pilot.press("tab")
             await pilot.pause()
             text = " ".join(str(row.render()) for row in app.screen.query_one("#probes").children)
             self.assertIn("通过", text)
@@ -115,7 +115,7 @@ class AppShellTest(unittest.IsolatedAsyncioTestCase):
     async def test_ctrl_r_reprobes_without_crashing(self) -> None:
         app = self.make_app()
         async with app.run_test(size=(100, 30)) as pilot:
-            await pilot.press("enter")
+            await pilot.press("tab")
             await pilot.pause()
             await pilot.press("ctrl+r")
             await pilot.pause()
@@ -125,7 +125,7 @@ class AppShellTest(unittest.IsolatedAsyncioTestCase):
     async def test_escape_returns_to_welcome(self) -> None:
         app = self.make_app()
         async with app.run_test(size=(100, 30)) as pilot:
-            await pilot.press("enter")
+            await pilot.press("tab")
             await pilot.pause()
             await pilot.press("escape")
             await pilot.pause()
@@ -186,7 +186,7 @@ class AppShellTest(unittest.IsolatedAsyncioTestCase):
     async def test_probe_detail_follows_the_focused_row(self) -> None:
         app = self.make_app()
         async with app.run_test(size=(100, 30)) as pilot:
-            await pilot.press("enter")
+            await pilot.press("tab")
             await pilot.pause()
             await pilot.press("down")
             await pilot.pause()
@@ -200,7 +200,7 @@ class AppShellTest(unittest.IsolatedAsyncioTestCase):
     async def test_pass_detail_has_no_fix_or_remedy_line(self) -> None:
         app = self.make_app()
         async with app.run_test(size=(118, 36)) as pilot:
-            await pilot.press("enter")
+            await pilot.press("tab")
             await pilot.pause()
             detail = str(app.screen.query_one("#probe_detail_text").render())
             self.assertIn(Strings("en")("why_probe_os"), detail)
@@ -210,7 +210,7 @@ class AppShellTest(unittest.IsolatedAsyncioTestCase):
     async def test_long_probe_value_is_clipped_to_the_list_width(self) -> None:
         app = self.make_app()
         async with app.run_test(size=(118, 36)) as pilot:
-            await pilot.press("enter")
+            await pilot.press("tab")
             await pilot.pause()
             list_box = app.screen.query_one("#probes")
             width = list_box.content_size.width
@@ -227,7 +227,7 @@ class AppShellTest(unittest.IsolatedAsyncioTestCase):
     async def test_probe_detail_is_reachable_on_a_small_terminal(self) -> None:
         app = self.make_app()
         async with app.run_test(size=(66, 20)) as pilot:
-            await pilot.press("enter")
+            await pilot.press("tab")
             await pilot.pause()
             await pilot.press("down")
             await pilot.pause()
@@ -241,9 +241,9 @@ class AppShellTest(unittest.IsolatedAsyncioTestCase):
     async def test_wide_options_explain_the_source(self) -> None:
         app = self.make_app()
         async with app.run_test(size=(120, 30)) as pilot:
-            await pilot.press("enter")
+            await pilot.press("tab")
             await pilot.pause()
-            await pilot.press("enter")
+            await pilot.press("tab")
             await pilot.pause()
             self.assertIsInstance(app.screen, OptionsScreen)
             self.assertTrue(app.screen.query_one("#option_detail").has_class("-wide"))
@@ -253,9 +253,9 @@ class AppShellTest(unittest.IsolatedAsyncioTestCase):
     async def test_wide_options_detail_follows_focus(self) -> None:
         app = self.make_app()
         async with app.run_test(size=(120, 30)) as pilot:
-            await pilot.press("enter")
+            await pilot.press("tab")
             await pilot.pause()
-            await pilot.press("enter")
+            await pilot.press("tab")
             await pilot.pause()
 
             def detail() -> str:

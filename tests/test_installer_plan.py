@@ -106,7 +106,9 @@ class PlanTest(unittest.TestCase):
         # A missing checkout reports dirty, so source selection must be skipped.
         self.assertEqual(steps[0].key, "source")
         self.assertEqual(steps[0].argv, [])
-        self.assertEqual(steps[-1].key, "core")
+        # Starting the desktop is on by default, and runs last.
+        self.assertEqual([step.key for step in steps], ["source", "core", "start"])
+        self.assertEqual(steps[-1].key, "start")
 
     def test_components_add_steps(self) -> None:
         steps = build_plan("arch", Options(apps=True, app_set=set(ALL_APPS),
@@ -340,9 +342,18 @@ class OptionsTest(unittest.TestCase):
     @staticmethod
     def args(**overrides):
         base = dict(source=None, apps=None, lockscreen=False, start=False,
-                    all=False, no_proxy=False)
+                    no_start=False, all=False, no_proxy=False)
         base.update(overrides)
         return argparse.Namespace(**base)
+
+    def test_starting_the_desktop_is_on_by_default(self) -> None:
+        self.assertTrue(options(self.args(), {}).start)
+        self.assertTrue(options(self.args(), {"start": True}).start)
+
+    def test_no_start_turns_it_off(self) -> None:
+        self.assertFalse(options(self.args(no_start=True), {}).start)
+        self.assertFalse(options(self.args(no_start=True), {"start": True}).start)
+        self.assertFalse(options(self.args(), {"start": False}).start)
 
     def test_apps_flag_without_value_means_every_app(self) -> None:
         opts = options(self.args(apps="all"), {})

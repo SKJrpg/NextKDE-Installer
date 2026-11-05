@@ -22,6 +22,12 @@ WELCOME, CHECKS, OPTIONS = "wizard.welcome", "wizard.checks", "wizard.options"
 REVIEW, CONFIRM = "wizard.review", "wizard.confirm"
 RUN, RESULT = "wizard.run", "wizard.result"
 MENU = "menu"
+SOURCE, CHECK = "option.source", "option.check"
+
+# The pages that page with Tab/Shift+Tab. Result keeps focus keys: it has
+# buttons, not pages; Installation binds nothing at all.
+PAGES = frozenset({WELCOME, CHECKS, OPTIONS, REVIEW, CONFIRM})
+OTHERS = frozenset({RESULT}) | MENUS
 
 
 # Key names as the footer shows them; a terminal without UTF-8 gets words.
@@ -69,32 +75,50 @@ class Row:
     aliases: tuple[str, ...]
     targets: tuple[str, ...]
 
+    @property
+    def display(self) -> str | None:
+        """The key name the footer prints; a rebound action shows its own keys."""
+        if self.keys != self.action.keys:
+            return "/".join(display_key(key) for key in self.keys)
+        return self.action.display
+
 
 # Footer order is table order: primary, secondary, then quit and help.
 ACTIONS: tuple[Action, ...] = (
     # Footer order is table order; each screen takes the rows it declares.
     # Priority is the drop order on a narrow terminal: the highest number goes
     # first, so help (1) outlives everything and secondary hints go before the
-    # navigation ones. Function keys are Ctrl; single letters belong to Vim.
-    Action("option.pick", ("up", "down"), "key_select", frozenset({"option.radio"}),
-           10, display="↑/↓", aliases=("j", "k"),
-           bind=("option_pick(-1)", "option_pick(1)",
-                 "option_pick(1)", "option_pick(-1)")),
-    Action("option.toggle", ("space",), "key_toggle", frozenset({"option.check"}), 10),
-    Action("option.move", ("up", "down"), "key_move", frozenset({"option.check"}), 35,
-           display="↑/↓", aliases=("j", "k"),
-           bind=("option_move(-1)", "option_move(1)",
-                 "option_move(1)", "option_move(-1)"),
-           binding_priority=True),   # the list's scroll binding would win otherwise
-    Action("check.move", ("up", "down"), "key_select", frozenset({CHECKS}), 10,
+    # navigation ones. Function keys are Ctrl; letters are Vim; Tab pages the
+    # wizard and only the wizard (menus and Result keep focus keys).
+    Action("check.move", ("up", "down"), "key_select", frozenset({CHECKS}), 35,
            display="↑/↓", aliases=("j", "k"),
            bind=("checks_move(-1)", "checks_move(1)",
                  "checks_move(1)", "checks_move(-1)")),
+    # Options: the source block chooses with arrows, Enter steps down to the
+    # options below; the lower block is its own cursor.
+    Action("option.pick", ("up", "down"), "key_select", frozenset({SOURCE}), 10,
+           display="↑/↓", aliases=("j", "k"),
+           bind=("option_pick(-1)", "option_pick(1)",
+                 "option_pick(1)", "option_pick(-1)"),
+           binding_priority=True),   # the scroll container would win otherwise
+    Action("option.move", ("up", "down"), "key_move", frozenset({CHECK}), 35,
+           display="↑/↓", aliases=("j", "k"),
+           bind=("option_move(-1)", "option_move(1)",
+                 "option_move(1)", "option_move(-1)"),
+           binding_priority=True),
+    Action("option.below", ("enter",), "key_below", frozenset({SOURCE}), 10),
+    Action("option.activate", ("enter",), "key_confirm", frozenset({CHECK}), 10),
+    Action("option.toggle", ("space",), "key_toggle", frozenset({CHECK}), 30),
     Action("review.continue", ("enter",), "key_continue", frozenset({REVIEW}), 10),
+    Action("wizard.next", ("tab",), "key_next",
+           frozenset({WELCOME, CHECKS, OPTIONS, REVIEW}), 5, display="Tab"),
     Action("review.details", ("ctrl+e",), "key_details", frozenset({REVIEW}), 40),
-    Action("review.retry", ("ctrl+r",), "key_retry", frozenset({REVIEW}), 40),
-    Action("result.retry", ("ctrl+r",), "key_retry", frozenset({RESULT}), 40),
+    Action("review.retry", ("ctrl+r",), "key_retry", frozenset({REVIEW}), 30),
+    Action("result.retry", ("ctrl+r",), "key_retry", frozenset({RESULT}), 30),
     Action("log.open", ("ctrl+l",), "key_log", frozenset({REVIEW, RESULT}), 40),
+    Action("check.refresh", ("ctrl+r",), "key_refresh", frozenset({CHECKS}), 40),
+    Action("welcome.language", ("left", "right"), "key_language",
+           frozenset({WELCOME}), 35, display="←/→", aliases=("h", "l")),
     Action("confirm.pick", ("1", "2"), "key_select", frozenset({CONFIRM}), 10,
            display="1/2", bind=("confirm_pick(1)", "confirm_pick(2)")),
     Action("confirm.move", ("up", "down"), "key_move", frozenset({CONFIRM}), 35,
@@ -102,6 +126,8 @@ ACTIONS: tuple[Action, ...] = (
            bind=("confirm_move(-1)", "confirm_move(1)",
                  "confirm_move(-1)", "confirm_move(1)",
                  "confirm_move(1)", "confirm_move(-1)")),
+    Action("review.install", ("enter",), "key_confirm", frozenset({CONFIRM}), 10,
+           danger=True),
     Action("menu.goto", ("1", "2", "3", "4", "5", "6"), "menu_goto",
            frozenset({MENU}), 10, display="1–6", bind=()),
     Action("menu.move", ("up", "down"), "key_select", frozenset({MENU}) | LISTS, 35,
@@ -133,18 +159,12 @@ ACTIONS: tuple[Action, ...] = (
     Action("menu.item.uninstall", ("5",), "", frozenset({MENU}), 30, hidden=True,
            danger=True),
     Action("menu.item.back", ("6",), "", frozenset({MENU}), 30, hidden=True),
-    Action("wizard.next", ("enter",), "key_next", frozenset({WELCOME, CHECKS, OPTIONS}), 10),
-    Action("review.install", ("enter",), "key_confirm", frozenset({CONFIRM}), 10,
-           danger=True),
-    Action("check.refresh", ("ctrl+r",), "key_refresh", frozenset({CHECKS}), 40),
-    Action("welcome.language", ("left", "right"), "key_language",
-           frozenset({WELCOME}), 35, display="←/→", aliases=("h", "l")),
+    # Shift+Tab is the visible page-back key; Esc stays as its alias.
+    Action("wizard.previous", ("shift+tab",), "key_previous",
+           frozenset({CHECKS, OPTIONS, REVIEW, CONFIRM}), 5,
+           display="Shift+Tab", aliases=("escape",),
+           bind=("wizard_back", "wizard_back")),
     Action("menu.act", ("enter",), "key_open", frozenset({MENU}), 10),
-    # The wizard's exit is a previous step; a menu's is one level up. Same key,
-    # different word, so the footer reads as a pair with "next".
-    Action("wizard.previous", ("escape",), "key_previous",
-           frozenset({CHECKS, OPTIONS, REVIEW, CONFIRM}), 15,
-           bind=("wizard_back",)),
     Action("wizard.back", ("escape",), "key_back", frozenset(MENUS), 15),
     Action("app.manage", ("ctrl+p",), "key_manage", frozenset({WELCOME, RESULT}), 50),
     Action("app.quit", ("ctrl+x",), "key_quit",
@@ -152,9 +172,10 @@ ACTIONS: tuple[Action, ...] = (
     Action("result.exit", ("ctrl+x",), "key_exit", frozenset({RESULT}), 20),
     Action("run.abort", ("ctrl+c",), "key_abort", frozenset({RUN, MENU}) | LISTS, 5,
            danger=True),
-    Action("focus.next", ("tab",), "key_focus_next", ALL, 80, hidden=True,
+    # Tab/Shift+Tab focus only where they are not page keys.
+    Action("focus.next", ("tab",), "key_focus_next", OTHERS, 80, hidden=True,
            display="Tab", bind=("focus_next",)),
-    Action("focus.prev", ("shift+tab",), "key_focus_prev", ALL, 80, hidden=True,
+    Action("focus.prev", ("shift+tab",), "key_focus_prev", OTHERS, 80, hidden=True,
            display="Shift+Tab", bind=("focus_prev",)),
     Action("help.open", ("ctrl+k",), "key_help", ALL, 1, display="ctrl+k",
            aliases=("question_mark",)),
@@ -177,8 +198,9 @@ def apply_overrides(mapping: dict[str, object] | None) -> None:
             keys = tuple(str(key).strip() for key in value if str(key).strip())
         else:
             keys = tuple(part.strip() for part in str(value).split(",") if part.strip())
-        if action.bind and len(keys) != len(action.bind):
-            raise ValueError(f"{action_id} needs {len(action.bind)} keys, got {len(keys)}")
+        # Aliases are dropped by an override, so only the primary keys count.
+        if action.bind and len(keys) != len(action.keys):
+            raise ValueError(f"{action_id} needs {len(action.keys)} keys, got {len(keys)}")
         _OVERRIDES[action_id] = keys
 
 
@@ -190,7 +212,7 @@ def _effective(action: Action, overrides) -> tuple[tuple[str, ...], tuple[str, .
     else:
         keys, aliases = chosen, ()     # a rebound action loses its extra keys
     if action.bind is not None:
-        targets = action.bind
+        targets = action.bind if chosen is None else action.bind[:len(keys)]
     else:
         targets = (action.id.replace(".", "_"),) * (len(keys) + len(aliases))
     return keys, aliases, targets
