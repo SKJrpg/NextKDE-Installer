@@ -250,7 +250,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # The screen starts from the same Options the flags and config made, so
     # `--source local --apps todo` is already selected when it opens. The theme
-    # defaults to system: the flag wins over the config, both over detection.
+    # defaults to dark; the flag wins over the config, both over KOS_THEME.
     return int(KosApp(opts=opts, paths=paths, lang=lang, system=system,
                       mode=args.theme or config.get("theme")).run() or 0)
 

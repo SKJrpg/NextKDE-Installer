@@ -1,14 +1,16 @@
 """Stage T1: the appearance mode decides how secondary text is drawn.
 
 The palette is the terminal's own; only the mode is detected, so a terminal
-that does not report one falls back to dark and `--theme` overrides it.
+that names no mode is dark and an explicit `system` follows the terminal.
 """
 
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 import unittest
+from unittest import mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -39,25 +41,32 @@ class ResolveModeTest(unittest.TestCase):
     def test_a_terminal_that_reports_nothing_is_dark(self) -> None:
         self.assertEqual(resolve_mode(None, {}), "dark")
 
-    def test_colorfgbg_background_decides(self) -> None:
-        self.assertEqual(resolve_mode(None, {"COLORFGBG": "15;0"}), "dark")
-        self.assertEqual(resolve_mode(None, {"COLORFGBG": "0;8"}), "dark")
-        self.assertEqual(resolve_mode(None, {"COLORFGBG": "0;7"}), "light")
-        self.assertEqual(resolve_mode(None, {"COLORFGBG": "0;15"}), "light")
+    def test_the_default_ignores_a_light_terminal(self) -> None:
+        self.assertEqual(resolve_mode(None, {"COLORFGBG": "0;7"}), "dark")
+        self.assertEqual(resolve_mode(None, {"COLORFGBG": "0;15"}), "dark")
+
+    def test_an_explicit_system_follows_the_terminal(self) -> None:
+        self.assertEqual(resolve_mode("system", {"COLORFGBG": "15;0"}), "dark")
+        self.assertEqual(resolve_mode("system", {"COLORFGBG": "0;8"}), "dark")
+        self.assertEqual(resolve_mode("system", {"COLORFGBG": "0;7"}), "light")
+        self.assertEqual(resolve_mode("system", {"COLORFGBG": "0;15"}), "light")
+        self.assertEqual(resolve_mode("system", {}), "dark")
 
     def test_explicit_wins_over_everything(self) -> None:
         env = {"KOS_THEME": "dark", "COLORFGBG": "0;15"}
         self.assertEqual(resolve_mode("dark", env), "dark")
         self.assertEqual(resolve_mode("light", env), "light")
 
-    def test_kos_theme_wins_over_colorfgbg(self) -> None:
+    def test_kos_theme_is_an_explicit_choice(self) -> None:
         self.assertEqual(resolve_mode(None, {"KOS_THEME": "dark", "COLORFGBG": "0;15"}),
                          "dark")
         self.assertEqual(resolve_mode(None, {"KOS_THEME": "light", "COLORFGBG": "15;0"}),
                          "light")
+        self.assertEqual(resolve_mode(None, {"KOS_THEME": "system",
+                                             "COLORFGBG": "0;15"}), "light")
 
-    def test_system_and_unknown_values_detect(self) -> None:
-        self.assertEqual(resolve_mode("system", {"COLORFGBG": "0;15"}), "light")
+    def test_unknown_values_stay_dark(self) -> None:
+        self.assertEqual(resolve_mode("bogus", {"COLORFGBG": "0;15"}), "dark")
         self.assertEqual(resolve_mode("bogus", {"KOS_THEME": "nope"}), "dark")
 
 
@@ -70,12 +79,19 @@ class AppModeTest(unittest.IsolatedAsyncioTestCase):
     def test_mode_sets_dark_and_the_secondary_style(self) -> None:
         light = self.make_app("light")
         self.assertIs(light.dark, False)
-        self.assertEqual(light.theme_mode, "light")
         self.assertEqual(light.secondary_style, "bright_black")
         dark = self.make_app("dark")
         self.assertIs(dark.dark, True)
-        self.assertEqual(dark.theme_mode, "dark")
         self.assertEqual(dark.secondary_style, "dim")
+
+    def test_the_default_is_dark_even_on_a_light_terminal(self) -> None:
+        with mock.patch.dict(os.environ, {"COLORFGBG": "0;15"}):
+            default = self.make_app(None)
+            self.assertIs(default.dark, True)
+            self.assertEqual(default.secondary_style, "dim")
+            system = self.make_app("system")
+            self.assertIs(system.dark, False)
+            self.assertEqual(system.secondary_style, "bright_black")
 
     async def test_secondary_line_is_styled_by_mode(self) -> None:
         # The rendered span carries the terminal's own ANSI 8 on light, so the

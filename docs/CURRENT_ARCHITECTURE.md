@@ -43,15 +43,15 @@ installer/
   ui/
     app.py              KosApp: wizard state (Options, prepared source, steps),
                         thread workers, cancel/quit
-    theme.py            resolve_mode: --theme / KOS_THEME / COLORFGBG → dark|light
+    theme.py            resolve_mode: --theme / KOS_THEME → dark|light; dark default
     theme/app.tcss      the stylesheet: chrome, sidebar, lists, dialogs
     screens/            welcome, system, options, review, installation, result,
                         and the management area (units, snapshots, logs, management)
     widgets/confirm.py  modal confirmation used by the destructive actions
-    widgets/password.py modal that answers one blocked sudo call
+    widgets/sudo_bar.py inline bar (above the footer) that answers one blocked sudo call
   render/
     plain.py            the same plan without a TTY; NO_COLOR aware
-tests/                  171 offline unit tests (tests/, tests/core/, tests/ui/)
+tests/                  offline unit tests (tests/, tests/core/, tests/ui/)
 vendor/                 pinned Textual 8.2.8 + rich and its dependencies
 docs/design.md          the independent-installer architecture proposal
 docs/BACKEND_CONTRACT.md  capability names, contract shapes, probe fallback
@@ -145,14 +145,13 @@ Two front ends, one plan:
   "back" selected first.
 - **Appearance**: the palette is the terminal's own (`ansi_color=True` and `ansi_default`
   in the stylesheet), so only the mode is resolved: `--theme`, then `theme` in the JSON
-  config, then `KOS_THEME=dark|light`, then the background index of `COLORFGBG`
-  (`0-6,8` dark, `7,9-15` light), otherwise dark. `theme.py` holds that; `KosApp` keeps
-  it as the choice `theme_mode` (system/dark/light) plus `dark`, switchable for the
-  session from the command menu, and every screen takes its secondary text from
-  `app.secondary_style` — `dim` on dark (the terminal dims its own foreground) and ANSI 8
-  on light (a readable grey rather than a foreground faded towards white). Terminals that
-  export no `COLORFGBG` (Konsole does not) fall back to dark; pass `--theme` there.
-  Status colours, the modal's own surface and the focused row keep their styling.
+  config, then `KOS_THEME`. **Dark is the default**; only an explicit `system` reads the
+  terminal's `COLORFGBG` background index (`0-6,8` dark, `7,9-15` light). `theme.py` holds
+  that and `KosApp` keeps only `dark`, since the mode is fixed for the session; every
+  screen takes its secondary text from `app.secondary_style` — `dim` on dark (the
+  terminal dims its own foreground) and ANSI 8 on light (a readable grey rather than a
+  foreground faded towards white). Status colours, the modal's own surface and the focused
+  row keep their styling.
 - **Workers**: preparation, the install and management actions run in
   `@work(thread=True)`. Every line they produce is a `core.events.Event` handed to the
   event loop with `call_from_thread`, so nothing blocks and a screen only ever shows what
@@ -184,11 +183,13 @@ plus a `denied` marker so this and every later request fail immediately instead 
 asking three times. The flush of the whole password story: no password is written until a
 request exists, and the answer is deleted as soon as sudo reads it.
 
-`KosApp` polls `pending()` every 150 ms on the event loop and pushes `PasswordDialog` once
-per request (never stacked; a request that arrives while a dialog is open is asked right
-after it closes). So nothing is asked at startup and nothing is asked at all when `sudo -n
-true` already works: a full install asks once for the build packages and once for the KWin
-system plugins after the build, the way running `kosctl` by hand does. The request is the
+`KosApp` polls `pending()` every 150 ms on the event loop and shows the inline `SudoBar`
+on the screen that is already running (Installation, or the management list); it is never a
+modal and never stacks (a request that arrives while the bar is up is asked right after it
+is answered). A modal on top (help, a confirmation) hides the screen's bar, so the request
+waits until that closes. So nothing is asked at startup and nothing is asked at all when
+`sudo -n true` already works: a full install asks once for the build packages and once for
+the KWin system plugins after the build, the way running `kosctl` by hand does. The request is the
 only trigger, never the plan starting: dependencies that are already present produce no
 early prompt (exactly one prompt, after the build), and a still-valid sudo timestamp
 produces none at all. Denying cancels the run; the step fails and the result screen says

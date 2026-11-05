@@ -46,11 +46,12 @@ Flags: `--check` report only, `--plain` no interactive UI, `--yes`, `--config FI
 `--source stable|main|local`, `--theme system|dark|light`, `--apps [LIST]`,
 `--lockscreen`, `--all`, `--start`, `--no-proxy`, `--lang zh|en`.
 
-`--theme` picks how the wizard draws secondary text: `dark` dims the terminal's own
-foreground, `light` uses its ANSI 8 grey. `system` (the default) detects the terminal:
-the flag (`theme` in the JSON config) wins, then `KOS_THEME=dark|light`, then the
-background index in `COLORFGBG`; a terminal that reports neither is treated as dark, so
-pass the flag there. The palette itself is always the terminal's own.
+`--theme` picks how the wizard draws secondary text: `dark` (the default) dims the
+terminal's own foreground, `light` uses its ANSI 8 grey. `system` follows the terminal:
+the flag (`theme` in the JSON config) wins, then `KOS_THEME`, and only `system` looks at
+the background index in `COLORFGBG`. Anything unset stays dark, even on a terminal that
+reports a light background; pass `--theme light` or `--theme system` there. The palette
+itself is always the terminal's own.
 
 ### Command line
 
@@ -64,7 +65,7 @@ product source, choose the distro path and check the backend — everything afte
 | `./install.sh --check` | probes + the plan, read-only, exit 2 when blocked or unsupported |
 | `./install.sh --plain --yes` | the same plan without a UI, for scripts and CI |
 | `./install.sh --source stable --apps todo --start` | pre-selects the wizard, or seeds `--plain` |
-| `./install.sh --theme light` | the wizard for a light terminal that does not report its background |
+| `./install.sh --theme light` | the wizard for a light terminal (dark is the default) |
 
 Exit codes: `0` success, `1` a step failed, `2` blocked / unsupported / incompatible backend,
 `130` cancelled.
@@ -82,16 +83,17 @@ That is also where the first password prompt comes from.
 
 Nothing asks for a password up front. The install children run without a tty, so a
 `sudo` shim and an askpass helper are put on their `PATH`: when a step's `sudo` needs
-a password, the helper leaves a request and blocks, and the wizard shows one dialog
-for it. A full install therefore asks twice, like running `kosctl` by hand — once for
-the build packages, once for the KWin system plugins after the build. Nothing else
-prompts: a run whose dependencies are all present asks exactly once, after the build,
-and a `sudo` timestamp that is still valid (`sudo -n` passing, or a password typed a
-minute ago) means zero prompts. The plan starting is never a reason to ask.
+a password, the helper leaves a request and blocks, and the wizard shows one inline bar
+above the footer for it (not a popup). A full install therefore asks twice, like running
+`kosctl` by hand — once for the build packages, once for the KWin system plugins after
+the build. Nothing else prompts: a run whose dependencies are all present asks exactly
+once, after the build, and a `sudo` timestamp that is still valid (`sudo -n` passing, or
+a password typed a minute ago) means zero prompts. The plan starting is never a reason
+to ask.
 
 The answer is written to one file only this user can read, is used for that `sudo`
 call, and is removed as soon as sudo has it; it never reaches the log, argv or the
-result screen. Cancelling the dialog denies the password: that request and every
+result screen. Esc on the bar denies the password: that request and every
 later one fail at once (no three-attempt retry), the step fails, and the run ends
 with "sudo password was not provided". Priming sudo first (`sudo -v`) avoids the
 prompt entirely for the following minutes.

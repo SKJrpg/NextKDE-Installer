@@ -52,7 +52,7 @@
 | `menu` | `ManagementScreen` | 数字菜单 |
 | `list.units` / `list.snapshots` / `list.logs` | 对应列表页 | 数据列表 |
 | `log.view` | `LogViewerScreen` | 只读日志 |
-| `dialog.confirm` / `dialog.secret` | `ConfirmDialog` / `PasswordDialog` | 模态，屏蔽底层单字符键 |
+| `dialog.confirm` | `ConfirmDialog` | 模态，屏蔽底层单字符键 |
 
 `Input` 聚焦时把 `menu.*`、单字符动作全部排除（输入 `main` 不能触发 m/a/i/n）。
 
@@ -102,7 +102,7 @@
 | `log.halfpage` | `ctrl+u` `ctrl+d` | | log.view | `key_page` 翻页 / page | 只读视图，`ctrl+d` 不会关程序 |
 | `log.ends` | `g` `G` | | log.view | `key_ends` 首末 / first/last | 顶部/底部 |
 | `dialog.confirm` | `←` `→` `h` `l` `j` `k` 移动焦点，`Enter` 确认，`Esc` 取消 | | 对话框 | `confirm` / `cancel` | 默认焦点 = 取消；有输入框时字母让位 |
-| `dialog.secret` | `Enter` / `Esc` | | 密码框 | `key_continue` / `cancel` | 输入框拥有全部字母 |
+
 
 绑定细则：
 
@@ -133,7 +133,8 @@
 | Snapshots | 第一行快照 | `↑/↓` `j/k` 选择 · `g/G` 首末 · `Enter` 回滚（确认） · `ctrl+n` 新建 · `Esc` 返回 · `ctrl+p` 命令 · `ctrl+k` | 空列表时 `ctrl+n` 仍可用 |
 | Logs（列表） | 第一个文件 | `↑/↓` `j/k` 选择 · `g/G` 首末 · `Enter` 打开 · `Esc` 返回 · `ctrl+p` 命令 · `ctrl+k` | 无日志时列出空态文本 |
 | LogViewer | 日志区 | `↑/↓` `j/k` 滚动 · `PgUp/PgDn` · `ctrl+u/d` 翻页 · `g/G` 首末 · `Esc` 返回 · `ctrl+p` 命令 · `ctrl+k` | 只读，无单字符功能键 |
-| 命令菜单（模态） | 第一行可用命令 | `↑/↓` 或 `j/k` 移动 · `←/→` 或 `h/l` 调整主题/语言 · `Enter` 运行/应用 · `Esc` 关闭 | 禁用的行跳过、不运行，行内写明原因；`←/→` 只在主题/语言行上有效 |
+| sudo 密码条 | 密码输入框 | 输入 · `Enter` 提交 · `Esc` 拒绝并停止 | 非模态，只在有请求时出现；上面盖着模态时等它关闭 |
+| 命令菜单（模态） | 第一行可用命令 | `↑/↓` 或 `j/k` 移动 · `←/→` 或 `h/l` 调整语言 · `Enter` 运行/应用 · `Esc` 关闭 | 禁用的行跳过、不运行，行内写明原因；`←/→` 只在语言行上有效 |
 
 Options 的两块模型：
 
@@ -435,7 +436,7 @@ def resolve(contexts, overrides=None, budget=None) -> list[tuple[str, str, str]]
 4. 禁用：构造“无单元/无日志”的管理区，断言 `[5]`/`[4]` 仍在行文本里、带文字标记、`check_action` 为 False、底栏不出现其主动作。
 5. 危险动作：`confirm.install`、`run.abort`、`menu.item.uninstall`、`snapshot.rollback`；`confirm.install` 只存在于确认页（`Y` 之前必须经过 Review），卸载与回滚经过 `ConfirmDialog`，`run.abort` 直接生效。
 5b. 本地源码：`tests/ui/test_local_source.py` 断言检测顺序、脏工作区、找不到时留空并提示、`ctrl+e` 只在本地源码时可开、空路径与非法路径留在对话框并给原因、`~` 展开、接受后进入 `opts.local_path` 并出现在 Review 的计划里，以及 66 列底栏裁掉提示而帮助仍列；`tests/test_source.py`（`detect_local`/`local_candidates`/`inspect_local`）与 `tests/test_workflow.py`（`local_path` 覆盖 `--root`，其它模式忽略它）补后端一半。
-5c. 命令菜单：`tests/ui/test_commands.py` 逐页打开、运行/描述/禁用原因、↑/↓/j/k/Enter/Esc、Management 的「当前页面」、运行中不开、主题/语言/帮助/关于/退出、66 列与帮助仍列 `ctrl+p 命令`；`test_keymap.py` 把 `app.commands` 当功能键。整套 269 项全绿。
+5c. 命令菜单：`tests/ui/test_commands.py` 逐页打开、运行/描述/禁用原因、↑/↓/j/k/Enter/Esc、Management 的「当前页面」、运行中不开、主题/语言/帮助/关于/退出、66 列与帮助仍列 `ctrl+p 命令`；`test_keymap.py` 把 `app.commands` 当功能键。整套 270 项全绿。
 6. 键位覆盖：`{"wizard.previous": "b"}` 后底栏出现 `b 上一步`，`esc` 不再后退。
 7. 导航链：Welcome（Esc 不动）→ Checks → Options → Review → Confirm（`N` 回 Review）→ Esc/Shift+Tab 逐层回到 Welcome。
 8. 数字：向导页没有数字绑定；管理区 `1..6` 命中对应行；禁用行按数字无状态变化。
@@ -512,7 +513,7 @@ def resolve(contexts, overrides=None, budget=None) -> list[tuple[str, str, str]]
 
 ### 12.5 对话框
 
-`ConfirmDialog`：无输入框时 `←/→` 与 `h/l/j/k` 在「取消 / 确认」之间移焦点，`Enter` 按当前按钮，`Esc` 取消；**有输入框（卸载要输入的 `uninstall`）时这组字母被 `check_action` 关掉**，输入框拥有全部字母。密码框同理，不绑任何字母。
+`ConfirmDialog`：无输入框时 `←/→` 与 `h/l/j/k` 在「取消 / 确认」之间移焦点，`Enter` 按当前按钮，`Esc` 取消；**有输入框（卸载要输入的 `uninstall`）时这组字母被 `check_action` 关掉**，输入框拥有全部字母。sudo 密码不走模态：它是页内的一条输入栏（§21），Enter 提交、Esc 拒绝并停止。
 
 ### 12.6 去掉的
 
@@ -574,7 +575,7 @@ def resolve(contexts, overrides=None, budget=None) -> list[tuple[str, str, str]]
 
 - 退出不再是键位表里的一行：`app.quit` 与 `result.exit` 删除，`ctrl+x` 不绑任何东西。`KosApp.BINDINGS` 里绑一条 `ctrl+c`（继承绑定仍然关闭）。
 - 手势：第一次 `ctrl+c` 在右下角弹出 `再按一次 Ctrl+C 退出` / `Press Ctrl+C again to quit`，5 秒内第二次调用 `app.exit()`；窗口过去后重新计数。宽度自适应（`Toast { width: auto }`）。
-- 模态屏蔽：`ConfirmDialog`、`PasswordDialog`、`HelpScreen` 都是 `ModalScreen`，App 的处理函数先看屏幕类型直接返回，所以问题框里的 Ctrl+C 不会绕过它、也不会“预热”退出计时。
+- 模态屏蔽：`ConfirmDialog`、`HelpScreen` 都是 `ModalScreen`，App 的处理函数先看屏幕类型直接返回，所以问题框里的 Ctrl+C 不会绕过它、也不会“预热”退出计时。（§21 起密码提示改成页内条，不再是模态。）
 - 运行中让位：Installation 与管理区动作的 `run.abort` 是屏幕绑定，链条里先于 App，所以 Ctrl+C 依旧是中止；第一次中止会弹出确认框（**§16 起改为 Ctrl+Z 立即中止**）。
 - Result 只保留「退出」按钮，`Enter` 激活它（`Tab`/`Shift+Tab` 换按钮）；底栏不再有退出项。
 - 底栏因此空出一格：66 列英文下 `ctrl+r` 重检、`space 切换` 等更容易留下（见 §7）。`ctrl+k` 仍是最后一项、最后被裁。
@@ -590,7 +591,7 @@ def resolve(contexts, overrides=None, budget=None) -> list[tuple[str, str, str]]
 - 键位表：`run.abort` 从 `ctrl+c` 换到 `ctrl+z`，`danger` 保留（底栏仍用红色）。新增隐藏行 `run.guard`（`ctrl+c`，同一组上下文，无标签、不上底栏），它唯一的职责是让 App 的退出绑定在运行中收不到按键。表里的顺序就是绑定的顺序：屏幕绑定先于 App 绑定。
 - 立即中止：`KosApp.request_abort()` 与 `_abort_answer()` 删除，换成 `abort()`——有 `action_screen` 就 `cancel_action()`，否则 `cancel_install()`。`cancel_install()` 设事件并调用 `InstallationScreen.note_cancel()`，页面进入已有的 `install_cancelling` 状态（标题变 `正在取消…`），随后照常进 Result（`cancelled` / 130）。没有第二个问题框，也不再有“继续运行”的默认焦点。
 - 鼠标：Installation 的 `取消` 按钮走同一个 `app.abort()`。
-- Ctrl+C 的三层含义：向导/Result 上是 App 的“两次退出”；Installation 与运行中的管理动作上被 `run.guard` 吞掉（既不中止也不退出）；`ConfirmDialog`/`PasswordDialog`/`HelpScreen` 等模态里被 App 的 `ModalScreen` 判断挡住。管理区的 `check_action` 只在 `busy` 时允许 `run.abort` 与 `run.guard`，所以空闲时 Ctrl+C 照常可以退出。
+- Ctrl+C 的三层含义：向导/Result 上是 App 的“两次退出”；Installation 与运行中的管理动作上被 `run.guard` 吞掉（既不中止也不退出）；`ConfirmDialog`/`HelpScreen` 等模态里被 App 的 `ModalScreen` 判断挡住（§21 起密码提示是页内条，不再靠模态挡键）。管理区的 `check_action` 只在 `busy` 时允许 `run.abort` 与 `run.guard`，所以空闲时 Ctrl+C 照常可以退出。
 - 运行中底栏：Installation `ctrl+z 中止  ctrl+k 帮助`；管理区动作运行中多一项 `ctrl+z 中止`（§7 的 `Units（运行中）` 行）。空闲的管理区底栏不变。
 - 管理区运行中底栏原先不刷新：`action_started`/`handle_action_done` 从 `refresh_bindings()` 改成 `_bind_keys()`，自绘的 `KeyFooter` 才会跟着重画。
 - 删掉的字符串：`abort_title`、`abort_body`、`abort_confirm`、`abort_keep`。`key_abort`（中止 / abort）保留。
@@ -624,7 +625,7 @@ def resolve(contexts, overrides=None, budget=None) -> list[tuple[str, str, str]]
 
 - 键位：`app.manage` 删除，换成 `app.commands`（`ctrl+p`，上下文 = Welcome / Checks / Options / Review / Result / 管理区）。底栏标签 `命令` / `commands`。Installation 与 Confirm 不绑，运行中的管理动作由 `check_action` 关掉 `app_commands`，所以那两处 Ctrl+P 什么都不做。
 - 菜单：`widgets/commands.py` 的 `CommandMenu`（模态，居中、圆角框、标题「命令」，标题下一行键位提示）。`OptionList` 行 = `ChromeScreen.commands()` 返回的 `Command`；禁用的行留在原位，行内写原因；有键的动作在行尾写出那个键。↑/↓ 与 j/k 移动，Enter 运行，Esc 关闭；打开时落在第一行启用项上；禁用行会被光标跳过。没有搜索框。
-- 命令来源：每屏的 `context_commands()` 加在「管理」之后，其余共享（主题、语言、帮助、关于、退出）。执行时先关闭菜单，再调用屏幕自己的 `action_*` / app 方法；async 的（主题、语言、重检）交给 `run_worker`，没有第二套逻辑。
+- 命令来源：每屏的 `context_commands()` 加在「管理」之后，其余共享（语言、帮助、关于、退出）。执行时先关闭菜单，再调用屏幕自己的 `action_*` / app 方法；async 的（语言、重检）交给 `run_worker`，没有第二套逻辑。
 - 各屏的命令与禁用原因：
 
   | 命令 | 出现 | 键 | 禁用时 |
@@ -634,16 +635,15 @@ def resolve(contexts, overrides=None, budget=None) -> list[tuple[str, str, str]]
   | 重新检测 | Checks | `ctrl+r` | — |
   | 本地源码路径 | Options | `ctrl+e` | 非本地源码写「仅在本地源码时可用」 |
   | 查看计划 / 命令详情 | Review | `ctrl+e` | 准备失败页写「计划不可用」 |
-  | 主题（系统 / 深色 / 浅色） | 所有页 | — | §19：一行横向选择，选中项用方括号加粗；会话内有效，不改配置文件 |
-  | 语言（中文 / English） | 所有页 | — | §19：一行横向选择，选中项用方括号加粗；确定后整页重排 |
+  | 语言（中文 / English） | 所有页 | — | §19/§20：一行只显示一个值，`←/→` 循环；`Enter` 才应用并整页重排 |
   | 帮助 | 所有页 | `ctrl+k` | — |
   | 关于 | 所有页 | — | 版本、Python、安装器 / 源码 / 状态目录；任意键关闭 |
   | 退出 | 所有页 | — | 与「退出」按钮、Ctrl+C×2 走同一条退出路径（不再二次确认） |
 
-- 主题：`KosApp.theme_mode` 现在存的是**选择**（`system` / `dark` / `light`），`dark` 由 `resolve_mode(choice)` 得；`set_theme()` 换选择、更新 `secondary_style`，并在明暗真的变了时重排当前页（次要文字的样式是建 Text 时写死的）。CLI 改成把原始选择传给 `KosApp`（`--theme`/config 仍是启动值）。
+- 主题：该轮由命令菜单切换；§20 起整行移除，主题只在启动时由 `--theme`/config/`KOS_THEME` 决定（默认深色）。
 - 底栏：100 列时除 Options（下方行，本地源码）的英文外都能放下 `ctrl+p 命令`；66 列只剩 Welcome 与 Result。放不下的页面帮助里仍然列出，菜单本身照常可用。
 - 影响面：`welcome.py`/`result.py` 的 `action_app_manage` 删除（管理改由菜单第一行负责）；`strings.py` 的 `key_manage` 换成 `key_commands`，新增菜单/关于文案；`theme/app.tcss` 加菜单与关于框。
-- 测试：`tests/ui/test_commands.py` 覆盖逐页开关、上下文行、禁用原因、方向/Vim/Esc、每个命令的执行、主题与语言、阻断运行中、66 列与帮助；`test_navigation.py`/`test_manage.py` 打开管理区改成「Ctrl+P → Enter」；底栏两种尺寸整行重钉；`test_keymap.py` 断言 `app.commands`。
+- 测试：`tests/ui/test_commands.py` 覆盖逐页开关、上下文行、禁用原因、方向/Vim/Esc、每个命令的执行、语言、阻断运行中、66 列与帮助；`test_navigation.py`/`test_manage.py` 打开管理区改成「Ctrl+P → Enter」；底栏两种尺寸整行重钉；`test_keymap.py` 断言 `app.commands`。
 
 ---
 
@@ -654,8 +654,32 @@ def resolve(contexts, overrides=None, budget=None) -> list[tuple[str, str, str]]
 - 菜单里不再有 3 行主题、2 行语言：各留一行，行内横向列出选项：
   `主题  系统` / `Theme  system`，`语言  中文` / `Language  English`。
   只显示当前或待选的一个值，`←/→` 循环切换，待选值加粗。
-- 键位：高亮在主题/语言行时，`←/→` 与 `h/l` 在该行内移动选择，到两端停住；`↑/↓` / `j/k` 仍然在行间移动；在别的行上 `←/→` 什么也不做。标题下新增一行键位提示：`↑/↓ 选择 · ←/→ 调整 · ⏎ 运行 · esc 关闭`。
-- 取值是**待定**的：箭头只改行内标记，不动 app；`Enter` 才应用并关闭，`Esc` 关闭且丢弃全部待定项。若打开菜单后同时改了主题和语言，按任意一行上的 `Enter` 会按行顺序都应用（两项都真的变了才调用），仍是在菜单关闭之后执行，重排页面一次。打开菜单时两行都从当前 `theme_mode` / `lang` 预选。
-- 实现：`Command` 增加 `choices`（`Choice(label, run)`）与 `selected`；`CommandMenu` 维护 `pending`，用 `replace_option_prompt_at_index()` 只重画那一行；返回 `tuple[run, ...]`，`ChromeScreen` 在菜单关闭后顺序 await（主题先、语言后），不再有 `current` 标记列。
+- 键位：高亮在主题/语言行时，`←/→` 与 `h/l` 在该行内循环选择（到末尾再按回到开头，§19 后续提交改成循环）；`↑/↓` / `j/k` 仍然在行间移动；在别的行上 `←/→` 什么也不做。标题下新增一行键位提示：`↑/↓ 选择 · ←/→ 调整 · ⏎ 运行 · esc 关闭`。
+- 取值是**待定**的：箭头只改行内标记，不动 app；`Enter` 才应用并关闭，`Esc` 关闭且丢弃全部待定项。当时主题与语言可以同时待定，按任意一行上的 `Enter` 会都应用（§20 起只剩语言）。打开菜单时从当前 `lang` 预选。
+- 实现：`Command` 增加 `choices`（`Choice(label, run)`）与 `selected`；`CommandMenu` 维护 `pending`，用 `replace_option_prompt_at_index()` 只重画那一行；返回 `tuple[run, ...]`，`ChromeScreen` 在菜单关闭后顺序 await，不再有 `current` 标记列。
 - 行数从 9 降到 6（Welcome）：管理 / 主题 / 语言 / 帮助 / 关于 / 退出，66×20 更宽松。其余行、禁用原因、底栏与帮助不变。
 - 测试：`tests/ui/test_commands.py`（22 项）新增/改写：行数与“各只有一行”、预选、`←/→` 与 `h/l` 改待定值、两端停住、普通行上无效、`Enter` 应用（单项与两项同时）、`Esc` 丢弃、语言切换、66 列标记；docs 的 §4 与本节。
+
+---
+
+## 20. 本轮变更记录（移除主题选项，默认深色）
+
+用户的指示：**移除主题选项吧，默认深色**。
+
+- 命令菜单里不再有主题行：`ChromeScreen.commands()` 只保留语言这一个选择行（`语言  English`），`Command`/`Choice` 的待定选择逻辑继续为它服务。菜单在 Welcome 上从 6 行降到 5 行：管理 / 语言 / 帮助 / 关于 / 退出；键位提示行不变（`←/→ 调整` 现在就指语言）。
+- 删掉的代码与文案：`KosApp.set_theme()`、`KosApp.theme_mode`、`cmd_theme`、`theme_system|dark|light`。主题不再有运行时切换，只在启动时决定一次。
+- 默认深色：`theme.resolve_mode()` 现在只有在**显式** `system` 时才读 `COLORFGBG`；没有 `--theme`/config/`KOS_THEME` 时一律返回 `dark`，即使终端报告浅色背景。解析顺序：显式 `--theme`/config `dark|light` → `KOS_THEME=dark|light` → 显式 `--theme system` 或 `KOS_THEME=system` 才看 `COLORFGBG` → 否则 `dark`。`--theme light`、`--theme system`、config `theme`、`KOS_THEME` 都还在。
+- `--theme` 的帮助文字与 README 改成“dark is the default, system follows the terminal”；`KosApp` 只保留 `dark` 与 `secondary_style`。
+- 测试：`test_theme.py` 断言默认忽略浅色 `COLORFGBG`、显式 `system` 仍跟终端、显式 dark/light 与 `KOS_THEME` 仍生效，以及 `KosApp(mode=None)` 在 `COLORFGBG=0;15` 下仍是深色；`test_commands.py` 断言菜单没有 Theme 行、只剩 5 行、语言行仍循环/应用/Esc 丢弃、66 列仍列出语言。整套 270 项全绿。
+
+---
+
+## 21. 本轮变更记录（sudo 密码改成页内条）
+
+用户的指示：**这个弹窗非常丑！为啥不在原本的地方输入？**
+
+- `PasswordDialog` 删除。每个 `ChromeScreen`/`WizardScreen` 在页脚上方带一条隐藏的 `SudoBar`（`widgets/sudo_bar.py`）：标题 `需要 sudo 密码` 加右侧 `⏎ 继续 · esc 取消`，一行说明（`安装软件包需要 root 权限；密码只用于这次调用，不写入磁盘或日志。`），再一行掩码输入框（占位文字 `sudo 密码：`）。没有外框、没有卡片、不是模态。
+- 显示时机：`KosApp._poll_askpass` 仍每 150 ms 看一次 `pending()`；有请求时调用当前屏幕的 `show_sudo()`。当前屏幕是模态（帮助、确认框、路径框等）时没有这个方法，请求就等着，模态关掉后的下一次轮询再显示。一次只显示一条，回答后立刻隐藏并清空输入。
+- 键位：输入框自动获得焦点；`Enter` 走原来的 `_password_answer`，`Esc` 在条上拦截并拒绝（不冒泡到页面的 Esc）。焦点在隐藏时交还给之前的控件。原有的“一次运行一个 askpass 通道、回答只给这次调用、拒绝即取消整次运行”都没变；密码仍然只经过 0600 的 answer 文件，不写日志。
+- 布局：输入框 `height: 1`、无边框、`$surface` 底色；整条在 100×30 是 3 行，在 66×20 也是 3 行（说明改短了一版，避免在 `root` 后断行）；日志/列表让位，页脚和 `ctrl+z 中止` 不动。
+- 测试：`tests/ui/test_sudo.py` 从模态改成条——等待条与输入框、焦点在输入框、Enter 把密码交给 helper、Esc 拒绝并取消、没有 `ModalScreen`、66×20 高度 ≤ 4、回答后条消失且输入清空；新增管理动作上显示、以及帮助模态盖着时等待其关闭。整套 274 项全绿。

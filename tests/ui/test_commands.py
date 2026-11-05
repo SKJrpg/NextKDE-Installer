@@ -375,38 +375,15 @@ class CommandMenuTest(unittest.IsolatedAsyncioTestCase):
             await self.choose(pilot, app, "Plan / command details")
             self.assertFalse(app.screen.details)
 
-    async def test_theme_is_one_horizontal_row_with_a_pending_choice(self) -> None:
+    async def test_the_menu_has_no_theme_row(self) -> None:
         app = self.make_app()
         async with app.run_test(size=(100, 30)) as pilot:
             await pilot.pause()
             await self.open_menu(pilot, app)
             rows = self.labels(app)
             self.assertEqual([row.split("  ")[0] for row in rows],
-                             ["Manage", "Theme", "Language", "Help", "About", "Quit"])
-            self.assertEqual(len([row for row in rows if row.startswith("Theme")]), 1)
-            self.assertIn("system", rows[1])
-            self.assertNotIn("dark", rows[1])
-
-            await self.highlight(pilot, app, "Theme")
-            await pilot.press("right")
-            self.assertIn("dark", self.labels(app)[1])
-            self.assertEqual(app.theme_mode, "system")      # still pending
-            await pilot.press("l")
-            self.assertIn("light", self.labels(app)[1])
-            await pilot.press("right")                      # wraps back to system
-            self.assertIn("system", self.labels(app)[1])
-            await pilot.press("left")
-            await pilot.press("h")
-            self.assertIn("dark", self.labels(app)[1])
-
-            await pilot.press("enter")
-            await self.wait_for(pilot, lambda: app.theme_mode == "dark")
-            self.assertNotIsInstance(app.screen, CommandMenu)
-            self.assertTrue(app.dark)
-            self.assertEqual(app.secondary_style, "dim")
-
-            await self.open_menu(pilot, app)                # preselects the state
-            self.assertIn("dark", self.labels(app)[1])
+                             ["Manage", "Language", "Help", "About", "Quit"])
+            self.assertFalse(any("theme" in row.lower() for row in rows))
 
     async def test_left_right_do_nothing_on_a_plain_row(self) -> None:
         app = self.make_app()
@@ -420,44 +397,32 @@ class CommandMenuTest(unittest.IsolatedAsyncioTestCase):
             await pilot.press("left")
             self.assertEqual(self.labels(app), before)
 
-    async def test_escape_drops_every_pending_choice(self) -> None:
+    async def test_escape_drops_the_pending_language(self) -> None:
         app = self.make_app()
         async with app.run_test(size=(100, 30)) as pilot:
             await pilot.pause()
             await self.open_menu(pilot, app)
-            await self.highlight(pilot, app, "Theme")
-            await pilot.press("right")                      # pending dark
-            await pilot.press("down")
+            await self.highlight(pilot, app, "Language")
             await pilot.press("left")                       # pending 中文
+            self.assertIn("中文", self.labels(app)[1])
             await pilot.press("escape")
             await pilot.pause()
             self.assertNotIsInstance(app.screen, CommandMenu)
-            self.assertEqual(app.theme_mode, "system")
             self.assertEqual(app.lang, "en")
-
-    async def test_enter_on_a_picker_applies_both_pending_choices(self) -> None:
-        app = self.make_app()
-        async with app.run_test(size=(100, 30)) as pilot:
-            await pilot.pause()
-            await self.open_menu(pilot, app)
-            await self.highlight(pilot, app, "Theme")
-            await pilot.press("right")                      # dark
-            await pilot.press("down")                       # Language
-            await pilot.press("left")                       # 中文
-            self.assertIn("中文", self.labels(app)[2])
-            await pilot.press("enter")
-            await self.wait_for(pilot, lambda: app.theme_mode == "dark" and app.lang == "zh")
-            self.assertNotIsInstance(app.screen, CommandMenu)
 
     async def test_language_row_switches_on_enter(self) -> None:
         app = self.make_app()                               # starts in English
         async with app.run_test(size=(100, 30)) as pilot:
             await pilot.pause()
             await self.open_menu(pilot, app)
-            self.assertIn("English", self.labels(app)[2])
+            self.assertIn("English", self.labels(app)[1])
             await self.highlight(pilot, app, "Language")
+            await pilot.press("right")                      # wraps to the first value
+            self.assertIn("中文", self.labels(app)[1])
+            await pilot.press("left")                       # and back
+            self.assertIn("English", self.labels(app)[1])
             await pilot.press("left")
-            self.assertIn("中文", self.labels(app)[2])
+            self.assertIn("中文", self.labels(app)[1])
             self.assertEqual(app.lang, "en")                # pending
             await pilot.press("enter")
             await self.wait_for(pilot, lambda: app.lang == "zh")
@@ -531,10 +496,10 @@ class CommandMenuTest(unittest.IsolatedAsyncioTestCase):
             await self.open_menu(pilot, app)
             self.assertLessEqual(app.screen.query_one("#command_box").size.width, 66)
             labels = self.labels(app)
-            for name in ("Manage", "Theme", "Language", "Help", "About", "Quit"):
+            for name in ("Manage", "Language", "Help", "About", "Quit"):
                 self.assertTrue(any(label.startswith(name) for label in labels), name)
-            self.assertIn("system", labels[1])
-            self.assertIn("English", labels[2])
+            self.assertEqual(len(labels), 5)
+            self.assertIn("English", labels[1])
             await pilot.press("escape")
             await pilot.pause()
 

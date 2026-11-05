@@ -25,6 +25,7 @@ from .. import keymap
 from ..widgets.commands import Choice, Command, CommandMenu
 from ..widgets.footer import KeyFooter
 from ..widgets.help import HelpScreen
+from ..widgets.sudo_bar import SudoBar
 
 STEPS = ("step_welcome", "step_system", "step_options", "step_review", "step_install")
 
@@ -173,12 +174,6 @@ class ChromeScreen(Screen):
                         enabled=not here,
                         reason=s("cmd_here") if here else "")]
         rows += self.context_commands()
-        modes = ("system", "dark", "light")
-        rows.append(Command(
-            "theme", s("cmd_theme"), choices=tuple(
-                Choice(s("theme_" + mode), partial(app.set_theme, mode))
-                for mode in modes),
-            selected=modes.index(app.theme_mode)))
         rows.append(Command(
             "lang", s("cmd_language"), choices=(
                 Choice("中文", partial(app.set_language, "zh")),
@@ -258,7 +253,25 @@ class ChromeScreen(Screen):
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)
         yield from self.body()
+        yield from self.chrome_end()
+
+    def chrome_end(self):
+        """Above the footer: an inline answer to a blocked sudo call."""
+        yield SudoBar(self.strings, id="sudo_bar")
         yield KeyFooter(id="footer")
+
+    def show_sudo(self, answer) -> bool:
+        """Show the bar if this screen has one; False means wait for a modal."""
+        bars = self.query("#sudo_bar")
+        if not bars:
+            return False
+        bars.first().ask(answer)
+        return True
+
+    def hide_sudo(self) -> None:
+        bars = self.query("#sudo_bar")
+        if bars:
+            bars.first().hide()
 
     def body(self):
         """The widgets of this screen, between header and footer."""
@@ -278,7 +291,7 @@ class WizardScreen(ChromeScreen):
             yield Static(self._sidebar(), id="sidebar")
             with Vertical(id="main"):
                 yield from self.body()
-        yield KeyFooter(id="footer")
+        yield from self.chrome_end()
 
     def _sidebar(self) -> Text:
         text = Text()

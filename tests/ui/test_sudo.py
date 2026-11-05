@@ -24,9 +24,10 @@ if _VENDOR.is_dir():
 HAS_TEXTUAL = importlib.util.find_spec("textual") is not None
 
 if HAS_TEXTUAL:
-    from textual.widgets import Input
+    from textual.screen import ModalScreen
+    from textual.widgets import Input, OptionList
 
-    from installer import workflow
+    from installer import manage, workflow
     from installer.core.events import Event
     from installer.detect import OsInfo, Probe, System
     from installer.paths import Paths
@@ -35,11 +36,17 @@ if HAS_TEXTUAL:
     from installer.strings import Strings
     from installer.ui.app import KosApp
     from installer.ui.screens.installation import InstallationScreen
+    from installer.ui.screens.management import ManagementScreen
     from installer.ui.screens.result import ResultScreen
     from installer.ui.screens.review import ReviewScreen
-    from installer.ui.widgets.password import PasswordDialog
+    from installer.ui.screens.units import UnitsScreen
+    from installer.ui.widgets.commands import CommandMenu
+    from installer.ui.widgets.help import HelpScreen
 
 PASSWORD = "hunter2-s3cret"
+
+UNITS = [manage.Unit("core", "1.0", "dirs", 4, "2026-01-01T00:00:00"),
+         manage.Unit("apps", "1.0", "files", 2, "")]
 
 
 def fake_system() -> "System":
@@ -152,33 +159,37 @@ class SudoPromptTest(unittest.IsolatedAsyncioTestCase):
         for _ in range(5):
             await pilot.pause()
 
-    async def wait_dialog(self, app) -> None:
-        """Wait for the dialog and for its field: the screen appears first."""
-        await self.wait_screen(app, PasswordDialog)
-        for _ in range(100):
-            if app.screen.query("#sudo_password"):
-                return
-            await asyncio.sleep(0.01)
-        self.fail("the password dialog never composed its field")
+    def bars(self, app) -> list:
+        """Every visible sudo bar; there is never more than one."""
+        found = []
+        for screen in app._screen_stack:
+            for bar in screen.query("#sudo_bar"):
+                if bar.display:
+                    found.append(bar)
+        return found
 
-    def prompts(self, app) -> list:
-        return [screen for screen in app._screen_stack
-                if isinstance(screen, PasswordDialog)]
-
-    async def answer_dialog(self, app, pilot) -> None:
-        """Wait until a request raises the dialog, then answer that request."""
+    async def wait_bar(self, app, pilot=None):
+        """Wait for the inline bar and for its layout: it appears first."""
         for _ in range(500):
             await asyncio.sleep(0.01)
-            if (isinstance(app.screen, PasswordDialog)
-                    and app._dialog_token not in self.answered):
+            if self.bars(app):
+                if pilot is not None:
+                    for _ in range(3):
+                        await pilot.pause()
+                return self.bars(app)[0]
+        self.fail(f"no sudo bar was raised (on {type(app.screen).__name__})")
+
+    async def answer_bar(self, app, pilot) -> None:
+        """Wait until a request raises the bar, then answer that request."""
+        bar = await self.wait_bar(app, pilot)
+        for _ in range(100):
+            if app._sudo_token is not None and app._sudo_token not in self.answered:
                 break
-        else:
-            self.fail("no password dialog was raised")
-        await self.settle(pilot)        # composed and focused before it is typed on
-        self.assertEqual(len(self.prompts(app)), 1)
-        self.answered.add(app._dialog_token)
+            await asyncio.sleep(0.01)
+        self.assertEqual(len(self.bars(app)), 1)
+        self.answered.add(app._sudo_token)
         self.prompts_seen += 1
-        app.screen.query_one("#sudo_password", Input).value = PASSWORD
+        bar.screen.query_one("#sudo_input", Input).value = PASSWORD
         await pilot.press("enter")
 
     async def test_two_sudo_calls_two_prompts(self) -> None:
@@ -191,8 +202,8 @@ class SudoPromptTest(unittest.IsolatedAsyncioTestCase):
         with mock.patch("installer.ui.app.build_plan", return_value=steps):
             async with app.run_test(size=(100, 30)) as pilot:
                 await self.to_installation(pilot)
-                await self.answer_dialog(app, pilot)    # the build's sudo call
-                await self.answer_dialog(app, pilot)    # the plugins' sudo call
+                await self.answer_bar(app, pilot)    # the build's sudo call
+                await self.answer_bar(app, pilot)    # the plugins' sudo call
                 await self.wait_screen(app, ResultScreen)
                 await self.settle(pilot)
 
@@ -208,55 +219,60 @@ class SudoPromptTest(unittest.IsolatedAsyncioTestCase):
             await self.to_installation(pilot)
             await self.wait_screen(app, ResultScreen)
             await self.settle(pilot)
-            self.assertEqual(self.prompts(app), [])
+            self.assertEqual(self.bars(app), [])
         self.assertIsNone(app.askpass)          # the tree is gone after the run
 
-    async def test_a_blocked_sudo_call_raises_the_dialog_and_is_answered(self) -> None:
+    async def test_a_blocked_sudo_call_raises_the_bar_and_is_answered(self) -> None:
         app = self.make_app(waiting=True)
         async with app.run_test(size=(100, 30)) as pilot:
             await self.to_installation(pilot)
             await self.wait_screen(app, InstallationScreen)
             # The plan is running and nothing has asked: no prompt at start.
             await asyncio.sleep(0.5)
-            self.assertEqual(self.prompts(app), [])
+            self.assertEqual(self.bars(app), [])
             self.assertEqual(self.prompts_seen, 0)
 
             helper = self.ask_sudo(app)
-            await self.wait_dialog(app)
-            self.assertEqual(len(self.prompts(app)), 1)
+            bar = await self.wait_bar(app, pilot)
+            self.assertEqual(len(self.bars(app)), 1)
+            self.assertIsInstance(app.screen, InstallationScreen)
+            self.assertNotIsInstance(app.screen, ModalScreen)
+            self.assertIs(app.focused, bar.screen.query_one("#sudo_input", Input))
 
-            app.screen.query_one("#sudo_password", Input).value = PASSWORD
+            bar.screen.query_one("#sudo_input", Input).value = PASSWORD
             await pilot.press("enter")
-            # Off the event loop, as the dialog never blocks it either.
+            # Off the event loop, as the bar never blocks it either.
             out, _err = await asyncio.to_thread(helper.communicate, 30)
             self.assertEqual(out.decode(), PASSWORD)   # the answer reached sudo
             self.assertIsNone(app.askpass.pending())
             self.assertNotIn(PASSWORD, "\n".join(app.log_tail))
+            self.assertEqual(self.bars(app), [])       # the bar went away
+            self.assertEqual(bar.screen.query_one("#sudo_input", Input).value, "")
 
             app.cancel_install()
             await self.wait_screen(app, ResultScreen)
             await self.settle(pilot)
         self.assertIsNone(app.askpass)
 
-    async def test_one_dialog_at_a_time_then_the_next_request(self) -> None:
+    async def test_one_bar_at_a_time_then_the_next_request(self) -> None:
         app = self.make_app(waiting=True)
         async with app.run_test(size=(100, 30)) as pilot:
             await self.to_installation(pilot)
             await self.wait_screen(app, InstallationScreen)
 
             first = self.ask_sudo(app)
-            await self.wait_dialog(app)
+            await self.wait_bar(app, pilot)
             second = self.ask_sudo(app)
             await asyncio.sleep(0.5)
-            self.assertEqual(len(self.prompts(app)), 1)   # it did not stack
+            self.assertEqual(len(self.bars(app)), 1)   # it did not stack
 
-            app.screen.query_one("#sudo_password", Input).value = PASSWORD
+            app.screen.query_one("#sudo_input", Input).value = PASSWORD
             await pilot.press("enter")
             await asyncio.to_thread(first.communicate, 30)
-            # The request that arrived while the dialog was open is asked next.
-            await self.wait_dialog(app)
-            self.assertEqual(len(self.prompts(app)), 1)
-            app.screen.query_one("#sudo_password", Input).value = PASSWORD
+            # The request that arrived while the bar was up is asked next.
+            await self.wait_bar(app, pilot)
+            self.assertEqual(len(self.bars(app)), 1)
+            app.screen.query_one("#sudo_input", Input).value = PASSWORD
             await pilot.press("enter")
             out, _err = await asyncio.to_thread(second.communicate, 30)
             self.assertEqual(out.decode(), PASSWORD)
@@ -271,7 +287,8 @@ class SudoPromptTest(unittest.IsolatedAsyncioTestCase):
             await self.to_installation(pilot)
             await self.wait_screen(app, InstallationScreen)
             helper = self.ask_sudo(app)
-            await self.wait_dialog(app)
+            await self.wait_bar(app, pilot)
+            self.assertNotIsInstance(app.screen, ModalScreen)
 
             await pilot.press("escape")
             out, _err = await asyncio.to_thread(helper.communicate, 30)
@@ -284,6 +301,117 @@ class SudoPromptTest(unittest.IsolatedAsyncioTestCase):
             await self.settle(pilot)
         self.assertIsNone(app.askpass)
         self.assertEqual(app.exit_code, 130)
+
+    async def start_units_action(self, app, pilot) -> None:
+        """Management -> Units, with one action running and waiting on sudo."""
+        await pilot.press("ctrl+p")
+        await self.wait_screen(app, CommandMenu)
+        await pilot.press("enter")
+        await self.wait_screen(app, ManagementScreen)
+        for _ in range(200):
+            if app.screen.query_one("#manage_list", OptionList).option_count == 6:
+                break
+            await asyncio.sleep(0.01)
+        await pilot.press("1")
+        await self.wait_screen(app, UnitsScreen)
+        for _ in range(200):
+            if app.screen.query_one("#manage_list", OptionList).option_count == len(UNITS):
+                break
+            await asyncio.sleep(0.01)
+        app.start_action(app.screen, "test action", [])
+        for _ in range(200):
+            if app.screen.busy:
+                break
+            await asyncio.sleep(0.01)
+        self.assertTrue(app.screen.busy)
+
+    def manage_fakes(self) -> None:
+        for target, value in (("installer.manage.units", UNITS),
+                              ("installer.manage.snapshots", []),
+                              ("installer.manage.logs", [])):
+            patcher = mock.patch(target, return_value=value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    async def test_the_bar_shows_on_a_management_action(self) -> None:
+        self.manage_fakes()
+        app = self.make_app(waiting=True)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await self.start_units_action(app, pilot)
+            helper = self.ask_sudo(app)
+            bar = await self.wait_bar(app, pilot)
+            self.assertIsInstance(app.screen, UnitsScreen)
+            self.assertNotIsInstance(app.screen, ModalScreen)
+            self.assertEqual(app.focused.id, "sudo_input")
+
+            bar.screen.query_one("#sudo_input", Input).value = PASSWORD
+            await pilot.press("enter")
+            out, _err = await asyncio.to_thread(helper.communicate, 30)
+            self.assertEqual(out.decode(), PASSWORD)
+            self.assertEqual(self.bars(app), [])
+            self.assertEqual(app.focused.id, "manage_list")   # focus came back
+            app.cancel_action()
+            for _ in range(300):
+                if not app.screen.busy:
+                    break
+                await asyncio.sleep(0.01)
+            self.assertFalse(app.screen.busy)
+
+    async def test_escape_on_a_management_bar_stops_the_action_in_place(self) -> None:
+        self.manage_fakes()
+        app = self.make_app(waiting=True)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await self.start_units_action(app, pilot)
+            helper = self.ask_sudo(app)
+            await self.wait_bar(app, pilot)
+            await pilot.press("escape")
+            out, _err = await asyncio.to_thread(helper.communicate, 30)
+            self.assertEqual(out, b"")                 # denied, not answered
+            for _ in range(300):
+                if not app.screen.busy:
+                    break
+                await asyncio.sleep(0.01)
+            self.assertIsInstance(app.screen, UnitsScreen)   # Esc did not pop
+            self.assertFalse(app.screen.busy)
+            self.assertEqual(self.bars(app), [])
+
+    async def test_the_bar_waits_for_a_modal_to_close(self) -> None:
+        app = self.make_app(waiting=True)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await self.to_installation(pilot)
+            await self.wait_screen(app, InstallationScreen)
+            await pilot.press("ctrl+k")
+            await pilot.pause()
+            self.assertIsInstance(app.screen, HelpScreen)
+
+            helper = self.ask_sudo(app)
+            await asyncio.sleep(0.5)
+            self.assertEqual(self.bars(app), [])       # no bar under the modal
+            self.assertIsNone(app._sudo_token)
+
+            await pilot.press("escape")
+            await pilot.pause()
+            await self.wait_bar(app, pilot)            # shown once help closes
+            self.assertIsInstance(app.screen, InstallationScreen)
+            await pilot.press("escape")                # deny, and finish
+            await asyncio.to_thread(helper.communicate, 30)
+            await self.wait_screen(app, ResultScreen)
+            await self.settle(pilot)
+
+    async def test_the_bar_fits_at_66_columns(self) -> None:
+        app = self.make_app(waiting=True)
+        async with app.run_test(size=(66, 20)) as pilot:
+            await self.to_installation(pilot)
+            await self.wait_screen(app, InstallationScreen)
+            helper = self.ask_sudo(app)
+            bar = await self.wait_bar(app, pilot)
+            self.assertEqual(bar.size.height, 3)      # title, reason, field
+            self.assertEqual(bar.screen.query_one("#sudo_input", Input).size.height, 1)
+            self.assertIs(app.focused, bar.screen.query_one("#sudo_input", Input))
+            await pilot.press("escape")
+            await asyncio.to_thread(helper.communicate, 30)
+            await self.wait_screen(app, ResultScreen)
+            await self.settle(pilot)
 
     async def test_wrong_password_is_surfaced_and_dropped(self) -> None:
         screen = Step("core", "kosctl install",

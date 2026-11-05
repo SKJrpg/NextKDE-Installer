@@ -35,7 +35,6 @@ from .screens.review import ReviewScreen
 from .screens.welcome import WelcomeScreen
 from .theme import resolve_mode
 from .widgets.confirm import ConfirmDialog
-from .widgets.password import PasswordDialog
 
 
 class KosApp(App, inherit_bindings=False):
@@ -56,12 +55,10 @@ class KosApp(App, inherit_bindings=False):
         # Native ANSI so the terminal's own background and palette show through
         # instead of Textual painting its theme's colours over them.
         super().__init__(ansi_color=True, **kwargs)
-        # "system" (or None) follows the terminal; --theme / KOS_THEME / COLORFGBG
-        # decide which. Textual's own theme stays out of it: ansi_default is the
-        # terminal's background either way. The choice is kept so the command
-        # menu can mark it; only the dark flag is resolved from it.
-        self.theme_mode = mode if mode in ("system", "dark", "light") else "system"
-        self.dark = resolve_mode(self.theme_mode) == "dark"
+        # Dark unless --theme / config / KOS_THEME names a mode; only an explicit
+        # "system" follows the terminal. Textual's own theme stays out of it:
+        # ansi_default is the terminal's background either way.
+        self.dark = resolve_mode(mode) == "dark"
         # Secondary text: dim is quieter on a dark terminal, but on a light one it
         # only fades towards white; ANSI 8 stays a readable grey there.
         self.secondary_style = "dim" if self.dark else "bright_black"
@@ -88,7 +85,8 @@ class KosApp(App, inherit_bindings=False):
         self.cancel_event = threading.Event()
         self.session = None             # the last InstallSession
         self.askpass: Askpass | None = None   # set while a run may need a sudo password
-        self._dialog_token: str | None = None  # the request the open dialog answers
+        self._sudo_token: str | None = None    # the request the open bar answers
+        self._sudo_screen = None               # the screen showing the bar
         self._answered: set[str] = set()       # tokens this run has already handled
         self.install_worker = None
         self.prepare_worker = None
@@ -107,8 +105,8 @@ class KosApp(App, inherit_bindings=False):
     def action_help_quit(self) -> None:
         """Ctrl+C twice quits; the first press only says so.
 
-        A modal owns its own keys (the quit/abort questions, the password
-        prompt, the help overlay), so a second press there must not bypass it.
+        A modal owns its own keys (the quit/abort questions, the help
+        overlay), so a second press there must not bypass it.
         """
         if isinstance(self.screen, ModalScreen):
             return
@@ -140,19 +138,6 @@ class KosApp(App, inherit_bindings=False):
     def invalidate_prepared(self) -> None:
         self.prepared = None
         self.prepare_error = ""
-
-    async def set_theme(self, choice: str) -> None:
-        """Switch the appearance for this session; nothing is written to disk."""
-        if choice not in ("system", "dark", "light") or choice == self.theme_mode:
-            return
-        self.theme_mode = choice
-        dark = resolve_mode(choice) == "dark"
-        changed = dark != self.dark
-        self.dark = dark
-        self.secondary_style = "dim" if dark else "bright_black"
-        if changed:
-            # Secondary text embeds its style, so the page is rebuilt once.
-            await self.screen.recompose()
 
     async def set_language(self, lang: str) -> None:
         """Switch every label now; the wizard keeps its place and its state."""
@@ -209,25 +194,33 @@ class KosApp(App, inherit_bindings=False):
         """One channel per run: children get its env, no password exists yet."""
         self._close_askpass()
         self.askpass = Askpass()
-        self._dialog_token = None
+        self._sudo_token = None
         self._answered.clear()
 
     def _poll_askpass(self) -> None:
-        """A blocked sudo call left a request: ask for it, one dialog at a time."""
+        """A blocked sudo call left a request: ask for it, one at a time.
+
+        A modal on top (help, a confirmation) hides the screen's bar, so the
+        request waits until that closes instead of stacking another prompt.
+        """
         askpass = self.askpass
-        if askpass is None or self._dialog_token is not None:
+        if askpass is None or self._sudo_token is not None:
             return
         token = askpass.pending()
         if token is None or token in self._answered:
             return
-        self._dialog_token = token
-        self.push_screen(PasswordDialog(self.strings),
-                         lambda password: self._password_answer(token, password))
+        screen = self.screen
+        show = getattr(screen, "show_sudo", None)
+        if show is None or not show(lambda password: self._password_answer(token, password)):
+            return
+        self._sudo_token = token
+        self._sudo_screen = screen
 
     def _password_answer(self, token: str, password: str | None) -> None:
-        self._dialog_token = None
+        self._sudo_token = None
+        self._hide_sudo()
         askpass = self.askpass
-        if askpass is None:             # the run ended while the dialog was open
+        if askpass is None:             # the run ended while the bar was up
             return
         self._answered.add(token)
         if password:
@@ -240,11 +233,17 @@ class KosApp(App, inherit_bindings=False):
             self.cancel_install()
             if self.action_screen is not None:
                 self.cancel_action()
-        self._poll_askpass()    # a request that arrived while the dialog was open
+        self._poll_askpass()    # a request that arrived while the bar was up
+
+    def _hide_sudo(self) -> None:
+        screen, self._sudo_screen = self._sudo_screen, None
+        if screen is not None and screen.is_mounted:
+            screen.hide_sudo()
 
     def _close_askpass(self) -> None:
+        self._hide_sudo()
         askpass, self.askpass = self.askpass, None
-        self._dialog_token = None
+        self._sudo_token = None
         if askpass is not None:
             askpass.close()
 

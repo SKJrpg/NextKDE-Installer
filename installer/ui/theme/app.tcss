@@ -415,6 +415,43 @@ HelpScreen {
     color: ansi_default;
 }
 
+/* -- the inline sudo bar (never a dialog) ----------------------------- */
+#sudo_bar {
+    height: auto;
+    padding: 0 1;
+}
+
+#sudo_head {
+    height: 1;
+}
+
+#sudo_title {
+    width: 1fr;
+    height: 1;
+    text-style: bold;
+}
+
+#sudo_hint {
+    width: auto;
+    height: 1;
+}
+
+#sudo_body {
+    height: auto;
+}
+
+#sudo_input {
+    height: 1;
+    border: none;
+    padding: 0 1;
+    background: $surface;
+    color: $foreground;
+}
+
+#sudo_input:focus {
+    background: $surface;
+}
+
 /* -- command menu and about ------------------------------------------ */
 CommandMenu, AboutScreen {
     align: center middle;
