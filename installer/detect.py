@@ -197,9 +197,15 @@ def detect(fixed_os_release: str | None = None, root: Path | None = None) -> Sys
     else:
         session_detail = desktop or "unknown"
     plasma_bin = shutil.which("plasmashell")
-    plasma = wayland and ("KDE" in desktop.upper() or bool(plasma_bin))
-    system.probes.append(_probe("probe_plasma", plasma, session_detail,
-                                "Run this inside a Plasma 6 Wayland session."))
+    rc, plasma_out = _run([plasma_bin, "--version"]) if plasma_bin else (127, "")
+    plasma_ver = _major_minor(plasma_out) if rc == 0 else None
+    plasma_ok = plasma_ver is not None and plasma_ver >= (6, 0)
+    system.probes.append(_probe("probe_plasma", plasma_ok,
+                                _version(plasma_out) or "not found",
+                                "KDE Plasma 6 is required."))
+    system.probes.append(_probe("probe_graphics", wayland,
+                                "Wayland" if wayland else session_detail,
+                                "KOS runs only in a Plasma 6 Wayland session."))
 
     rc, kwin_out = _run(["kwin_wayland", "--version"])
     ver = _major_minor(kwin_out) if rc == 0 else None
