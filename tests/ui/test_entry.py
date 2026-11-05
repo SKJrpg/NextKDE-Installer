@@ -175,6 +175,7 @@ class EntryTest(unittest.TestCase):
                 mock.patch.object(sys, "stdout", Tty()), \
                 mock.patch.object(sys, "stdin", Tty()), \
                 mock.patch.object(sys, "stderr", stderr), \
+                mock.patch("installer.__main__.settings.load", return_value={}), \
                 mock.patch("installer.__main__.detect", return_value=fake_system()), \
                 mock.patch("installer.__main__.build_plan", return_value=fake_plan()), \
                 mock.patch("installer.__main__.workflow.begin",
