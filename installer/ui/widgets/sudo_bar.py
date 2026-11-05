@@ -35,7 +35,11 @@ class SudoBar(Vertical):
         s = self.strings
         quiet = getattr(self.app, "secondary_style", "dim")
         with Horizontal(id="sudo_head"):
-            yield Static(Text(s("sudo_password_title"), style="bold"), id="sudo_title")
+            title = Text()
+            if not s.ascii:
+                title.append("🔒 ")
+            title.append(s("sudo_password_title"), style="bold")
+            yield Static(title, id="sudo_title")
             yield Static(Text(s("sudo_bar_hint"), style=quiet), id="sudo_hint")
         yield Static(Text(s("sudo_password_body"), style=quiet), id="sudo_body")
         yield SudoInput(password=True, id="sudo_input",
