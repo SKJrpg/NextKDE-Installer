@@ -467,6 +467,9 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
             await pilot.press("j")
             await pilot.pause()
             self.assertEqual(app.opts.source, "main")
+            await pilot.press("space")          # no longer a selection key
+            await pilot.pause()
+            self.assertEqual(app.opts.source, "main")
             await pilot.press("k")
             await pilot.pause()
             self.assertEqual(app.opts.source, "stable")

@@ -14,7 +14,7 @@ from textual.widgets import Checkbox, RadioButton, RadioSet, Static
 
 from ...backend.models import ACTIVATION_START, INSTALL_APPS, INSTALL_LOCKSCREEN
 from ...plan import ALL_APPS
-from . import CursorKeys, EnterPasses, WizardScreen
+from . import ChoicePasses, CursorKeys, EnterPasses, WizardScreen
 
 SOURCES = ("stable", "main", "local")
 WIDE_AT = 110
@@ -37,7 +37,7 @@ class CheckRow(EnterPasses, Checkbox):
     context = "option.check"
 
 
-class SourceRow(EnterPasses, RadioButton):
+class SourceRow(ChoicePasses, RadioButton):
     """The same, for the source radio rows."""
 
     BUTTON_LEFT = BUTTON_INNER = BUTTON_RIGHT = ""
@@ -267,8 +267,6 @@ class OptionsScreen(WizardScreen):
         widget = self.focused
         if isinstance(widget, Checkbox) and not widget.disabled:
             widget.value = not widget.value
-        elif isinstance(widget, RadioButton) and not widget.disabled:
-            widget.value = True
 
     def action_wizard_next(self) -> None:
         from .review import ReviewScreen

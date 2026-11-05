@@ -12,10 +12,10 @@ from rich.text import Text
 from textual.app import ComposeResult
 from textual.widgets import RadioButton, RadioSet, Static
 
-from . import CursorKeys, EnterPasses, WizardScreen
+from . import ChoicePasses, CursorKeys, WizardScreen
 
 
-class PickRow(EnterPasses, RadioButton):
+class PickRow(ChoicePasses, RadioButton):
     """A radio row whose marker is text; Enter belongs to the page."""
 
     BUTTON_LEFT = BUTTON_INNER = BUTTON_RIGHT = ""

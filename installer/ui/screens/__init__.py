@@ -40,12 +40,21 @@ class CursorKeys(EnterPasses):
 
     Textual's set moves an invisible cursor and waits for Space; here the
     arrow/Vim keys pick the next row, which is what the footer promises.
+    Space is not a selection key here: the row under the marker is the choice.
     """
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        for key in ("up", "down", "left", "right"):
+        for key in ("up", "down", "left", "right", "space"):
             self._bindings.key_to_bindings.pop(key, None)
+
+
+class ChoicePasses(EnterPasses):
+    """A radio row: the page's arrows select it; Enter/Space are not needed."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._bindings.key_to_bindings.pop("space", None)
 
 
 class ChromeScreen(Screen):
