@@ -298,7 +298,6 @@ _TEXT = {
     "install_failed": ("安装失败", "Failed"),
     "install_stage": ("阶段", "Phase"),
     "install_elapsed": ("已用 %s", "%s elapsed"),
-    "install_no_progress": ("没有可测量的进度", "no measured progress"),
     "install_step_progress": ("已完成 %d/%d 步", "%d/%d steps done"),
     "install_log_live": ("自动滚动", "auto-scroll"),
     "install_log_paused": ("已暂停自动滚动，↑↓ 查看历史", "auto-scroll paused, ↑↓ to read back"),

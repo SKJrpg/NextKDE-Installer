@@ -309,6 +309,20 @@ class WizardTest(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertEqual(len(screen.query("#activity")), 0)
 
+    async def test_installation_has_one_progress_label_without_eta(self) -> None:
+        app = self.make_app()
+        async with app.run_test(size=(100, 30)) as pilot:
+            app.push_screen(InstallationScreen(Strings("en"), ()))
+            await pilot.pause()
+            screen = app.screen
+            bar = screen.query_one("#progress")
+            self.assertTrue(bar.show_percentage)
+            self.assertFalse(bar.show_eta)
+            self.assertEqual(len(screen.query("#progress_state")), 0)
+            log = screen.query_one("#log")
+            self.assertTrue(log.wrap)
+            self.assertEqual(log.styles.scrollbar_size_horizontal, 0)
+
     async def test_activity_indicator_stops_when_the_run_finishes(self) -> None:
         app = self.make_app()
         async with app.run_test(size=(100, 30)) as pilot:

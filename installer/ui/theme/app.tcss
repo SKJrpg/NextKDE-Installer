@@ -184,18 +184,13 @@ ProgressBar Bar > .bar--complete {
 }
 
 #options_head, #status, #steps, #side, #hint,
-#install_head, #progress_state, #log_path, #local_state {
+#install_head, #log_path, #local_state {
     height: auto;
 }
 
 #install_head {
     width: 1fr;
     padding-bottom: 1;
-}
-
-/* The clone's own line can be longer than the pane; one line, clipped. */
-#progress_state {
-    text-wrap: nowrap;
 }
 
 #install_head_row {
@@ -232,6 +227,8 @@ ProgressBar Bar > .bar--complete {
     height: 1fr;
     min-height: 3;
     border: none;
+    /* The log wraps; a horizontal bar would only hide the same text. */
+    scrollbar-size-horizontal: 0;
 }
 
 #cancel {
