@@ -181,6 +181,11 @@ def detect(fixed_os_release: str | None = None, root: Path | None = None) -> Sys
     method = METHODS.get(family or "", "unknown")
     system = System(os=info, family=family, method=method, arch=platform.machine())
 
+    system.probes.append(_probe("probe_os", bool(info.id), info.label or "unknown",
+                                "Read /etc/os-release; this system is not identifiable."))
+    system.probes.append(_probe("probe_arch", system.arch in ("x86_64", "aarch64"),
+                                system.arch, "Only x86_64 and aarch64 are tested.", warn=True))
+
     # The stack checks first: Plasma on Wayland, KWin, Quickshell, Qt.
     session = os.environ.get("XDG_SESSION_TYPE", "")
     desktop = os.environ.get("XDG_CURRENT_DESKTOP", "")
@@ -227,10 +232,6 @@ def detect(fixed_os_release: str | None = None, root: Path | None = None) -> Sys
                                 _version(qt_out) or qt_out or "not found",
                                 "Qt 6.6+ is required; install qt6-base.", warn=True))
 
-    system.probes.append(_probe("probe_os", bool(info.id), info.label or "unknown",
-                                "Read /etc/os-release; this system is not identifiable."))
-    system.probes.append(_probe("probe_arch", system.arch in ("x86_64", "aarch64"),
-                                system.arch, "Only x86_64 and aarch64 are tested.", warn=True))
 
     manager = next((m for m in ("apt-get", "pacman", "dnf", "zypper") if shutil.which(m)), "")
     system.probes.append(_probe("probe_manager", bool(manager), manager or "not found",
