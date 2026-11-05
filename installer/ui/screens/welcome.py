@@ -21,30 +21,35 @@ BANNER = (
 )
 
 
+class Banner(Static):
+    """The wordmark, repainted whenever the page is recomposed or resized."""
+
+    def __init__(self, strings, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.strings = strings
+
+    def on_mount(self) -> None:
+        self._paint()
+
+    def on_resize(self) -> None:
+        self._paint()
+
+    def _paint(self) -> None:
+        if self.strings.ascii or self.app.size.width < 88:
+            self.update(Text("NextKDE", style="bold"))
+        else:
+            self.update(Text("\n".join(BANNER)))
+
+
 class WelcomeScreen(WizardScreen):
     STEP = 0
     CONTEXT = "wizard.welcome"
     QUIT_DIRECT = True      # nothing has run yet
 
     def body(self) -> ComposeResult:
-        yield Static(id="banner")
+        yield Banner(self.strings, id="banner")
         yield Static(self.strings("welcome_intro"), id="intro")
         yield Static(self._language(), id="language")
-
-    def on_mount(self) -> None:
-        self._paint_banner()
-
-    def on_resize(self, event) -> None:
-        super().on_resize(event)
-        self._paint_banner()
-
-    def _paint_banner(self) -> None:
-        """The wordmark needs the room; otherwise the word, never a wrapped mark."""
-        banner = self.query_one("#banner", Static)
-        if self.strings.ascii or self.app.size.width < 88:
-            banner.update(Text("NextKDE", style="bold"))
-        else:
-            banner.update(Text("\n".join(BANNER)))
 
     def _language(self) -> Text:
         s = self.strings

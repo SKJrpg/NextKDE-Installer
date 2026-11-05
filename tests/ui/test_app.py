@@ -143,6 +143,8 @@ class AppShellTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(app.lang, "en")
             self.assertIn("next", footer_text(app))
             self.assertIn("Language", str(app.screen.query_one("#language").render()))
+            # The banner is painted by its own widget; recompose must keep it.
+            self.assertIn("███", str(app.screen.query_one("#banner").render()))
 
             await pilot.press("left")
             await pilot.pause()
