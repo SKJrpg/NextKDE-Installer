@@ -242,6 +242,25 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertIsInstance(app.screen, WelcomeScreen)
 
+    async def test_the_quit_question_takes_arrow_keys(self) -> None:
+        app = self.make_app()
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.press("enter")
+            await pilot.pause()
+            await pilot.press("q")
+            await pilot.pause()
+            self.assertIsInstance(app.screen, ConfirmDialog)
+            self.assertEqual(app.focused.id, "confirm_cancel")
+            await pilot.press("right")
+            await pilot.pause()
+            self.assertEqual(app.focused.id, "confirm_ok")
+            await pilot.press("left")
+            await pilot.pause()
+            self.assertEqual(app.focused.id, "confirm_cancel")
+            await pilot.press("escape")
+            await pilot.pause()
+            self.assertIsInstance(app.screen, SystemScreen)
+
     async def test_q_asks_mid_wizard_and_leaves_on_welcome(self) -> None:
         app = self.make_app()
         async with app.run_test(size=(100, 30)) as pilot:

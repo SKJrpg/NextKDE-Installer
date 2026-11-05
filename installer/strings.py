@@ -92,6 +92,7 @@ _TEXT = {
     "confirm_rollback": ('回滚到这个快照？当前配置会先自动备份。', 'Roll back to this snapshot? The current config is backed up first.'),
     "confirm": ('确认', 'Confirm'),
     "confirm_uninstall_word": ('输入 uninstall 确认', 'Type uninstall to confirm'),
+    "dialog_keys": ("←/→ 选择 · ⏎ 确认 · esc 取消", "←/→ choose · ⏎ confirm · esc cancel"),
     "unit_core_locked": ('core 不能关闭；要移除请用卸载。', 'core cannot be switched off; use uninstall'),
     "action_ok": ('操作完成', 'Action finished'),
     "action_failed": ('操作失败', 'Action failed'),

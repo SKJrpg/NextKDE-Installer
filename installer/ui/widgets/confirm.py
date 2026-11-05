@@ -14,7 +14,13 @@ from textual.widgets import Button, Input, Static
 
 
 class ConfirmDialog(ModalScreen[bool]):
-    BINDINGS = [("escape", "cancel", "escape")]
+    BINDINGS = [
+        ("escape", "cancel", "escape"),
+        # The buttons sit side by side; arrows choose between them. A focused
+        # text field keeps its own left/right for the cursor.
+        ("left", "app.focus_previous", "left"),
+        ("right", "app.focus_next", "right"),
+    ]
 
     def __init__(self, strings, heading: str, body: str, word: str = "",
                  confirm_variant: str = "primary", confirm_label: str = "",
@@ -39,6 +45,10 @@ class ConfirmDialog(ModalScreen[bool]):
                 yield Static(Text(s("confirm_uninstall_word"), style=quiet),
                              id="confirm_hint")
                 yield Input(id="confirm_word")
+            if not self.word:
+                quiet = getattr(self.app, "secondary_style", "dim")
+                yield Static(Text(self.strings("dialog_keys"), style=quiet),
+                             id="confirm_keys")
             with Horizontal(id="confirm_buttons"):
                 yield Button(self.cancel_label, id="confirm_cancel")
                 yield Button(self.confirm_label, id="confirm_ok",
