@@ -84,6 +84,7 @@ class KosApp(App, inherit_bindings=False):
         if backend is None:
             self._detect_backend(self.paths.source_root)
         self.prepared = None            # PreparedSource, once obtained
+        self.resolved_source = None     # identity Review resolved, not yet cloned
         self.preparation = None         # the workflow.Preparation it came from
         self.prepare_error = ""
         self._deps_at_confirm: list[str] = []   # what the confirmation page showed
@@ -144,6 +145,7 @@ class KosApp(App, inherit_bindings=False):
 
     def invalidate_prepared(self) -> None:
         self.prepared = None
+        self.resolved_source = None
         self.prepare_error = ""
 
     async def set_language(self, lang: str) -> None:

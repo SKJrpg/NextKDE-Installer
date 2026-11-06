@@ -40,9 +40,12 @@ class ConfirmScreen(WizardScreen):
 
     def _summary(self) -> Text:
         s, opts = self.strings, self.app.opts
-        prepared = self.app.prepared
+        prepared = self.app.prepared or self.app.resolved_source
         if prepared is not None:
-            source = (s("label_ref"), f"{prepared.ref} · {prepared.commit[:8]}")
+            ref = prepared.ref
+            if prepared.tag:
+                ref = f"{ref} ({prepared.tag})"
+            source = (s("label_ref"), f"{ref} · {prepared.commit[:8]}")
         else:
             source = (s("label_source"), s("source_" + opts.source))
         pairs = [source, (s("label_path"), s("review_target"))]

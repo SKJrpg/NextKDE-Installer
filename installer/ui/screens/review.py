@@ -80,9 +80,10 @@ class ReviewScreen(WizardScreen):
 
     def _source_resolved(self, source) -> None:
         self._source = source
+        self.app.resolved_source = source
         self._resolved = True
         if self.is_mounted:
-            self.query_one("#steps", Static).update(self._steps())
+            self.reload()
 
     def reload(self) -> None:
         """Rebuild every pane from the app's current options and source."""
@@ -141,11 +142,14 @@ class ReviewScreen(WizardScreen):
         s, opts = self.strings, self.app.opts
         apps = [s("app_" + name) for name in selected_apps(opts)]
         pairs = [(s("label_source"), s("source_" + opts.source))]
-        prepared = self.app.prepared
+        prepared = self.app.prepared or self._source
         if prepared is not None:
+            ref = prepared.ref
+            if prepared.tag:
+                ref = f"{ref} ({prepared.tag})"
             pairs += [
                 (s("label_repo"), prepared.repository),
-                (s("label_ref"), prepared.ref),
+                (s("label_ref"), ref),
                 (s("label_commit"), prepared.commit[:8]),
                 (s("label_workspace"), str(prepared.path)),
                 (s("label_dirty"), s("review_dirty") if prepared.dirty

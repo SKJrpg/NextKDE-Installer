@@ -257,7 +257,10 @@ class OptionsScreen(WizardScreen):
         if self._local_source is None:
             return head
         state = s("review_dirty") if self._local_source.dirty else s("review_clean")
-        return (f"{head}\n{s('label_ref')} {self._local_source.ref} @ "
+        ref = self._local_source.ref
+        if self._local_source.tag:
+            ref = f"{ref} ({self._local_source.tag})"
+        return (f"{head}\n{s('label_ref')} {ref} @ "
                 f"{self._local_source.commit[:8]} · {state}")
 
     def _paint_local(self) -> None:

@@ -21,7 +21,7 @@ from installer.source import manifest  # noqa: E402
 from installer.source.manager import (detect_local, inspect_local,  # noqa: E402
                                       local_candidates, prepare)
 from installer.source.resolver import (CANONICAL_REPO, latest_release_branch,  # noqa: E402
-                                       repository_id, resolve)
+                                       repository_id, resolve, tag_at)
 
 IDENTITY = ("-c", "user.name=test", "-c", "user.email=test@example.com")
 
@@ -115,6 +115,14 @@ class ResolveTest(unittest.TestCase):
             resolve("local")
 
 
+class TagTest(SourceTestCase):
+    def test_tag_at_reports_the_release_tag_of_a_commit(self) -> None:
+        bare, work = make_repository(self.base, tag="v0.1.0")
+        commit = git("rev-parse", "HEAD", cwd=work).stdout.strip()
+        self.assertEqual(tag_at(url(bare), commit), "v0.1.0")
+        self.assertEqual(tag_at(url(bare), "0" * 40), "")
+
+
 class DevelopmentTest(SourceTestCase):
     def test_clones_main_and_reuses_the_workspace(self) -> None:
         bare, work = make_repository(self.base)
@@ -169,6 +177,7 @@ class StableTest(SourceTestCase):
 
         source = prepare("stable", url(bare), tag="v0.1.0", paths=self.paths)
         self.assertEqual(source.ref, "v0.1.0")
+        self.assertEqual(source.tag, "v0.1.0")
         self.assertEqual(source.commit, tagged)
         self.assertEqual(source.path.name, tagged)
         self.assertEqual(git("rev-parse", "HEAD", cwd=source.path).stdout.strip(), tagged)
@@ -187,12 +196,15 @@ class StableBranchTest(SourceTestCase):
         for name in ("release/0.9", "release/0.10", "release/next"):
             git("branch", name, cwd=work)
             git("push", "-q", "origin", name, cwd=work)
+        git("tag", "v0.1.1", cwd=work)
+        git("push", "-q", "--tags", "origin", cwd=work)
         commit = git("rev-parse", "release/0.10", cwd=work).stdout.strip()
 
         source = prepare("stable", url(bare), paths=self.paths)
 
         self.assertEqual(source.mode, "stable")
         self.assertEqual(source.ref, "release/0.10")
+        self.assertEqual(source.tag, "v0.1.1")
         self.assertEqual(source.commit, commit)
         self.assertEqual(source.path, self.workspace(bare, commit))
         self.assertEqual(git("rev-parse", "HEAD", cwd=source.path).stdout.strip(), commit)

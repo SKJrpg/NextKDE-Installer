@@ -128,6 +128,9 @@ list in the UI, so this answers the package manager's one prompt without `--noco
   for local or a reused workspace, otherwise one streamable clone step); `finish()` verifies,
   records and renames. `plan.build_plan(..., prepared=...)` runs every step inside the prepared
   workspace and emits no `kosctl update`; `--check` resolves the identity read-only.
+- Version display: a managed commit that a release `vX.Y.Z` tag points at shows the tag beside
+  the ref (`release/0.1 (v0.1.1)`) in Review, Confirm and `--check`; the install target stays
+  the branch, so a later fix on the branch still installs before its next tag.
 - Package state: `detect()` runs `kosctl doctor` on `--root` when it is a product checkout,
   otherwise on the newest prepared workspace under `sources_root`, and keeps the missing
   `miss pkg:` names. The Checks page shows the list; the confirmation page repeats it. After a
@@ -228,7 +231,7 @@ itself when the backend has no `deps` verb. This is a product-side gap, not an i
 
 ## 9. Verified state
 
-- `PYTHONPATH=$PWD/vendor python3 -m unittest discover -s tests` → 287 tests, offline
+- `PYTHONPATH=$PWD/vendor python3 -m unittest discover -s tests` → 288 tests, offline
   (bare repositories, `file://`); the Textual tests skip when `vendor/` is missing.
 - Host: `./install.sh --root <checkout> --check` and `… --plain --check` →
   `KOS Installer — CachyOS (x86_64)`, exit 0, nothing cloned.
@@ -239,7 +242,7 @@ itself when the backend has no `deps` verb. This is a product-side gap, not an i
   `kos-state.py list --json` → `{"schema":1,"units":{}}`;
   `source-release.py select main` fetched and detached to `3fa1d70`; a dirty tree was refused.
 - VM `arch-kde` (Arch/Plasma 6.8.2 Wayland): the TUI resolved stable to `release/0.1`
-  (`2ca59a1f`), listed seven missing build packages on Checks and on the confirmation page,
+  (`v0.1.1`, `2ca59a1f`), listed seven missing build packages on Checks and on the confirmation page,
   installed them after the inline sudo prompt (answering pacman's one prompt from the step's
   `input`), then `kosctl install` and `kosctl start` both succeeded; `kosctl version` reported
   `0.1.1`.
