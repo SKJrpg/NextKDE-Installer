@@ -1,6 +1,8 @@
 # 键位与菜单设计（KOS 安装器 TUI）
 
-**已实现**（`installer/ui/keymap.py`、`installer/ui/widgets/footer.py`、`installer/ui/screens/confirm.py`）。本轮把功能键统一成 `Ctrl+…`、把单字母让给 Vim 导航（§12 记录这次的改动与理由）；第 8 节是冲突清单，第 11 节是实现与本稿的历史差异。
+**已实现**（`installer/ui/keymap.py`、`installer/ui/widgets/footer.py`、`installer/ui/screens/confirm.py`）。当前键位以 §1–§10 为准：功能键统一成 `Ctrl+…`，单字母让给 Vim 导航；`ctrl+p` 现在打开 **Textual 内置命令面板**，不是本仓库的命令菜单。§11 起是按键与界面的历史记录，数字和结论只代表当时的状态。
+
+> 管理区（Management / Units / Snapshots / Logs）的键位表仍列在下面，但这些屏幕目前**没有向导内的入口**：`ctrl+p` 已归 Textual 面板，安装器命令还没有注入面板。测试直接打开这些屏幕。
 
 适用范围：`installer/ui/`（Textual 8.2.8，vendored）、`installer/__main__.py` 的 `--plain`/非 TTY 分支。所有可见文案进 `installer/strings.py`，zh/en 成对。
 
@@ -20,7 +22,7 @@
 | 本地源码 | 自动检测（`--root`/`KOS_ROOT` → 当前目录 → `~/Projects/NextKde` → `~/NextKde`），找不到就留空；`ctrl+e` 手输路径 | 装到一半才发现 checkout 不对最贵；只试这四个路径，不扫 `$HOME` |
 | Esc | Esc 只“返回”（向导页是 `Shift+Tab` 的别名），永不退出 | Esc 最易误触，退出必须是另一个手势 |
 | 帮助 | `ctrl+k`（keys）；`?` 保留为**隐藏别名** | `Ctrl+?` 打不出来；`?` 可用但不上海报 |
-| 命令菜单 | `ctrl+p` 打开一屏可用的命令；命令来自该屏自己的动作，禁用行保留并写原因 | 功能键都占满后，剩下的“不常用但要有”的动作不该再抢键；管理只是其中一行 |
+| 命令面板 | `ctrl+p` 打开 Textual 内置的命令面板（Keys / Quit / Screenshot / Theme；有可聚焦控件时还有 Maximize / Minimize） | 先用平台自己的面板；安装器命令暂不注入，管理区因此暂时没有向导入口 |
 
 全局不变式（后面所有表都由它推出）：
 
@@ -39,7 +41,7 @@
 
 | context | 由谁提供 | 说明 |
 |---|---|---|
-| `app` | `ChromeScreen` | 全局可用（`help.open`、`app.commands`）；退出由 `KosApp` 的 Ctrl+C×2 负责，不在表里 |
+| `app` | `ChromeScreen` | 全局可用（`help.open`；`ctrl+p` 的提示行指向 Textual 面板）；退出由 `KosApp` 的 Ctrl+C×2 负责，不在表里 |
 | `wizard.welcome` | `WelcomeScreen` | 语言与入口 |
 | `wizard.checks` | `SystemScreen` | 探针列表 |
 | `wizard.options` | `OptionsScreen` | 表单页 |
@@ -66,7 +68,7 @@
 |---|---|---|---|---|---|
 | `wizard.next` | `Tab` | | welcome / checks / options / review | `key_next` 下一步 / next | 换页；Confirm 上没有下一页 |
 | `wizard.previous` | `Shift+Tab` | `Esc` | checks / options / review | `key_previous` 上一步 / back | Esc 是别名，不上底栏 |
-| `app.commands` | `ctrl+p` | | welcome / checks / options / review / result / menu / list.* / log.view | `key_commands` 命令 / commands | Textual 的命令面板关着；这是我们自己的菜单 |
+| `app.commands` | `ctrl+p` | | welcome / checks / options / review / result / menu / list.* / log.view | `key_commands` 命令 / commands | 只保留底栏/帮助提示；`ctrl+p` 的绑定属于 Textual 面板，安装器命令暂不注入 |
 | `help.open` | `ctrl+k` | `?` | 全部 | `key_help` 帮助 / help | 别名不进底栏；底栏永远最后一项 |
 | `focus.next` | `Tab` | | result / menu / list.* / log.view | `key_focus_next` 下一项 / next field | 隐藏：向导页的 Tab 是换页 |
 | `focus.prev` | `Shift+Tab` | | result / menu / list.* / log.view | `key_focus_prev` 上一项 / previous field | 隐藏 |
@@ -130,13 +132,15 @@
 | Confirm | 页面本身 | `y` 开始安装 · `n` 返回上一步（`Shift+Tab`/`Esc` 同义） · `ctrl+k` | **Enter、Tab、方向键、数字都不响应**，整页保持原样 |
 | Installation | 无（`#cancel` 仅鼠标） | `ctrl+z` 中止（立即） · `ctrl+k` | 导航键全部不绑定：无 Esc、无 Tab、无数字；Ctrl+C 在这里被吞掉，既不中止也不退出 |
 | Result | 失败/取消 →「重试」；成功 →「退出」 | `Enter` 激活聚焦按钮（「退出」也用它） · `Tab`/`Shift+Tab` 换按钮 · `ctrl+r` 重试（非成功） · `ctrl+l` 日志 · `ctrl+p` 命令 · `ctrl+k` | 成功页无 `ctrl+r`；`ctrl+c`×2 也能退出 |
-| Management | 第一行菜单项 | `1–6` 直达 · `↑/↓` 或 `j/k` 选择 · `g/G` 首末 · `Enter` 打开 · `Tab` 换焦点 · `Esc` 返回 · `ctrl+p` 命令 · `ctrl+k`；运行中 `ctrl+z` 中止 | 禁用项保留编号与文字标注；运行中 Ctrl+C 不退出，命令菜单也不开 |
-| Units | 第一行单元 | `↑/↓` `j/k` 选择 · `g/G` 首末 · `Enter`/`Space` 切换 · `Tab` 换焦点 · `Esc` 返回 · `ctrl+p` 命令 · `ctrl+k` | `core` 关闭被拒绝并给一行原因；运行中命令菜单不开 |
+| Management | 第一行菜单项 | `1–6` 直达 · `↑/↓` 或 `j/k` 选择 · `g/G` 首末 · `Enter` 打开 · `Tab` 换焦点 · `Esc` 返回 · `ctrl+p` 命令 · `ctrl+k`；运行中 `ctrl+z` 中止 | 禁用项保留编号与文字标注；运行中 Ctrl+C 不退出；`ctrl+p` 仍是 Textual 面板 |
+| Units | 第一行单元 | `↑/↓` `j/k` 选择 · `g/G` 首末 · `Enter`/`Space` 切换 · `Tab` 换焦点 · `Esc` 返回 · `ctrl+p` 命令 · `ctrl+k` | `core` 关闭被拒绝并给一行原因；运行中 Ctrl+C 不退出；`ctrl+p` 仍是 Textual 面板 |
 | Snapshots | 第一行快照 | `↑/↓` `j/k` 选择 · `g/G` 首末 · `Enter` 回滚（确认） · `ctrl+n` 新建 · `Esc` 返回 · `ctrl+p` 命令 · `ctrl+k` | 空列表时 `ctrl+n` 仍可用 |
 | Logs（列表） | 第一个文件 | `↑/↓` `j/k` 选择 · `g/G` 首末 · `Enter` 打开 · `Esc` 返回 · `ctrl+p` 命令 · `ctrl+k` | 无日志时列出空态文本 |
 | LogViewer | 日志区 | `↑/↓` `j/k` 滚动 · `PgUp/PgDn` · `ctrl+u/d` 翻页 · `g/G` 首末 · `Esc` 返回 · `ctrl+p` 命令 · `ctrl+k` | 只读，无单字符功能键 |
 | sudo 密码条 | 密码输入框 | 输入 · `Enter` 提交 · `Esc` 拒绝并停止 | 非模态，只在有请求时出现；上面盖着模态时等它关闭 |
-| 命令菜单（模态） | 第一行可用命令 | `↑/↓` 或 `j/k` 移动 · `←/→` 或 `h/l` 调整语言 · `Enter` 运行/应用 · `Esc` 关闭 | 禁用的行跳过、不运行，行内写明原因；`←/→` 只在语言行上有效 |
+| 命令菜单（旧，未绑定） | 第一行可用命令 | `↑/↓` 或 `j/k` 移动 · `←/→` 或 `h/l` 调整语言 · `Enter` 运行/应用 · `Esc` 关闭 | 旧的自定义菜单代码保留，但 `ctrl+p` 已归 Textual 面板；管理区暂时没有向导入口 |
+
+> 表里的 `ctrl+p 命令` 是底栏文案，实际打开的是 Textual 内置面板。管理区、Units、Snapshots、Logs 的键位仍然可用，但这些屏幕目前只能由代码/测试打开，直到安装器命令进入面板。
 
 Options 的两块模型：
 
@@ -265,7 +269,7 @@ Management（`ManagementScreen`）是唯一菜单；子页是列表。
 | 日志 | `l` | `ctrl+l` | l 让给“右” |
 | 命令详情 | `t` | `ctrl+e` | e = expand |
 | 新建快照 | `c` | `ctrl+n` | n = new |
-| 命令 / 管理 | `^P` | `ctrl+p`（底栏写全） | 已经是 Ctrl；Textual 的命令面板关着 |
+| 命令 / 管理 | `^P` | `ctrl+p`（底栏写全） | 已经是 Ctrl；现在打开 Textual 内置面板，管理区暂时没有向导入口 |
 | 导航 | 仅方向键 | 增加 `j/k`、`h/l`、`g/G` | 别名，挂在原动作上 |
 
 ### 8.1b 本轮换页键（旧 → 新）
@@ -289,7 +293,7 @@ Management（`ManagementScreen`）是唯一菜单；子页是列表。
 | `ctrl+z` | 中止 | raw 模式下就是普通按键；cooked 终端会把它当挂起（§9.3） |
 | `ctrl+\` | 不用 | SIGQUIT |
 | `ctrl+a` / `ctrl+b` | 不用 | tmux / screen 前缀 |
-| `ctrl+p` | 命令菜单 | Textual 的命令面板关着（`ENABLE_COMMAND_PALETTE=False`），这一条是我们自己的；shell 里是上一条历史，但 TUI 独占输入 |
+| `ctrl+p` | Textual 命令面板 | `ENABLE_COMMAND_PALETTE=True`；面板是框架的（Keys / Quit / Screenshot / Theme），安装器命令暂不注入；shell 里是上一条历史，但 TUI 独占输入 |
 | `ctrl+x` | 不绑 | 退出改用 Ctrl+C×2；`ctrl+x` 留空，避免两个退出键 |
 | `ctrl+r` | 重试 / 重检 | R = retry；shell 的反向搜索在 TUI 里不生效 |
 | `ctrl+l` | 日志 | L = log；shell 的清屏同理 |
@@ -335,7 +339,7 @@ Management（`ManagementScreen`）是唯一菜单；子页是列表。
 |---|---|---|---|
 | `cycle_language` | Welcome | `welcome.language` | `←/→`（`h/l` 别名） |
 | `open_system` | Welcome | `wizard.next` | `Enter` |
-| `open_manage` | Welcome / Result | `app.commands`（§18 起是命令菜单，管理是第一行） | `ctrl+p` |
+| `open_manage` | Welcome / Result | `app.commands`（旧命令菜单；现由 `ctrl+p` 打开 Textual 面板，管理区暂时没有入口） | `ctrl+p` |
 | `quit`（Welcome 屏） | Welcome | —（App 级） | `ctrl+c` 两次 |
 | `move(±1)` | Checks | `check.move` | `↑/↓`（`j/k` 别名） |
 | `refresh` | Checks | `check.refresh` | `ctrl+r` |
@@ -413,7 +417,7 @@ def resolve(contexts, overrides=None, budget=None) -> list[tuple[str, str, str]]
 | `Ctrl+D` | shell 的 EOF | 只在日志视图做半页（只读，且没有 shell 在读） |
 | `Ctrl+A` / `Ctrl+B` | tmux/screen 前缀 | 不绑 |
 | `Ctrl+C` | SIGINT；同时是 Textual 的复制 | 运行页/运行中的菜单动作由隐藏的 `run.guard` 吞掉；其余页面是 App 的“Ctrl+C×2 退出”；模态里不生效 |
-| `Ctrl+R` / `Ctrl+L` / `Ctrl+E` / `Ctrl+N` / `Ctrl+P` / `Ctrl+K` | shell/readline 的常用键，但 TUI 独占输入 | 全部只做功能键（§8.2）；`Ctrl+P` 是命令菜单，`Ctrl+X` 不绑 |
+| `Ctrl+R` / `Ctrl+L` / `Ctrl+E` / `Ctrl+N` / `Ctrl+P` / `Ctrl+K` | shell/readline 的常用键，但 TUI 独占输入 | 全部只做功能键（§8.2）；`Ctrl+P` 是 Textual 面板，`Ctrl+X` 不绑 |
 | `Alt-<键>` | 终端/SSH 下常被拆成裸 Esc，产生误后退 | 不绑任何 Alt 组合 |
 | `Esc` 时序 | 真终端里裸 Esc 不等待；箭头是 `ESC [` 序列 | 只用裸 `Esc`；不依赖“Esc 连按” |
 | `F1–F12` | macOS/tmux/终端常拦截 | 默认不用（F5 已删） |
@@ -438,7 +442,7 @@ def resolve(contexts, overrides=None, budget=None) -> list[tuple[str, str, str]]
 4. 禁用：构造“无单元/无日志”的管理区，断言 `[5]`/`[4]` 仍在行文本里、带文字标记、`check_action` 为 False、底栏不出现其主动作。
 5. 危险动作：`confirm.install`、`run.abort`、`menu.item.uninstall`、`snapshot.rollback`；`confirm.install` 只存在于确认页（`Y` 之前必须经过 Review），卸载与回滚经过 `ConfirmDialog`，`run.abort` 直接生效。
 5b. 本地源码：`tests/ui/test_local_source.py` 断言检测顺序、脏工作区、找不到时留空并提示、`ctrl+e` 只在本地源码时可开、空路径与非法路径留在对话框并给原因、`~` 展开、接受后进入 `opts.local_path` 并出现在 Review 的计划里，以及 66 列底栏裁掉提示而帮助仍列；`tests/test_source.py`（`detect_local`/`local_candidates`/`inspect_local`）与 `tests/test_workflow.py`（`local_path` 覆盖 `--root`，其它模式忽略它）补后端一半。
-5c. 命令菜单：`tests/ui/test_commands.py` 逐页打开、运行/描述/禁用原因、↑/↓/j/k/Enter/Esc、Management 的「当前页面」、运行中不开、主题/语言/帮助/关于/退出、66 列与帮助仍列 `ctrl+p 命令`；`test_keymap.py` 把 `app.commands` 当功能键。整套 270 项全绿。
+5c. 命令面板：`ctrl+p` 由 Textual 打开内置面板，安装器命令暂不注入；旧命令菜单的测试改为直接打开目标屏幕。`tests/ui/test_navigation.py` 钉住各页底栏仍写 `ctrl+p 命令`，帮助仍列出该提示；`tests/ui/test_keymap.py` 把 `app.commands` 当提示行而不是绑定。
 6. 键位覆盖：`{"wizard.previous": "b"}` 后底栏出现 `b 上一步`，`esc` 不再后退。
 7. 导航链：Welcome（Esc 不动）→ Checks → Options → Review → Confirm（`N` 回 Review）→ Esc/Shift+Tab 逐层回到 Welcome。
 8. 数字：向导页没有数字绑定；管理区 `1..6` 命中对应行；禁用行按数字无状态变化。
@@ -448,7 +452,7 @@ def resolve(contexts, overrides=None, budget=None) -> list[tuple[str, str, str]]
 
 ## 10. 未决 / 后续
 
-- 日志暂停（`key_pause`/`key_resume` 文案已在）仍未实现。若要做，只能占一个 Ctrl 键（建议 `ctrl+o`，`ctrl+p` 已是命令菜单），且只出现在 Installation——与“进度页只留中止”相冲突，倾向**先不做**。
+- 日志暂停（`key_pause`/`key_resume` 文案已在）仍未实现。若要做，只能占一个 Ctrl 键（建议 `ctrl+o`，`ctrl+p` 已是 Textual 面板），且只出现在 Installation——与“进度页只留中止”相冲突，倾向**先不做**。
 - Result 的按钮文本保持单词（「重试」/「退出」），键位写在底栏与帮助里，不再在按钮上贴 `[r]`。
 - 侧栏数字删除后，`sidebar` 是否加行号仍待定；点击目标本来就可见，倾向不加。
 

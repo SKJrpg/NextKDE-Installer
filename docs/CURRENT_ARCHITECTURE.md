@@ -1,64 +1,64 @@
 # Current architecture
 
-What this repository is today (branch `main`).
-It is written from the code, not from intent: every claim below is something the tree does.
+What this repository is on `main`. This file is written from the code: every
+claim below is something the tree does. `docs/design.md` is the original
+proposal and is historical; when the two disagree, this file and the code win.
 
 ## 1. What the installer is
 
-A standalone Python program that installs NextKDE. It owns the wizard, the system checks,
-the source choice and the plan; it does **not** own building or deploying the desktop.
-That stays in the product repository (`NextKde/NextKde`): `tools/kosctl`,
-`tools/install-debian13.sh`, `tools/kos-state.py`.
+A standalone Python program that installs NextKDE. It owns the wizard, the
+system checks, the source choice, the plan and the logs. It does **not** build
+or deploy the desktop: that stays in the product checkout's `tools/kosctl`,
+`tools/install-debian13.sh` and `tools/kos-state.py`.
 
-The product checkout is an input (`--root`, `KOS_ROOT`, default `~/NextKde`), never inferred
-from `__file__`. The wizard may instead take the checkout chosen on Options (`Options.local_path`):
-it is detected from `--root`/`KOS_ROOT`, the current directory, `~/Projects/NextKde` and
-`~/NextKde`, or typed with `ctrl+e`. CLI and plain runs never set it, so `--root` keeps its
-meaning there.
+The product checkout is an input (`--root`, `KOS_ROOT`, default `~/NextKde`),
+never inferred from the installer's own location. A local install may instead
+use the checkout chosen on Options (`Options.local_path`), detected from
+`--root` / `KOS_ROOT`, the current directory, `~/Projects/NextKde` and
+`~/NextKde`, or typed with `ctrl+e`.
 
 ## 2. Layout
 
 ```
-install.sh              python3 >= 3.10 check, then `python3 -m installer`
+install.sh              Python >= 3.10 check, then `python3 -m installer`
 tools/vendor.py         unpacks the pinned wheels (Textual, rich, deps) into vendor/
 installer/
   __init__.py           VERSION
   __main__.py           argparse, config file, plan, entry-point choice, exit codes
-  paths.py              Paths: installer_root, source_root (+ source_root_explicit),
-                        build_root, state_root, log_dir, sources_root, installer_runtime
-  detect.py             /etc/os-release parsing, family map, 13 probes, blocked flag
+  paths.py              Paths: installer_root, source_root, build_root, state_root,
+                        log_dir, settings_file, sources_root
+  detect.py             /etc/os-release parsing, family map, 9 probes + packages
   plan.py               Options -> [Step]; source/components/start ordering; argv only
   runner.py             StepRunner: argv, process group, streamed output, cancel
   manage.py             reads the ledger/snapshots/logs/deps through the product's tools
+  settings.py           remembered language/source (XDG state, not install state)
   strings.py            zh/en pairs, locale choice, CJK font probe
   backend/
     models.py           capability names, BackendInfo, BackendIncompatible, require()
     contract.py         packaging/installer-contract.json, then kosctl installer-info
     probe.py            capabilities evidenced by the checkout's files and usage
-  source/               Git Source Manager (see section 5)
+  source/               Git Source Manager (section 5)
   core/
     events.py           Event: one classified line or state change from a worker
     session.py          InstallSession: runs the plan, reports events, cancels
     askpass.py          sudo shim + askpass helper: one answer per blocked sudo call
   ui/
-    app.py              KosApp: wizard state (Options, prepared source, steps),
-                        thread workers, cancel/quit
-    theme.py            resolve_mode: --theme / KOS_THEME → dark|light; dark default
-    theme/app.tcss      the stylesheet: chrome, sidebar, lists, dialogs
-    screens/            welcome, system, options, review, installation, result,
-                        and the management area (units, snapshots, logs, management)
-    widgets/confirm.py  modal confirmation used by the destructive actions
-    widgets/sudo_bar.py inline bar (above the footer) that answers one blocked sudo call
+    app.py              KosApp: wizard state, workers, palette, settings, cancel/quit
+    keymap.py           the one key table; footers and help resolve from it
+    theme.py            resolve_mode: --theme / KOS_THEME -> dark|light; dark default
+    theme/app.tcss      the stylesheet: chrome, sidebar, lists, dialogs, sudo bar
+    screens/            welcome, system, options, review, confirm, installation,
+                        result, and the management area
+    widgets/            footer, help, confirm, about, local path, sudo bar
   render/
     plain.py            the same plan without a TTY; NO_COLOR aware
 tests/                  offline unit tests (tests/, tests/core/, tests/ui/)
 vendor/                 pinned Textual 8.2.8 + rich and its dependencies
-docs/design.md          the independent-installer architecture proposal
-docs/BACKEND_CONTRACT.md  capability names, contract shapes, probe fallback
+docs/                   current architecture, backend contract, keys, history
 ```
 
-`installer/ui/` is the only module that owns terminal state; everything it shows comes from
-`detect`, `plan`, `manage` and `runner`.
+`installer/ui/` is the only module that owns terminal state; everything it
+shows comes from `detect`, `plan`, `manage` and `runner`.
 
 ## 3. Startup and flow
 
@@ -66,28 +66,93 @@ docs/BACKEND_CONTRACT.md  capability names, contract shapes, probe fallback
 install.sh
   └─ python3 -m installer [flags]
        ├─ Paths.resolve(--root)
-       ├─ detect(root=source_root)          # runs `kosctl doctor`, reads the guide
-       ├─ backend contract read/probe       # contract.read(root) or probe.detect(root)
+       ├─ settings.load()                  # remembered language/source
+       ├─ detect(root=source_root)         # probes, including `kosctl doctor`
+       ├─ backend contract read/probe      # contract.read(root) or probe.detect(root)
        ├─ Options from CLI + JSON config
-       ├─ build_plan(..., backend=info)     # capability-filtered argv, nothing run
+       ├─ build_plan(..., backend=info)    # capability-filtered argv, nothing run
        └─ Textual UI (TTY and vendor/ has textual) | plain (no TTY, --plain, --yes,
           or textual missing — it says so on stderr)
-            └─ on confirm: workflow.begin() -> stream the clone -> finish()
-               -> re-detect backend from the workspace
-               -> build_plan(..., prepared=..., backend=...)
+             └─ on confirm: workflow.begin() -> stream the clone -> finish()
+                -> re-detect backend from the workspace
+                -> build_plan(..., prepared=..., backend=...)
 ```
 
-Exit codes: `--check` returns 0 when nothing is blocked, 2 when a probe fails or the backend
-cannot honour the selection; the plain executor returns the failing step's status, 130 when
-cancelled.
+`--check` is read-only. It resolves the source identity (a network read),
+prints the plan, then one backend line: `Backend: probe · N capabilities` or
+`Backend: contract v1`. It returns 0 when nothing is blocked, 2 when a probe
+fails or the backend cannot honour the selection; the plain executor returns
+the failing step's status, 130 when cancelled.
 
-`--check` is read-only. It runs probes (including `kosctl doctor`) and prints the plan,
-then one backend line: `Backend: probe · N capabilities` or `Backend: contract v1`.
+## 4. Detection and checks
 
-## 4. The plan
+`detect()` parses `/etc/os-release`, maps the distribution to a family
+(`debian`, `ubuntu`, `arch`, `fedora`, `opensuse`, `nixos` or none) and a method
+(`wrapper`, `kosctl`, `report`, `nixos` or `unknown`). Its probes are:
 
-`plan.build_plan()` returns `Step(key, title, argv, env, note)` objects. Nothing else executes
-commands. Today's steps:
+| Probe | What it reads | Status rule |
+|---|---|---|
+| `probe_os` | `/etc/os-release` | PASS when an ID exists |
+| `probe_arch` | `platform.machine()` | PASS for `x86_64` / `aarch64`, otherwise WARN |
+| `probe_manager` | `apt-get`, `pacman`, `dnf`, `zypper` on `PATH` | PASS when one exists |
+| `probe_plasma` | `plasmashell --version` | PASS at 6.x or newer |
+| `probe_graphics` | `XDG_SESSION_TYPE` / `WAYLAND_DISPLAY` | PASS in a Wayland session |
+| `probe_kwin` | `kwin_wayland --version` | PASS at 6.6 or newer |
+| `probe_quickshell` | `qs` / `quickshell` version | PASS for 0.3.x; WARN otherwise |
+| `probe_qt` | `qmake6` / `qtpaths6` / `pkg-config Qt6Core` | PASS at 6.6 or newer; WARN otherwise |
+| `probe_disk` | `shutil.disk_usage($HOME)` | PASS at 6 GiB free |
+| `probe_packages` | `kosctl doctor` list, only when a checkout is available | WARN with the missing package list; PASS when none are missing |
+
+`System.blocked` is true when any probe is FAIL. The Checks screen shows
+PASS/WARN/FAIL as words and glyphs, never colour alone. Its detail column has
+`检查内容 / 状态 / 检测结果 / 说明`; the “说明” line is generated per probe:
+`probe_os` uses the detected family's note (`Arch 系，使用 kosctl`,
+`Debian 系，使用 install-debian13.sh`, …), while the version probes state only
+the required version.
+
+## 5. Options, settings and source preparation
+
+`Options` is the single wizard state object: `source`, `apps`, `app_set`,
+`lockscreen`, `spatial`, `start`, `proxy`, `local_path`. The source is one of
+`stable`, `main`, `local`.
+
+Settings are separate from installation state: `settings.load()` reads
+`<state_root>/settings.json` and accepts only `lang` in `zh|en` and `source` in
+`stable|main|local`. The real CLI passes `remember=True` to `KosApp`, so
+changing the language or source updates that file; `--plain`, tests and
+embedders pass `remember=False`. CLI flags and the JSON config override the
+remembered values.
+
+`installer/source/` resolves a mode to exactly one commit and one immutable
+workspace:
+
+| Mode | Meaning | Git writes |
+|---|---|---|
+| stable | newest `vX.Y.Z` release tag of the configured repository (`NextKde/NextKde`) | clone only |
+| development | the `main` branch of that repository | clone only |
+| local | the checkout chosen on Options, else `--root`, as it is | none: no fetch, checkout, reset or remote edit |
+
+- The ref is resolved with `git ls-remote` / the GitHub release API **before**
+  anything is cloned; the commit is the identity.
+- Managed workspaces: `<XDG_DATA_HOME>/nextkde/sources/<repository-id>/<commit>/`,
+  cloned `--depth 1` into `<commit>.tmp`, HEAD verified, `source.json` written,
+  then renamed into place. A prepared commit is never rewritten.
+- Reuse requires the directory's HEAD and the manifest's repository to match;
+  otherwise the error says to remove it.
+- `manager.inspect_local(path)` is the one local validation: top of a work tree,
+  `tools/kosctl` present, at least one commit; it reads branch, commit, origin
+  and dirty state and writes nothing. `manager.detect_local()` tries the
+  candidates above through it; `$HOME` itself is never scanned.
+- `workflow.begin()` returns a `Preparation`: already prepared for local or a
+  reused workspace, otherwise one streamable clone step. `finish()` verifies,
+  records and renames. `plan.build_plan(..., prepared=...)` runs every step
+  inside that workspace and emits no `kosctl update`; `--check` resolves the
+  identity read-only.
+
+## 6. The plan
+
+`plan.build_plan()` returns `Step(key, title, argv, env, note)` objects. Nothing
+else executes commands. Today's steps:
 
 | Family | Steps |
 |---|---|
@@ -96,147 +161,140 @@ commands. Today's steps:
 | arch / ubuntu / fedora | `kosctl update <ref>` only when nothing was prepared; `kosctl deps --install` first when the probe found missing packages; then `kosctl install`, `kosctl install apps [--only …]`, `kosctl install lockscreen`, `kosctl start` inside the prepared workspace |
 | opensuse / unknown | nothing; the UI reports only |
 
-`KOS_BUILD_SPATIAL=ON|OFF` and the proxy/session variables are placed in each step's env.
-`paths.build_root` is defined but deliberately not exported yet: the backend's handling of
-`KOS_BUILD_DIR` / `KOS_APPS_BUILD_DIR` is unverified.
+`KOS_BUILD_SPATIAL=ON|OFF` and the proxy/session variables are placed in each
+step's env. `paths.build_root` is defined but deliberately not exported:
+the backend's handling of `KOS_BUILD_DIR` / `KOS_APPS_BUILD_DIR` is unverified.
 
-## 5. Source manager
+## 7. Textual UI
 
-`installer/source/` resolves a mode to exactly one commit and one immutable workspace:
+### 7.1 Chrome and screens
 
-| Mode | Meaning | Git writes |
-|---|---|---|
-| stable | newest release tag of the configured repository (`NextKde/NextKde`) | clone only |
-| development | the `main` branch of that repository | clone only |
-| local | the checkout chosen on Options (`Options.local_path`), else `--root`, as it is | none: no fetch, checkout, reset or remote edit |
+`KosApp` owns `opts`, the prepared source, the steps, the detected system, the
+backend and the run state. Every wizard screen is a `WizardScreen`: Header,
+the fixed step sidebar, the body in `#main`, then the inline sudo bar and the
+footer. The management area is a `ChromeScreen` without the sidebar.
 
-- The ref is resolved with `git ls-remote` **before** anything is cloned; the commit is the
-  identity.
-- Managed workspaces: `<XDG_DATA_HOME>/nextkde/sources/<repository-id>/<commit>/`, cloned
-  `--depth 1` into `<commit>.tmp`, HEAD verified, `source.json` written, then the directory is
-  renamed into place. A prepared commit is never rewritten.
-- Reuse requires the directory's HEAD and the manifest's repository to match; otherwise the
-  error says to remove it.
-- `manager.inspect_local(path)` is the one local validation: top of a work tree, `tools/kosctl`
-  present, at least one commit; it reads branch, commit, origin and dirty state and writes
-  nothing. `manager.detect_local(paths)` tries the candidates above through it (in a worker, from
-  the UI) and `local_candidates()` is the order; `$HOME` itself is never scanned.
-- Wired: `workflow.begin()` resolves the channel and returns a `Preparation` (already prepared
-  for local or a reused workspace, otherwise one streamable clone step); `finish()` verifies,
-  records and renames. `plan.build_plan(..., prepared=...)` runs every step inside the prepared
-  workspace and emits no `kosctl update`; `--check` resolves the identity read-only.
+Screens: Welcome, Checks, Options, Review, Confirm, Installation, Result, plus
+the management area (Management, Units, Snapshots, Logs, LogViewer) and the
+modal Help, About, ConfirmDialog and LocalPathDialog.
 
-## 6. Rendering
+### 7.2 Keys, footer and help
 
-Two front ends, one plan:
+`keymap.py` is the one key table. Each screen declares a context; the focused
+widget may add its own. `keymap.resolve()` feeds the Textual bindings, the
+one-line footer and the `ctrl+k` overlay, so the three cannot disagree. Config
+`keys` can override an action.
 
-- **Textual** (`installer/ui/`), vendored under `vendor/` and put on `PYTHONPATH` by
-  `install.sh`. `KosApp` owns the wizard state (`opts`, prepared source, steps, cancel
-  event) and holds the fixed chrome; `screens/` holds one `Screen` per step (welcome,
-  system, options, review, confirm, installation, result) plus the management area
-  (units, snapshots, logs, management); `widgets/confirm.py` is the modal confirmation,
-  `widgets/commands.py` the Ctrl+P command menu (each screen supplies its own rows) and
-  `widgets/about.py` the small about box; every style lives in `theme/app.tcss`.
-  `keymap.py` is the one key table: each screen declares a context, and
-  `keymap.resolve()` feeds the Textual bindings, the one-line hint bar and the `?`
-  overlay, so the three cannot disagree (config `keys` overrides it). Esc only steps
-  back, quitting is Ctrl+C twice (a screen guard owns it while a run is active), Ctrl+Z
-  aborts a run, and installing needs the confirmation page (`screens/confirm.py`) with
-  "back" selected first.
-- **Appearance**: the palette is the terminal's own (`ansi_color=True` and `ansi_default`
-  in the stylesheet), so only the mode is resolved: `--theme`, then `theme` in the JSON
-  config, then `KOS_THEME`. **Dark is the default**; only an explicit `system` reads the
-  terminal's `COLORFGBG` background index (`0-6,8` dark, `7,9-15` light). `theme.py` holds
-  that and `KosApp` keeps only `dark`, since the mode is fixed for the session; every
-  screen takes its secondary text from `app.secondary_style` — `dim` on dark (the
-  terminal dims its own foreground) and ANSI 8 on light (a readable grey rather than a
-  foreground faded towards white). Status colours, the modal's own surface and the focused
-  row keep their styling.
-- **Workers**: preparation, the install and management actions run in
-  `@work(thread=True)`. Every line they produce is a `core.events.Event` handed to the
-  event loop with `call_from_thread`, so nothing blocks and a screen only ever shows what
-  the runner reported. `action_quit` and `on_unmount` wait for the workers, so no install
-  child outlives the UI.
-- Install screen: stage list (done/current/waiting/failed/skipped), measured counters when
-  the runner reports them, otherwise an explicit indeterminate bar; `p` pauses the log.
-- `render/plain.py` is the non-TTY path (`--check`, `--yes`, `--plain`, no Textual): the
-  same `strings`, `plan`, `detect` and exit codes, NO_COLOR aware.
-- Status is text (`通过/注意/失败`, `PASS/WARN/FAIL`) plus colour, never colour alone.
+- `Tab` / `Shift+Tab` page the wizard; `Esc` is the back alias.
+- `j/k`, `h/l` and `g/G` are Vim aliases on existing actions.
+- `ctrl+c` twice quits (first press warns); `ctrl+z` aborts a run; `ctrl+k`
+  opens help.
+- Confirm is a two-key page: `y` installs, `n` goes back; Enter, Tab, arrows,
+  digits and Vim keys are inert.
 
-## 7. Process execution
+### 7.3 Command palette
 
-`StepRunner` runs an argv list with `start_new_session=True`, streams stdout+stderr through a
-selector, classifies lines, and writes them to the run log. `cancel()` signals the process
-group with SIGTERM and escalates to SIGKILL after five seconds; `close()` always waits, so the
-child is reaped. No `shell=True` anywhere.
+`KosApp.ENABLE_COMMAND_PALETTE = True`, so `ctrl+p` opens Textual's own
+`CommandPalette` (Keys, Quit, Screenshot, Theme; Maximize/Minimize when a
+focusable widget allows). The installer's own commands are deliberately **not**
+injected yet. The old `widgets/commands.py` menu is retained but unreachable
+from `ctrl+p`; management tests open their screens directly. Until installer
+commands are added to the palette, the management area has no wizard key.
 
-### sudo, on demand
+### 7.4 Checks and Options detail
 
-The install children get no tty, so `core/askpass.py` gives each run a private `0700`
-directory (under `XDG_RUNTIME_DIR`, `/tmp` as fallback) holding a `sudo` shim and an
-`askpass.sh` helper; the session merges `PATH` (the directory first) and `SUDO_ASKPASS` into
-every step's env. The shim adds the `-A` sudo otherwise ignores. The helper is the only thing
-that ever asks: it creates `pending.<token>`, polls every 100 ms for `answer.<token>` (hard
-timeout 180 s), prints that file's contents once, and removes both. `Askpass.pending()` is
-what the UI watches, `answer()` writes a `0600` file, and `cancel()` writes an empty answer
-plus a `denied` marker so this and every later request fail immediately instead of sudo
-asking three times. The flush of the whole password story: no password is written until a
-request exists, and the answer is deleted as soon as sudo reads it.
+At 110 columns and wider, Checks and Options put a detail column beside their
+list; below that the detail stacks under the list (and is hidden on a short
+Options page so the form keeps its rows). The Checks detail follows the
+selected probe; the Options detail follows the focused row. Every selectable
+Options row is mapped in `DETAILS`, so sources, apps, core and advanced rows
+each have their own string instead of a shared paragraph.
 
-`KosApp` polls `pending()` every 150 ms on the event loop and shows the inline `SudoBar`
-on the screen that is already running (Installation, or the management list); it is never a
-modal and never stacks (a request that arrives while the bar is up is asked right after it
-is answered). A modal on top (help, a confirmation) hides the screen's bar, so the request
-waits until that closes. So nothing is asked at startup and nothing is asked at all when
-`sudo -n true` already works: a full install asks once for the build packages and once for
-the KWin system plugins after the build, the way running `kosctl` by hand does. The request is the
-only trigger, never the plan starting: dependencies that are already present produce no
-early prompt (exactly one prompt, after the build), and a still-valid sudo timestamp
-produces none at all. Denying cancels the run; the step fails and the result screen says
-the password was not provided.
-`--plain`/`--yes` have no event loop to answer requests mid-run, so they keep the up-front
-`getpass` (with a tty) or exit 2 before starting (without one), and the password is written
-before the run instead.
+### 7.5 Sudo bar
 
-## 8. Backend surface actually used
+The bar sits above the footer and is never a modal. It has two rows: the reason
+(`安装软件包和构建环境需要 root`) with the `⏎ 继续 · esc 取消` hint, then the
+no-echo input row. Its content starts at the same column as the main content
+(the log's left edge on wizard pages); the hint is hidden below 80 columns so
+the reason stays on one line. `Esc` denies; `Enter` submits; one request is
+shown at a time.
+
+### 7.6 Installation, Review and Result
+
+- Installation: stage list (done/current/waiting/failed/skipped), a progress bar
+  directly under the stages, one blank row before the log, and the live wrapping
+  log. `ctrl+z` aborts immediately; there is no log-pause key.
+- Review: summary, the real plan, `ctrl+e` to expand commands, and a “提示”
+  section. The page is scrollable with `↑/↓`, `j/k` and `g/G`. On a failed
+  preparation it swaps to `ctrl+r` retry / `ctrl+l` log.
+- Result: `q` quits, `ctrl+r` retries when the run did not succeed, `ctrl+l`
+  opens the log.
+
+## 8. Process execution and sudo
+
+`StepRunner` runs an argv list with `start_new_session=True`, streams
+stdout+stderr through a selector, classifies lines, and writes them to the run
+log. `cancel()` signals the process group with SIGTERM and escalates to SIGKILL
+after five seconds; `close()` always waits. No `shell=True` anywhere.
+
+The install children get no tty, so `core/askpass.py` gives each run a private
+`0700` directory (under `XDG_RUNTIME_DIR`, `/tmp` as fallback) holding a `sudo`
+shim and an `askpass.sh` helper; the session merges `PATH` (the directory first)
+and `SUDO_ASKPASS` into every step's env. The shim adds `-A`; the helper creates
+`pending.<token>`, polls for `answer.<token>`, prints that file once, and
+removes both. The UI polls `pending()` every 150 ms and shows the bar on the
+screen that is already running (Installation or the management list); a request
+that arrives while the bar is up waits for the next one. A modal on top hides
+the bar, so the request waits until it closes.
+
+Nothing is asked at startup and nothing is asked when `sudo -n true` already
+works. A full install asks once for the build packages and once for the KWin
+system plugins after the build, like running `kosctl` by hand. Denying cancels
+the run; the step fails and the result screen says the password was not
+provided. `--plain` / `--yes` ask once with `getpass` when stdin is a tty;
+without one they need a primed `sudo -v` and exit 2 before starting.
+
+## 9. Backend contract
 
 The capability each call needs is declared in `installer/backend/models.py`; a
-backend that does not declare it never receives the step (`docs/BACKEND_CONTRACT.md`).
+backend that does not declare it never receives the step
+(`docs/BACKEND_CONTRACT.md`). `contract.read()` prefers the static
+`packaging/installer-contract.json`, then `kosctl installer-info --json` when
+the usage text advertises it. Falling back to `probe.detect()` derives only
+what the checkout evidences. An incompatible `installer_api` stops before
+Review (and again before the install if preparation finds a different
+checkout). The product side is still pending.
 
-| Call | Where | Present upstream? |
-|---|---|---|
-| `kosctl install`, `install apps [--only]`, `install lockscreen`, `start`, `update`, `doctor` | plan/manage | yes |
-| `kosctl deps`, `deps --install` | plan/manage | **no** (local branch only) |
-| `kos-state.py list/snapshots --json`, verb calls | manage | **no** (local branch only) |
-| `install-debian13.sh --local` | plan | **no** (local branch only) |
-| `source-release.py latest/select` | plan | `latest` yes, `select` yes |
-| `packaging/installer-contract.json`, `kosctl installer-info --json` | backend | **no** (new work) |
+## 10. Plain mode
 
-Against upstream `main` the dependency probe and the management screens therefore degrade to
-empty. This is a product-side gap, not an installer bug.
+`render/plain.py` is the non-TTY path (`--check`, `--yes`, `--plain`, or no
+Textual). It uses the same `strings`, `plan`, `detect` and exit codes, keeps the
+same headings and explicit PASS/WARN/FAIL labels, and honours `NO_COLOR`. The
+plain executor owns source preparation and the run; it writes the password to
+the askpass answer before the run instead of asking mid-run.
 
-## 9. Verified state
+## 11. Tests, state and known gaps
 
-- `PYTHONPATH=$PWD/vendor python3 -m unittest discover -s tests` → 171 tests, offline
-  (bare repositories, `file://`); the Textual tests skip when `vendor/` is missing.
-- Host: `./install.sh --root <checkout> --check` and `… --plain --check` →
-  `KOS Installer — CachyOS (x86_64)`, exit 0, nothing cloned.
-- Textual wizard captured in tmux at 100×30: Welcome and Options render inside the fixed
-  chrome, Options shows the source, apps and advanced toggles.
-- VM `arch-clean` (fresh Arch + Plasma 6.8/Wayland): installer cloned from GitHub and ran;
-  `--check` and the TUI rendered; `kosctl deps` reported 10 missing packages;
-  `kos-state.py list --json` → `{"schema":1,"units":{}}`;
-  `source-release.py select main` fetched and detached to `3fa1d70`; a dirty tree was refused.
+Test command:
 
-## 10. Known gaps
+```sh
+PYTHONPATH=$PWD/vendor python3 -m unittest discover -s tests
+```
 
-- The backend contract is implemented on the installer side only: the product still
-  ships neither `packaging/installer-contract.json` nor `kosctl installer-info`, so
-  `--check` reports `Backend: probe · N capabilities`. The probe is honest but narrow;
-  the declared path (and its tests) exist and take over once the product ships a file.
-- No subcommands by design: the interface is flags (`--check`, `--plain`, `--yes`, `--source`, …); product operations stay in `kosctl` and are not wrapped again.
-- No release artefact, self-update or CI; `pyproject.toml` exists and declares the console
-  script only.
-- `kosctl deps` and the `kos-state.py` verbs are missing upstream, so the dependency probe
-  and the management screens are empty against `main`.
-- `paths.build_root` is still not passed to the backend (`KOS_BUILD_DIR` unverified).
+The suite is offline: temporary repositories, `file://` remotes, no network.
+Textual tests skip when `vendor/` is missing. Settings and logs are isolated
+with a throwaway `XDG_STATE_HOME` in the tests.
+
+Known gaps:
+
+- The backend contract is implemented on the installer side only: the product
+  ships neither `packaging/installer-contract.json` nor
+  `kosctl installer-info`, so a checkout reports `Backend: probe · N
+  capabilities`.
+- Installer commands are not in Textual's palette yet; the management area has
+  no wizard key until they are.
+- `kosctl deps` / `deps --install` and `tools/kos-state.py` are missing
+  upstream, so the dependency probe and management actions are empty against
+  `main`.
+- No release artefact, self-update or CI. `paths.build_root` is defined but not
+  passed to the backend (`KOS_BUILD_DIR` unverified).

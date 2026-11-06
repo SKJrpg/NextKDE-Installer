@@ -89,7 +89,7 @@ def _options(args, config: dict, remembered_source: str | None = None) -> Option
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="tools/install.sh",
+        prog="install.sh",
         description="KOS installer UI shell: detect the distribution and run the matching install path.",
     )
     parser.add_argument("--root", metavar="DIR",
@@ -102,8 +102,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--source", choices=("stable", "main", "local"),
                         help="source release to install; local keeps this checkout untouched")
     parser.add_argument("--theme", choices=("system", "dark", "light"),
-                        help="terminal appearance; system detects it (default), "
-                             "dark/light override a terminal that does not report it")
+                        help="terminal appearance; dark is the default, "
+                             "system follows the terminal's background")
     parser.add_argument("--apps", nargs="?", const="all", metavar="LIST",
                         help="also install the standalone apps; LIST narrows it (calendar,todo)")
     parser.add_argument("--lockscreen", action="store_true", help="also install the lock screen theme")

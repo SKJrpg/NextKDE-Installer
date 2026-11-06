@@ -9,6 +9,7 @@ product-side declaration is still pending (see `MIGRATION_PLAN.md`).
 | Capability | Meaning | Step / UI |
 |---|---|---|
 | `system.doctor` | `kosctl doctor` reports dependencies | dependency probe, manager |
+| `system.deps` | `kosctl deps` / `kosctl deps --install` | `deps` step |
 | `install.core` | `kosctl install` builds and deploys the desktop | `core` step |
 | `install.apps` | `kosctl install apps [--only …]` | app rows, `apps` step |
 | `install.lockscreen` | `kosctl install lockscreen` | lock-screen row, `lockscreen` step |
@@ -32,7 +33,7 @@ product without guessing.
   "schema_version": 1,
   "product": {"id": "nextkde", "name": "NextKDE"},
   "installer_api": {"minimum": 1, "maximum": 1},
-  "capabilities": ["system.doctor", "install.core", "install.apps"],
+  "capabilities": ["system.doctor", "system.deps", "install.core", "install.apps"],
   "components": ["calendar", "todo", "weather", "calculator"]
 }
 ```

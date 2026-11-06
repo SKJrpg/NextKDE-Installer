@@ -1,121 +1,224 @@
 # NextKDE Installer
 
-Standalone installer for NextKDE. It owns the wizard, the system checks, the
-source choice and the install plan; it does not own building or deploying the
-desktop — `tools/kosctl` in the product checkout does that.
+A standalone installer for NextKDE. It owns the wizard, the system checks, the
+source choice, the install plan and the logs. It does **not** build or deploy
+the desktop: that stays in the product checkout's `tools/kosctl`,
+`tools/install-debian13.sh` and `tools/kos-state.py`.
+
+The installer is independent of the product repository. The product checkout is
+an input (`--root` / `KOS_ROOT`, default `~/NextKde`), never inferred from the
+installer's own location. `stable` and `main` fetch their own managed workspace;
+only `local` installs from that checkout.
 
 ## Requirements
 
-- Linux with KDE Plasma 6 on Wayland (the installer checks this)
-- Python 3.10+, standard library plus the vendored Textual tree — there is nothing
-  to `pip install`
+- Linux with KDE Plasma 6 on Wayland (the wizard checks this)
+- Python 3.10+ — the runtime is the standard library plus the vendored Textual
+  tree; there is nothing to `pip install`
 - Git
 
-## Run
+The interactive UI is Textual, vendored under `vendor/`. Without `vendor/` the
+same plan still runs, but the wizard falls back to the plain renderer.
 
-One line, from a machine that only has git and Python 3.10+:
+## Quick start
+
+From a machine that only has git and Python 3.10+:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/SKJrpg/NextKDE-Installer/main/install.sh | bash
 ```
 
-It clones this repository into `~/NextKde-Installer`, builds `vendor/` once, and starts the
-wizard (`KOS_INSTALLER_DIR`, `KOS_INSTALLER_REF` and `KOS_INSTALLER_REPO` override the three
-choices). From a checkout it is simply `./install.sh`.
+The script clones this repository into `~/NextKde-Installer`, builds the
+vendored UI once, and starts the wizard. `KOS_INSTALLER_DIR`,
+`KOS_INSTALLER_REF` and `KOS_INSTALLER_REPO` override the three choices.
 
-
-```sh
-python3 tools/vendor.py          # once: unpacks the pinned wheels into vendor/
-./install.sh --root ~/NextKde
-```
-
-The interactive UI is Textual, vendored under `vendor/` and put on `PYTHONPATH` by
-`install.sh`; without it an interactive run says so and falls back to plain output.
+From a checkout:
 
 ```sh
-./install.sh --root ~/NextKde --check        # report and plan only, changes nothing
-./install.sh --root ~/NextKde --plain        # no interactive UI, runs the plan
+python3 tools/vendor.py     # once: unpack the pinned wheels into vendor/
+./install.sh
 ```
 
-`--root` (or `KOS_ROOT`) names the product checkout; it defaults to
-`~/NextKde`. The installer never changes the product checkout on its own:
-`local` keeps it as it is, `stable`/`main` only fetch when the tree is clean
-and you picked that source.
+Useful non-interactive runs:
 
-Flags: `--check` report only, `--plain` no interactive UI, `--yes`, `--config FILE`,
-`--source stable|main|local`, `--theme system|dark|light`, `--apps [LIST]`,
-`--lockscreen`, `--all`, `--start`, `--no-proxy`, `--lang zh|en`.
+```sh
+./install.sh --root ~/NextKde --check     # probes + the plan, changes nothing
+./install.sh --root ~/NextKde --plain     # no TUI, run the plan
+```
 
-`--theme` picks how the wizard draws secondary text: `dark` (the default) dims the
-terminal's own foreground, `light` uses its ANSI 8 grey. `system` follows the terminal:
-the flag (`theme` in the JSON config) wins, then `KOS_THEME`, and only `system` looks at
-the background index in `COLORFGBG`. Anything unset stays dark, even on a terminal that
-reports a light background; pass `--theme light` or `--theme system` there. The palette
-itself is always the terminal's own.
+## The wizard
 
-### Command line
+The flow is linear:
 
-There are no subcommands, and that is deliberate: the installer's job is to obtain the
-product source, choose the distro path and check the backend — everything after that is
-`kosctl`'s. Flags are the whole interface:
+```
+Welcome -> Checks -> Options -> Review -> Confirm -> Installation -> Result
+```
 
-| Invocation | What runs |
+| Screen | What it shows | Primary keys |
+|---|---|---|
+| Welcome | Product name, detected distribution/architecture/session, language | `←/→` or `h/l` language, `Tab` next |
+| Checks | 9 environment probes plus build packages when a checkout is available; PASS/WARN/FAIL text, the detected value and a per-check explanation | `↑/↓` or `j/k` select, `ctrl+r` re-check, `Tab` next |
+| Options | Source (`stable` / `main` / `local`), required core, optional apps, lock screen, depth wallpaper, start after install | `↑/↓` or `j/k` move, `Enter` down/activate, `Space` toggle, `ctrl+e` local path, `Tab` next |
+| Review | Summary, the real plan, the full command toggle and notes | `↑/↓` or `j/k` scroll, `g/G` top/bottom, `Enter` continue, `ctrl+e` commands, `ctrl+l` log on failure |
+| Confirm | The final install gate | `y` install, `n` back; everything else is inert |
+| Installation | Stage list, progress and the live log | `ctrl+z` abort, `ctrl+k` help |
+| Result | Success/failure, one-line next step | `q` quit, `ctrl+r` retry, `ctrl+l` log |
+
+Global keys: `Tab` / `Shift+Tab` page forward/back through the wizard, `Esc`
+goes back, `ctrl+k` opens help, and `ctrl+c` twice quits (the first press only
+warns). The footer always paints the keys that are live on the current screen.
+
+`ctrl+p` opens **Textual's own command palette** (Keys, Quit, Screenshot, Theme,
+and Maximize/Minimize where a focusable widget allows it). The installer's own
+commands are not injected into that palette yet; the management screens can
+currently only be opened by code/tests, not by a wizard key.
+
+### Checks, Options and Review details
+
+- The Checks detail column follows the selected row. Its “说明 / Notes” line is
+  written per check: the OS note names the detected family and install path
+  (for example `Arch 系，使用 kosctl`); Plasma, KWin and Qt state the required
+  version and “or newer”, while Quickshell states the required 0.3.x series.
+- Every source and every optional app has its own description; the right column
+  never repeats a generic “stable vs main vs local” block.
+- Review's notes section is titled “提示 / Notes”. On a failed preparation,
+  `ctrl+r` retries, `ctrl+l` opens the log, and the page keeps its scroll keys.
+
+## Command line
+
+There are no subcommands by design: the installer obtains the source, chooses
+the distribution path and checks the backend; everything after that is
+`kosctl`'s job.
+
+| Flag | Meaning |
 |---|---|
-| `./install.sh` | the Textual wizard |
-| `./install.sh --check` | probes + the plan, read-only, exit 2 when blocked or unsupported |
-| `./install.sh --plain --yes` | the same plan without a UI, for scripts and CI |
-| `./install.sh --source stable --apps todo --start` | pre-selects the wizard, or seeds `--plain` |
-| `./install.sh --theme light` | the wizard for a light terminal (dark is the default) |
+| `--root DIR` | Product checkout (default `$KOS_ROOT` or `~/NextKde`) |
+| `--check` | Probe and print the plan; change nothing |
+| `--plain` | Force the plain renderer |
+| `--yes` | Non-interactive: accept the plan |
+| `--config FILE` | JSON options file |
+| `--lang zh\|en` | UI language |
+| `--source stable\|main\|local` | Source channel |
+| `--theme system\|dark\|light` | Terminal appearance; dark is the default |
+| `--apps [LIST]` | Also install the optional apps; `calendar,todo,weather,calculator` narrows the set |
+| `--lockscreen` | Also install the lock screen theme |
+| `--start` / `--no-start` | Start services after install (default on) |
+| `--all` | Apps and lock screen together |
+| `--no-proxy` | Do not pass proxy variables through |
+| `--version` | Print the installer version |
 
-Exit codes: `0` success, `1` a step failed, `2` blocked / unsupported / incompatible backend,
-`130` cancelled.
+`--config` understands `source`, `apps` (list or bool), `lockscreen`, `start`,
+`proxy`, `spatial`, `theme`, `keys`, and the `components` alias for
+`apps`/`lockscreen`. CLI flags win over the config, and both win over the
+remembered source.
 
-For the product itself use `kosctl` directly: `kosctl install`, `kosctl install apps --only`,
-`kosctl start`, `kosctl uninstall`, `kosctl doctor`, `kosctl update`, `kosctl on|off`,
-`kosctl snapshot`, `kosctl rollback`. The installer never re-implements them and does not
-wrap them in a second command tree.
+Exit codes: `0` success, `1` a step failed, `2` blocked / unsupported /
+incompatible backend, `130` cancelled.
+
+Examples:
+
+```sh
+./install.sh --source stable --apps todo --start
+./install.sh --check --root ~/NextKde
+./install.sh --plain --yes --source local
+```
+
+## Sources and workspaces
+
+| Channel | Ref | What is written |
+|---|---|---|
+| `stable` | newest `vX.Y.Z` release tag from the product repository | a managed clone |
+| `main` | tip of the product's `main` branch | a managed clone |
+| `local` | the checkout chosen on Options, else `--root` / `KOS_ROOT` | nothing: no fetch, checkout or reset |
+
+Managed workspaces live under
+`$XDG_DATA_HOME/nextkde/sources/<repository-id>/<commit>/`. A prepared commit is
+never rewritten. `--check` resolves the identity read-only; nothing is cloned.
+
+The local checkout is detected from `--root` / `KOS_ROOT`, the current
+directory, `~/Projects/NextKde` and `~/NextKde`, or typed with `ctrl+e`. The
+installer never scans all of `$HOME` and never edits a local checkout.
+
+## Settings and state
+
+Language and source are remembered between interactive runs:
+
+```text
+~/.local/state/nextkde-installer/settings.json
+```
+
+Only `zh`/`en` and `stable`/`main`/`local` are stored. A CLI flag or the config
+file overrides the remembered value; `--plain`, tests and embedders do not
+write the file. Logs go to `~/.local/state/nextkde-installer/logs/`; managed
+sources go to `~/.local/share/nextkde/sources/`.
+
+Appearance is dark by default. `--theme system` follows the terminal's reported
+background; `--theme light` overrides a terminal that does not report it. The
+wizard has no theme menu: the flag, config `theme`, and `KOS_THEME` are the
+whole interface.
 
 ## sudo
 
-Missing build packages are installed by their own first step (`kosctl deps --install`)
-when the probe reports any; with nothing missing the plan starts at `kosctl install`.
-That is also where the first password prompt comes from.
+Nothing asks for a password up front. Install children run without a tty, so the
+installer puts a `sudo` shim and an askpass helper on their `PATH`. When a
+step's `sudo` needs a password, the helper leaves a request and blocks; the
+wizard shows one inline bar above the footer (never a popup). The bar has two
+rows: the reason and the `⏎ 继续 · esc 取消` hint, then the no-echo password
+field. Its content starts at the same column as the log.
 
-Nothing asks for a password up front. The install children run without a tty, so a
-`sudo` shim and an askpass helper are put on their `PATH`: when a step's `sudo` needs
-a password, the helper leaves a request and blocks, and the wizard shows one inline bar
-above the footer for it (not a popup). A full install therefore asks twice, like running
-`kosctl` by hand — once for the build packages, once for the KWin system plugins after
-the build. Nothing else prompts: a run whose dependencies are all present asks exactly
-once, after the build, and a `sudo` timestamp that is still valid (`sudo -n` passing, or
-a password typed a minute ago) means zero prompts. The plan starting is never a reason
-to ask.
+The answer is written to one file only this user can read, used for that `sudo`
+call, and removed as soon as sudo reads it; it never reaches the log, argv or
+the result screen. `Esc` denies the password: that request and every later one
+fail at once, the step fails, and the result says the password was not
+provided. Priming sudo first (`sudo -v`) avoids the prompt entirely for the
+following minutes.
 
-The answer is written to one file only this user can read, is used for that `sudo`
-call, and is removed as soon as sudo has it; it never reaches the log, argv or the
-result screen. Esc on the bar denies the password: that request and every
-later one fail at once (no three-attempt retry), the step fails, and the run ends
-with "sudo password was not provided". Priming sudo first (`sudo -v`) avoids the
-prompt entirely for the following minutes.
+`--plain` and `--yes` have no event loop to answer a request mid-run, so they
+ask once with `getpass` when stdin is a tty; without one they need a primed
+`sudo -v` and exit 2 before starting anything.
 
-`--plain` and `--yes` have no event loop to answer a request mid-run, so they ask
-once with `getpass` when stdin is a tty; without one they need a primed `sudo -v`
-and exit 2 before starting anything.
+## Development
 
-## Layout
-
+```sh
+python3 tools/vendor.py
+PYTHONPATH=$PWD/vendor python3 -m unittest discover -s tests
 ```
-installer/      the installer: detection, plan, runner, source manager,
-                the Textual UI (installer/ui/) and the plain renderer
-tests/          python3 -m unittest discover -s tests
-tools/vendor.py builds vendor/ (Textual + its dependencies, pinned)
-docs/           design and architecture notes
+
+The suite is offline: it uses temporary repositories and `file://` remotes.
+Textual tests skip when `vendor/` is missing.
+
+Layout:
+
+```text
+installer/          detection, plan, runner, source manager, backend contract
+installer/ui/       Textual app, screens, widgets, keymap and stylesheet
+installer/render/   plain renderer for non-TTY / --check / --plain
+tests/              unit tests, including Textual Pilot tests
+tools/vendor.py     builds vendor/ from the pinned wheels
+docs/               current architecture, backend contract, keys and history
 ```
+
+Docs map:
+
+- `docs/CURRENT_ARCHITECTURE.md` — the source of truth for the current tree
+- `docs/BACKEND_CONTRACT.md` — capability names, contract shapes and probing
+- `docs/KEYMAP.md` — current keys and the change history
+- `docs/MIGRATION_PLAN.md` — status and remaining work
+- `docs/design.md` — the original architecture proposal (historical; it
+  predates the Textual port)
 
 ## Status
 
-The Textual wizard is the interactive entry point (stages T1–T4 of
-`docs/MIGRATION_PLAN.md`); the curses UI is gone and `--plain` covers non-TTY and
-missing-Textual runs. No release artefact or self-update yet. The product still
-ships its own copy of the wizard until this repository is released and the old
-entry point points here.
+- The Textual wizard is the interactive entry point; the curses UI is gone and
+  `--plain` covers non-TTY and missing-Textual runs.
+- The backend contract is implemented on the installer side. The product still
+  does not ship `packaging/installer-contract.json` or
+  `kosctl installer-info --json`, so a checkout reports a probed capability set.
+- `kosctl deps` / `deps --install` and `tools/kos-state.py` are not present in
+  the product's `main`; the dependency probe and management actions degrade to
+  empty there.
+- Installer commands are not in Textual's palette yet, so the management area
+  has no wizard key right now.
+- No release artefact, self-update or CI yet; `pyproject.toml` declares the
+  console script, and `paths.build_root` is defined but not passed to the
+  backend (`KOS_BUILD_DIR` is unverified).

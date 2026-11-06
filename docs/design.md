@@ -2,12 +2,17 @@
 
 # 独立安装器架构设计文档
 
+> **历史设计稿。** 本文写于 Textual 移植之前，仍以 curses 为 UI；当前实现和
+> 实际行为以 [README](../README.md) 与
+> [CURRENT_ARCHITECTURE.md](CURRENT_ARCHITECTURE.md) 为准。保留本文是为了
+> 记录当时的目标、边界和接口取舍，不要按本文核对现在的代码。
+
 **Document:** NextKDE Installer Architecture Design
-**Version:** 1.0
-**Status:** Proposed
+**Version:** 1.0 (historical)
+**Status:** Historical proposal; implemented with vendored Textual
 **Target:** Linux / KDE Plasma 6 / Wayland
 **Primary Language:** Python
-**UI Framework:** Python curses
+**UI Framework:** Python curses in this proposal; Textual in the implementation
 **Backend:** NextKDE kosctl
 **Architecture:** Independent Installer + Product Repository
 
