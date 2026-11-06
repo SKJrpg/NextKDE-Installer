@@ -54,6 +54,9 @@ class ConfirmScreen(WizardScreen):
         for label, value in pairs:
             text.append(f"{label:<{width}}", style=self.app.secondary_style)
             text.append(value + "\n")
+        missing = self.app.system.missing_packages
+        if missing:
+            text.append("\n" + s("confirm_deps") % ", ".join(missing), style="yellow")
         text.append("\n" + s("review_side_takeover"), style="yellow")
         return text
 

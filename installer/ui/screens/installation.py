@@ -180,7 +180,8 @@ class InstallationScreen(WizardScreen):
             return text  # the header already says the source is being prepared
         for index, step in enumerate(self.steps):
             state = self.states[index]
-            text.append(f"{glyphs[state]} {index + 1}. {step.title}", style=(
+            title = s("key_deps") if step.key == "packages" else step.title
+            text.append(f"{glyphs[state]} {index + 1}. {title}", style=(
                 "bold" if state == "current" else "red" if state == "failed"
                 else "green" if state == "done" else self.app.secondary_style))
             text.append(f"  [{s('stage_' + ('running' if state == 'current' else state))}]",

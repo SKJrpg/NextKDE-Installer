@@ -63,7 +63,8 @@ class ResultScreen(WizardScreen):
             text.append(s("result_ran") + "\n", style="bold")
             for step in self.steps:
                 if step.argv:
-                    text.append(f"✔ {step.title}\n", style="green")
+                    title = s("key_deps") if step.key == "packages" else step.title
+                    text.append(f"✔ {title}\n", style="green")
             text.append("\n")
             text.append(s("next_steps") + "\n", style="yellow")
         elif self.result == "cancelled":

@@ -173,7 +173,8 @@ class ReviewScreen(WizardScreen):
         prepared = self.app.prepared or self._source
         return build_plan(self.app.system.family, self.app.opts, self.app.paths,
                           prepared, backend=self.app.backend,
-                          deps_missing=bool(self.app.system.missing_packages))
+                          deps_missing=bool(self.app.system.missing_packages),
+                          missing_packages=self.app.system.missing_packages)
 
     def _steps(self) -> Text:
         s = self.strings
@@ -189,7 +190,8 @@ class ReviewScreen(WizardScreen):
             return text
         text.append(f"  ({s('step_count') % len(steps)})\n", style=quiet)
         for index, step in enumerate(steps, 1):
-            text.append(f"{index}. {step.title}\n", style="bold")
+            title = s("key_deps") if step.key == "packages" else step.title
+            text.append(f"{index}. {title}\n", style="bold")
             if step.argv and self.details:
                 text.append(f"    $ {' '.join(step.argv)}\n", style=quiet)
             elif step.argv:
@@ -212,6 +214,9 @@ class ReviewScreen(WizardScreen):
             warnings.append((s("review_unsupported") % ", ".join(blocked), "red"))
         if self.app.system.blocked:
             warnings.append((s("review_blocked"), "red"))
+        missing = self.app.system.missing_packages
+        if missing:
+            warnings.append((s("review_deps_missing") % ", ".join(missing), "yellow"))
         warnings.append((s("review_side_takeover"), "yellow"))
         if self.app.opts.start:
             warnings.append((s("review_side_session"), "yellow"))
