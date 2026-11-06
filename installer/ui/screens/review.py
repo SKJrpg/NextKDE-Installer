@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 
 from rich.cells import cell_len
 from rich.text import Text
@@ -39,6 +40,23 @@ def advice_for(error: str) -> str:
         if any(needle in lowered for needle in needles):
             return key
     return ""
+
+
+def compact_path(path: str, sources_root: Path) -> str:
+    """Fit a step command on one line: ~ for home, checkout id elided."""
+    home = str(Path.home())
+
+    def short(value: Path) -> str:
+        text = str(value)
+        return "~" + text[len(home):] if text.startswith(home + "/") else text
+
+    try:
+        inner = Path(path).relative_to(sources_root).parts[-2:]
+    except ValueError:
+        return short(Path(path))
+    if len(inner) < 2:
+        return short(Path(path))
+    return f"{short(sources_root)}/…/{'/'.join(inner)}"
 
 
 class ReviewScreen(WizardScreen):
@@ -194,7 +212,8 @@ class ReviewScreen(WizardScreen):
                 text.append(f"    $ {' '.join(step.argv)}\n", style=quiet)
             elif step.argv:
                 rest = max(0, len(step.argv) - 1)
-                text.append(f"    {s('review_cmd')}: {step.argv[0]} +{rest}\n",
+                command = compact_path(step.argv[0], self.app.paths.sources_root)
+                text.append(f"    {s('review_cmd')}: {command} +{rest}\n",
                             style=quiet)
             elif step.note:
                 text.append(f"    {s(step.note)}\n", style="yellow")
@@ -216,7 +235,6 @@ class ReviewScreen(WizardScreen):
         if self.app.opts.start:
             warnings.append((s("review_side_session"), "yellow"))
         quiet = self.app.secondary_style
-        warnings.append((s("review_side_userpath"), quiet))
         warnings.append((s("review_side_log"), quiet))
         text.append("\n\n")
         for line, style in warnings:

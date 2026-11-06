@@ -51,7 +51,7 @@ _TEXT = {
     "opt_proxy": ("代理", "Proxy"),
     "on": ("开", "on"),
     "off": ("关", "off"),
-    "review_target": ("安装到 ~/.local（用户目录，无需 root）", "Installs to ~/.local (user directory, no root)"),
+    "review_target": ("安装到 ~/.local", "Installs to ~/.local"),
     "review_none": ("该发行版没有自动安装路径。", "No automatic path for this distribution."),
     "failed": ("失败", "failed"),
     "cancelled": ("已取消", "cancelled"),
