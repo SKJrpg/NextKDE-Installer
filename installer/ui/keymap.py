@@ -168,8 +168,11 @@ ACTIONS: tuple[Action, ...] = (
     Action("menu.act", ("enter",), "key_open", frozenset({MENU}), 10),
     Action("wizard.back", ("escape",), "key_back", frozenset(MENUS), 15),
     # The command menu: every non-run page, including the management area.
+    # Textual owns the Ctrl+P binding while its palette is enabled; this is
+    # the footer/help hint only, so it does not shadow the app binding.
     Action("app.commands", ("ctrl+p",), "key_commands",
-           frozenset({WELCOME, CHECKS, OPTIONS, REVIEW, RESULT}) | MENUS, 50),
+           frozenset({WELCOME, CHECKS, OPTIONS, REVIEW, RESULT}) | MENUS, 50,
+           bind=()),
     # Abort is immediate; Ctrl+C is the app's quit gesture, so while something
     # runs a hidden guard swallows it before the app binding can fire.
     Action("run.abort", ("ctrl+z",), "key_abort", frozenset({RUN, MENU}) | LISTS, 5,

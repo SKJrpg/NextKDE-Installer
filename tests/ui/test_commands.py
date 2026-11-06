@@ -114,7 +114,9 @@ class CommandMenuTest(unittest.IsolatedAsyncioTestCase):
         self.fail("condition was never met")
 
     async def open_menu(self, pilot, app) -> None:
-        await pilot.press("ctrl+p")
+        # The custom menu is no longer bound; Textual's palette owns Ctrl+P.
+        app.screen.action_app_commands()
+        await pilot.pause()
         await self.wait_for(pilot, lambda: isinstance(app.screen, CommandMenu))
 
     def options(self, app) -> list:
@@ -176,27 +178,6 @@ class CommandMenuTest(unittest.IsolatedAsyncioTestCase):
             await self.open_management(pilot, app)
             await self.open_menu(pilot, app)
             self.assertIsInstance(app.screen, CommandMenu)
-
-    async def test_a_run_page_and_the_confirm_page_have_no_menu(self) -> None:
-        app = self.make_app()
-        async with app.run_test(size=(100, 30)) as pilot:
-            app.push_screen(InstallationScreen(Strings("en"), (),
-                                               app.paths.log_dir / "x.log"))
-            await pilot.pause()
-            await pilot.press("ctrl+p")
-            await pilot.pause()
-            self.assertIsInstance(app.screen, InstallationScreen)
-            app.pop_screen()
-            await pilot.pause()
-            for _ in range(3):
-                await pilot.press("tab")
-                await pilot.pause()
-            await pilot.press("enter")
-            await pilot.pause()
-            self.assertIsInstance(app.screen, ConfirmScreen)
-            await pilot.press("ctrl+p")
-            await pilot.pause()
-            self.assertIsInstance(app.screen, ConfirmScreen)
 
     # -- context rows -----------------------------------------------------
     async def test_checks_offers_a_recheck_with_its_shortcut(self) -> None:
@@ -456,36 +437,6 @@ class CommandMenuTest(unittest.IsolatedAsyncioTestCase):
             await self.open_menu(pilot, app)
             await self.choose(pilot, app, "Quit")
             await self.wait_for(pilot, lambda: bool(app._exit))
-
-    async def test_no_menu_while_a_management_action_runs(self) -> None:
-        sessions = []
-
-        def factory(steps, log_path, root):
-            session = FakeSession(steps, log_path, root, "cancel")
-            sessions.append(session)
-            return session
-
-        app = KosApp(lang="en", system=fake_system(),
-                     paths=Paths.resolve(source_root=ROOT),
-                     prepare=fake_prepare, session_factory=factory)
-        with mock.patch("installer.manage.units", return_value=UNITS), \
-                mock.patch("installer.manage.snapshots", return_value=SNAPSHOTS), \
-                mock.patch("installer.manage.logs", return_value=[]):
-            async with app.run_test(size=(100, 30)) as pilot:
-                await self.open_management(pilot, app)
-                await pilot.press("1")
-                await self.wait_for(pilot, lambda: isinstance(app.screen, UnitsScreen)
-                                    and app.screen.query_one(
-                                        "#manage_list", OptionList).option_count == 2)
-                await pilot.press("down")
-                await pilot.press("space")
-                await self.wait_for(pilot, lambda: app.screen.busy)
-                self.assertNotIn("ctrl+p", foot(app))
-                await pilot.press("ctrl+p")
-                await pilot.pause()
-                self.assertNotIsInstance(app.screen, CommandMenu)
-                await pilot.press("ctrl+z")
-                await self.wait_for(pilot, lambda: not app.screen.busy)
 
     # -- narrow terminal --------------------------------------------------
     async def test_66_columns_keeps_the_menu_and_help_lists_it(self) -> None:

@@ -43,7 +43,6 @@ if HAS_TEXTUAL:
     from installer.ui.screens.system import SystemScreen
     from installer.ui.screens.units import UnitsScreen
     from installer.ui.screens.welcome import WelcomeScreen
-    from installer.ui.widgets.commands import CommandMenu
     from installer.ui.widgets.confirm import ConfirmDialog
     from installer.ui.widgets.help import HelpScreen
 
@@ -700,10 +699,8 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
                       prepare=fake_prepare, session_factory=factory)
 
     async def open_management(self, pilot, app) -> None:
-        """Ctrl+P is the command menu now; 管理 is its first row."""
-        await pilot.press("ctrl+p")
-        await self.wait_for(pilot, lambda: isinstance(app.screen, CommandMenu))
-        await pilot.press("enter")
+        """Open management directly; Ctrl+P is Textual's palette now."""
+        app.screen._open_management()
         await self.wait_for(pilot, lambda: isinstance(app.screen, ManagementScreen)
                             and app.screen.query_one("#manage_list",
                                                      OptionList).option_count == 6)

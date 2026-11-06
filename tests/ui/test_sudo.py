@@ -40,7 +40,6 @@ if HAS_TEXTUAL:
     from installer.ui.screens.result import ResultScreen
     from installer.ui.screens.review import ReviewScreen
     from installer.ui.screens.units import UnitsScreen
-    from installer.ui.widgets.commands import CommandMenu
     from installer.ui.widgets.help import HelpScreen
 
 PASSWORD = "hunter2-s3cret"
@@ -307,9 +306,7 @@ class SudoPromptTest(unittest.IsolatedAsyncioTestCase):
 
     async def start_units_action(self, app, pilot) -> None:
         """Management -> Units, with one action running and waiting on sudo."""
-        await pilot.press("ctrl+p")
-        await self.wait_screen(app, CommandMenu)
-        await pilot.press("enter")
+        app.screen._open_management()
         await self.wait_screen(app, ManagementScreen)
         for _ in range(200):
             if app.screen.query_one("#manage_list", OptionList).option_count == 6:

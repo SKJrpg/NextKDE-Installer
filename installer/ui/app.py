@@ -41,8 +41,9 @@ class KosApp(App, inherit_bindings=False):
     # The first Ctrl+C only warns; a second one within this window quits.
     CTRL_C_QUIT_WINDOW = 5.0
     CSS_PATH = "theme/app.tcss"
-    # A developer affordance; its footer hint has no place in an installer.
-    ENABLE_COMMAND_PALETTE = False
+    # Ctrl+P is Textual's command palette; the installer will add its own
+    # commands to it later. For now the palette exposes Textual's commands.
+    ENABLE_COMMAND_PALETTE = True
     # Inherited bindings are off, so Textual's ctrl+q quit is really gone.
     # Ctrl+C twice quits; while something runs, the screen's guard takes it.
     BINDINGS = [("ctrl+c", "help_quit", "")]

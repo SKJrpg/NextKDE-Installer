@@ -25,6 +25,7 @@ HAS_TEXTUAL = importlib.util.find_spec("textual") is not None
 
 if HAS_TEXTUAL:
     from rich.cells import cell_len
+    from textual.command import CommandPalette
     from textual.widgets import Button, Checkbox, RadioButton
 
     from installer import settings
@@ -194,18 +195,23 @@ class AppShellTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(app.screen.query_one("Header").styles.background.a, 0)
             self.assertEqual(app.screen.query_one("#footer").styles.background.a, 0)
 
-    async def test_header_has_no_inert_command_palette_icon(self) -> None:
+    async def test_header_icon_opens_the_command_palette(self) -> None:
         app = self.make_app()
         async with app.run_test(size=(100, 30)) as pilot:
             await pilot.pause()
-            self.assertFalse(app.screen.query_one("HeaderIcon").display)
+            self.assertTrue(app.screen.query_one("HeaderIcon").display)
 
-    async def test_footer_offers_no_command_palette(self) -> None:
+    async def test_ctrl_p_opens_the_textual_command_palette(self) -> None:
         app = self.make_app()
         async with app.run_test(size=(100, 30)) as pilot:
             await pilot.pause()
-            self.assertFalse(app.ENABLE_COMMAND_PALETTE)
-            self.assertNotIn("palette", footer_text(app).lower())
+            self.assertIn("ctrl+p commands", footer_text(app))
+            await pilot.press("ctrl+p")
+            for _ in range(50):
+                await pilot.pause()
+                if isinstance(app.screen, CommandPalette):
+                    break
+            self.assertIsInstance(app.screen, CommandPalette)
 
     async def test_probe_detail_follows_the_focused_row(self) -> None:
         app = self.make_app()
