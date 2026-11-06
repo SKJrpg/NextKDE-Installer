@@ -16,7 +16,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(HERE))
 
-from installer.detect import family_of, parse_missing_packages, parse_os_release  # noqa: E402
+from installer.detect import (family_of, latest_workspace, parse_missing_packages,  # noqa: E402
+                              parse_os_release)
 from installer.paths import Paths  # noqa: E402
 from installer import plan  # noqa: E402
 from installer.__main__ import _load_config as load_config  # noqa: E402
@@ -259,6 +260,18 @@ class DoctorParseTest(unittest.TestCase):
     def test_clean_doctor_output(self) -> None:
         self.assertEqual(parse_missing_packages("ok   cmake\nok   ninja\n"), [])
 
+    def test_latest_workspace_is_the_newest_kosctl(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            older = base / "repo" / "aaa" / "tools" / "kosctl"
+            newer = base / "repo" / "bbb" / "tools" / "kosctl"
+            for path in (older, newer):
+                path.parent.mkdir(parents=True)
+                path.write_text("#!/bin/sh\n", encoding="utf-8")
+            os.utime(older, (1000, 1000))
+            os.utime(newer, (2000, 2000))
+            self.assertEqual(latest_workspace(base), newer.parents[1])
+
 
 class LanguageTest(unittest.TestCase):
     def test_explicit_flag_wins(self) -> None:
@@ -441,6 +454,7 @@ class CancelTest(unittest.TestCase):
         # Right after the source decision, before anything builds.
         self.assertEqual(keys[:2], ["source", "deps"])
         self.assertEqual(with_missing[1].argv[-2:], ["deps", "--install"])
+        self.assertEqual(with_missing[1].input, "y\n")
 
         complete = build_plan("arch", Options(), paths_for(Path("/nonexistent-checkout")),
                               deps_missing=False, backend=info)
@@ -454,6 +468,20 @@ class CancelTest(unittest.TestCase):
                            source="probe")
         steps = build_plan("arch", Options(), paths_for(Path("/nonexistent-checkout")),
                            deps_missing=True, backend=info)
+        self.assertNotIn("deps", [step.key for step in steps])
+
+    def test_arch_installs_packages_when_the_backend_has_no_deps_command(self) -> None:
+        from installer.backend.models import INSTALL_CORE, BackendInfo
+
+        info = BackendInfo(product="nextkde", version="1.0.0", installer_api=1,
+                           capabilities=frozenset({INSTALL_CORE}), components=(),
+                           source="probe")
+        steps = build_plan("arch", Options(), paths_for(Path("/nonexistent-checkout")),
+                           deps_missing=True, missing_packages=["gcc", "go"],
+                           backend=info)
+        package = next(step for step in steps if step.key == "packages")
+        self.assertEqual(package.argv, ["sudo", "pacman", "-S", "--needed", "gcc", "go"])
+        self.assertEqual(package.input, "y\n")
         self.assertNotIn("deps", [step.key for step in steps])
 
     def test_debian_keeps_its_wrapper_without_a_deps_step(self) -> None:

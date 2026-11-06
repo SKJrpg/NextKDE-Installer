@@ -164,12 +164,46 @@ def parse_missing_packages(text: str) -> list[str]:
     return found
 
 
+def latest_workspace(sources_root: Path | None) -> Path | None:
+    """The most recently prepared product workspace, or None.
+
+    Managed sources are keyed by commit, so the newest ``tools/kosctl`` is the
+    source the installer prepared last. Used only to report package state
+    before a new clone; the install itself always re-checks its own workspace.
+    """
+    if sources_root is None:
+        return None
+    try:
+        found = [path for path in Path(sources_root).glob("*/*/tools/kosctl")
+                 if path.is_file()]
+        newest = max(found, key=lambda path: path.stat().st_mtime)
+    except (OSError, ValueError):
+        return None
+    return newest.parents[1]
+
+
+def deps_report(root: Path | None) -> tuple[bool, list[str]]:
+    """(doctor ran, missing build packages) for a product checkout."""
+    if root is None or not (Path(root) / "tools" / "kosctl").is_file():
+        return False, []
+    rc, output = _run(["bash", str(Path(root) / "tools" / "kosctl"), "doctor"], timeout=30)
+    if not output and rc != 0:
+        return False, []
+    return True, parse_missing_packages(output)
+
+
+def missing_packages(root: Path | None) -> list[str]:
+    """The build packages ``kosctl doctor`` reports missing, or []."""
+    return deps_report(root)[1]
+
+
 def _probe(key: str, ok: bool, detail: str, remedy: str = "", warn: bool = False) -> Probe:
     status = "PASS" if ok else ("WARN" if warn else "FAIL")
     return Probe(key=key, status=status, detail=detail, remedy="" if ok else remedy)
 
 
-def detect(fixed_os_release: str | None = None, root: Path | None = None) -> System:
+def detect(fixed_os_release: str | None = None, root: Path | None = None,
+           fallback_root: Path | None = None) -> System:
     text = fixed_os_release
     if text is None:
         try:
@@ -251,20 +285,20 @@ def detect(fixed_os_release: str | None = None, root: Path | None = None) -> Sys
     system.probes.append(_probe("probe_disk", free_gb >= 6.0, f"{free_gb:.1f} GiB free",
                                 "At least 6 GiB is needed for the build tree."))
 
-    if root is not None and (Path(root) / "tools" / "kosctl").is_file():
-        rc, doctor_out = _run(["bash", str(Path(root) / "tools" / "kosctl"), "doctor"], timeout=30)
-        if doctor_out or rc == 0:
-            missing = parse_missing_packages(doctor_out)
-            system.missing_packages = missing
-            if missing:
-                listed = ", ".join(missing[:6]) + (f" +{len(missing) - 6}" if len(missing) > 6 else "")
-                system.probes.append(Probe(
-                    key="probe_packages", status="WARN",
-                    detail=f"{len(missing)} missing: {listed}",
-                    remedy="kosctl install adds these with the system package manager."))
-            else:
-                system.probes.append(Probe(key="probe_packages", status="PASS",
-                                           detail="build dependencies present"))
+    product = Path(root) if root is not None else None
+    if product is None or not (product / "tools" / "kosctl").is_file():
+        product = latest_workspace(fallback_root)
+    if product is not None and (product / "tools" / "kosctl").is_file():
+        ran, missing = deps_report(product)
+        system.missing_packages = missing
+        if missing:
+            system.probes.append(Probe(
+                key="probe_packages", status="WARN",
+                detail=", ".join(missing),
+                remedy="The installer adds these before the build, after you confirm."))
+        elif ran:
+            system.probes.append(Probe(key="probe_packages", status="PASS",
+                                       detail="build dependencies present"))
 
     system.blocked = any(p.status == "FAIL" for p in system.probes)
     return system

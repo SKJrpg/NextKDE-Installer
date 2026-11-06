@@ -16,3 +16,4 @@ class PreparedSource:
     dirty: bool        # uncommitted or untracked changes
     managed: bool      # the installer owns this directory
     manifest_path: Path | None = None
+    tag: str = ""      # release tag at the commit, when the ref has one

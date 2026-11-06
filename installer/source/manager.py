@@ -19,7 +19,7 @@ from pathlib import Path
 from ..paths import Paths
 from . import git, manifest
 from .models import PreparedSource
-from .resolver import CANONICAL_REPO, repository_id, resolve
+from .resolver import CANONICAL_REPO, local_tag, repository_id, resolve, tag_at
 
 
 @dataclass(frozen=True)
@@ -31,6 +31,7 @@ class Stage:
     ref: str
     commit: str
     repository_id: str
+    tag: str = ""
 
 
 def resolve_commit(mode: str, repository: str = CANONICAL_REPO,
@@ -43,7 +44,9 @@ def resolve_commit(mode: str, repository: str = CANONICAL_REPO,
 def stage_for(mode: str, repository: str = CANONICAL_REPO,
               tag: str | None = None) -> Stage:
     """The resolved source a mode names, as one value."""
-    return Stage(mode, *resolve_commit(mode, repository, tag))
+    repository, ref, commit, repository_id = resolve_commit(mode, repository, tag)
+    return Stage(mode, repository, ref, commit, repository_id,
+                 tag_at(repository, commit))
 
 
 def workspace_path(stage: Stage, paths: Paths) -> Path:
@@ -131,7 +134,8 @@ def _prepared(stage: Stage, workspace: Path) -> PreparedSource:
     return PreparedSource(mode=stage.mode, repository=stage.repository, ref=stage.ref,
                           commit=stage.commit, path=workspace,
                           dirty=git.is_dirty(workspace, manifest.NAME),
-                          managed=True, manifest_path=workspace / manifest.NAME)
+                          managed=True, manifest_path=workspace / manifest.NAME,
+                          tag=stage.tag)
 
 
 def _recorded(workspace: Path) -> dict:
@@ -169,6 +173,7 @@ def inspect_local(root: Path) -> PreparedSource:
         dirty=git.is_dirty(root),
         managed=False,
         manifest_path=None,
+        tag=local_tag(root),
     )
 
 

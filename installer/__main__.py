@@ -20,7 +20,7 @@ from . import VERSION, settings, workflow
 from .backend import contract, probe
 from .backend.models import BackendIncompatible
 from .core.askpass import Askpass, sudo_ready
-from .detect import detect
+from .detect import deps_report, detect
 from .paths import Paths
 from .plan import ALL_APPS, Options, build_plan, unsupported
 from .render import plain
@@ -135,9 +135,10 @@ def main(argv: list[str] | None = None) -> int:
     if unknown:
         parser.error("unknown apps: " + ", ".join(sorted(unknown)))
 
-    system = detect(root=paths.source_root)
+    system = detect(root=paths.source_root, fallback_root=paths.sources_root)
     steps = build_plan(system.family, opts, paths,
-                       deps_missing=bool(system.missing_packages))
+                       deps_missing=bool(system.missing_packages),
+                       missing_packages=system.missing_packages)
     blocked_options = unsupported(system.family, opts)
 
     if args.check:
@@ -148,10 +149,13 @@ def main(argv: list[str] | None = None) -> int:
         except (OSError, ValueError, subprocess.SubprocessError) as error:
             print(f"{strings('prepare_failed')}: {error}", file=sys.stderr)
         if source is not None:
+            if Path(source.path).is_dir():
+                system.missing_packages = deps_report(Path(source.path))[1]
             # The report must name the workspace the run would use, not the
             # --root stand-in it was built with before the ref was resolved.
             steps = build_plan(system.family, opts, paths, source,
-                               deps_missing=bool(system.missing_packages))
+                               deps_missing=bool(system.missing_packages),
+                               missing_packages=system.missing_packages)
         backend = None
         try:
             # The checkout given by --root is the product under inspection; an
@@ -226,10 +230,12 @@ def main(argv: list[str] | None = None) -> int:
                 """The plan for the workspace that was just fetched (design §10.7)."""
                 prepared = preparation.prepared
                 root = Path(prepared.path)
+                system.missing_packages = deps_report(root)[1]
                 info = contract.read(root) or probe.detect(root)
                 return build_plan(system.family, opts, paths, prepared,
                                   backend=info,
-                                  deps_missing=bool(system.missing_packages))
+                                  deps_missing=bool(system.missing_packages),
+                                  missing_packages=system.missing_packages)
 
             try:
                 return plain.execute(system, plan_from_workspace, paths, strings,

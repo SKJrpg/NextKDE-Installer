@@ -98,9 +98,10 @@ class ReviewScreen(WizardScreen):
 
     def _source_resolved(self, source) -> None:
         self._source = source
+        self.app.resolved_source = source
         self._resolved = True
         if self.is_mounted:
-            self.query_one("#steps", Static).update(self._steps())
+            self.reload()
 
     def reload(self) -> None:
         """Rebuild every pane from the app's current options and source."""
@@ -159,11 +160,14 @@ class ReviewScreen(WizardScreen):
         s, opts = self.strings, self.app.opts
         apps = [s("app_" + name) for name in selected_apps(opts)]
         pairs = [(s("label_source"), s("source_" + opts.source))]
-        prepared = self.app.prepared
+        prepared = self.app.prepared or self._source
         if prepared is not None:
+            ref = prepared.ref
+            if prepared.tag:
+                ref = f"{ref} ({prepared.tag})"
             pairs += [
                 (s("label_repo"), prepared.repository),
-                (s("label_ref"), prepared.ref),
+                (s("label_ref"), ref),
                 (s("label_commit"), prepared.commit[:8]),
                 (s("label_workspace"), str(prepared.path)),
                 (s("label_dirty"), s("review_dirty") if prepared.dirty
@@ -191,7 +195,8 @@ class ReviewScreen(WizardScreen):
         prepared = self.app.prepared or self._source
         return build_plan(self.app.system.family, self.app.opts, self.app.paths,
                           prepared, backend=self.app.backend,
-                          deps_missing=bool(self.app.system.missing_packages))
+                          deps_missing=bool(self.app.system.missing_packages),
+                          missing_packages=self.app.system.missing_packages)
 
     def _steps(self) -> Text:
         s = self.strings
@@ -207,7 +212,8 @@ class ReviewScreen(WizardScreen):
             return text
         text.append(f"  ({s('step_count') % len(steps)})\n", style=quiet)
         for index, step in enumerate(steps, 1):
-            text.append(f"{index}. {step.title}\n", style="bold")
+            title = s("key_deps") if step.key == "packages" else step.title
+            text.append(f"{index}. {title}\n", style="bold")
             if step.argv and self.details:
                 text.append(f"    $ {' '.join(step.argv)}\n", style=quiet)
             elif step.argv:
@@ -231,6 +237,9 @@ class ReviewScreen(WizardScreen):
             warnings.append((s("review_unsupported") % ", ".join(blocked), "red"))
         if self.app.system.blocked:
             warnings.append((s("review_blocked"), "red"))
+        missing = self.app.system.missing_packages
+        if missing:
+            warnings.append((s("review_deps_missing") % ", ".join(missing), "yellow"))
         warnings.append((s("review_side_takeover"), "yellow"))
         if self.app.opts.start:
             warnings.append((s("review_side_session"), "yellow"))

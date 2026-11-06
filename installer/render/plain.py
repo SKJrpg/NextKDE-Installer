@@ -45,7 +45,10 @@ def print_report(system: System, steps: list[Step], strings,
     if source is not None:
         # Which commit would be installed; --check never fetches it.
         print(f"  {strings('label_repo')}: {source.repository}")
-        print(f"  {strings('label_ref')}: {source.ref} "
+        ref = source.ref
+        if getattr(source, "tag", ""):
+            ref = f"{ref} ({source.tag})"
+        print(f"  {strings('label_ref')}: {ref} "
               f"({strings('label_commit')} {source.commit[:8]})")
         print(f"  {strings('label_workspace')}: {source.path}")
     print()
@@ -68,7 +71,8 @@ def print_report(system: System, steps: list[Step], strings,
 
     print(f"{bold}{strings('review_steps')}{reset}  ({strings('step_count') % len(steps)})")
     for index, step in enumerate(steps, 1):
-        print(f"  {index}. {step.title}")
+        title = strings("key_deps") if step.key == "packages" else step.title
+        print(f"  {index}. {title}")
         if step.argv:
             print(f"     $ {' '.join(step.argv)}")
         elif step.note:
@@ -86,7 +90,8 @@ def _run_all(steps: list[Step], root: Path, strings, log, log_path,
              colour) -> int | None:
     """Run the steps in order; None when they all succeeded, else the exit code."""
     for index, step in enumerate(steps, 1):
-        print(f"\n=== [{index}/{len(steps)}] {step.title} ===")
+        title = strings("key_deps") if step.key == "packages" else step.title
+        print(f"\n=== [{index}/{len(steps)}] {title} ===")
         if not step.argv:
             print(f"  {strings(step.note) if step.note else 'skipped'}")
             continue

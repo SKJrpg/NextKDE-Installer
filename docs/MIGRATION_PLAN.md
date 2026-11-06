@@ -13,9 +13,12 @@ original proposal is `design.md`, kept as history.
   UI is gone.
 - The wizard covers Welcome → Checks → Options → Review → Confirm → Installation
   → Result, with the management area, help, about and local-path dialogs.
-- Source resolution: `stable` (latest `vX.Y.Z` tag), `main`, `local`; managed
-  workspaces under `$XDG_DATA_HOME/nextkde/sources/`; a local checkout is read,
-  never written.
+- Source resolution: `stable` (newest `release/X.Y` branch), `main`, `local`;
+  managed workspaces under `$XDG_DATA_HOME/nextkde/sources/`; a local checkout
+  is read, never written. A release tag on the resolved commit is shown beside
+  the ref in Review/Confirm/`--check`.
+- Missing build packages are shown on Checks and Confirm; a list first found
+  after the clone is confirmed on the installation page before the plan runs.
 - The plan is capability-filtered from the backend contract; the installer side
   of the contract (`installer/backend/`) is complete and tested.
 - Settings remember `lang` and `source`; CLI/config override them; tests and
@@ -53,13 +56,6 @@ is not blocking anything.
 5. **Optional layout split.** Move `plan.py`, `detect.py` and `runner.py` under
    `core/`/`system/` only if the churn buys something; the current layout is
    coherent.
-
-## Branch note
-
-`feat/stable-release` carries a separate source change: `stable` follows the
-newest `release/X.Y` branch instead of a `vX.Y.Z` tag, and the source UI shows
-the tag beside the ref. It is not part of `main`; this file and the README
-describe `main` until that branch is merged.
 
 ## Historical milestones
 

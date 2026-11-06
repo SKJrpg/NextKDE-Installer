@@ -81,6 +81,9 @@ currently only be opened by code/tests, not by a wizard key.
   version and “or newer”, while Quickshell states the required 0.3.x series.
 - Every source and every optional app has its own description; the right column
   never repeats a generic “stable vs main vs local” block.
+- Missing build packages are shown on Checks and repeated on Confirm; a list
+  first discovered after the clone is confirmed on the installation page before
+  anything runs.
 - Review's notes section is titled “提示 / Notes”. On a failed preparation,
   `ctrl+r` retries, `ctrl+l` opens the log, and the page keeps its scroll keys.
 
@@ -127,9 +130,13 @@ Examples:
 
 | Channel | Ref | What is written |
 |---|---|---|
-| `stable` | newest `vX.Y.Z` release tag from the product repository | a managed clone |
+| `stable` | newest `release/X.Y` branch of the product repository | a managed clone |
 | `main` | tip of the product's `main` branch | a managed clone |
 | `local` | the checkout chosen on Options, else `--root` / `KOS_ROOT` | nothing: no fetch, checkout or reset |
+
+`stable` follows the maintained `release/X.Y` branch tip, so a fix on that
+branch is installable before its tag exists. When the resolved commit already
+has a release tag, Review and Confirm show it beside the ref.
 
 Managed workspaces live under
 `$XDG_DATA_HOME/nextkde/sources/<repository-id>/<commit>/`. A prepared commit is
@@ -215,8 +222,9 @@ Docs map:
   does not ship `packaging/installer-contract.json` or
   `kosctl installer-info --json`, so a checkout reports a probed capability set.
 - `kosctl deps` / `deps --install` and `tools/kos-state.py` are not present in
-  the product's `main`; the dependency probe and management actions degrade to
-  empty there.
+  the product's `main`. The dependency probe still reads `kosctl doctor`, and on
+  Arch the installer's own `pacman -S --needed` step covers build packages;
+  unit/snapshot management degrades to empty.
 - Installer commands are not in Textual's palette yet, so the management area
   has no wizard key right now.
 - No release artefact, self-update or CI yet; `pyproject.toml` declares the

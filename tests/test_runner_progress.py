@@ -16,10 +16,11 @@ class RunnerProgressTest(unittest.TestCase):
         self.root = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.root)
 
-    def run_script(self, script: str) -> tuple[list[str], StepRunner]:
+    def run_script(self, script: str, input: str = "") -> tuple[list[str], StepRunner]:
         log = (self.root / "log").open("w", encoding="utf-8")
         self.addCleanup(log.close)
-        runner = StepRunner(Step("step", "step", ["sh", "-c", script]), self.root, log)
+        runner = StepRunner(Step("step", "step", ["sh", "-c", script], input=input),
+                            self.root, log)
         runner.start()
         lines: list[str] = []
         try:
@@ -57,6 +58,10 @@ class RunnerProgressTest(unittest.TestCase):
     def test_resolving_deltas_is_a_percentage_too(self) -> None:
         _, runner = self.run_script("printf 'Resolving deltas:   7%% (7/100)\\r'")
         self.assertAlmostEqual(runner.progress, 0.07)
+
+    def test_step_input_answers_the_child_prompt(self) -> None:
+        lines, _ = self.run_script("read answer; echo got:$answer", input="y\n")
+        self.assertEqual(lines, ["got:y"])
 
     def test_a_step_without_a_counter_reports_no_progress(self) -> None:
         # Never invented: plain output leaves the field empty.

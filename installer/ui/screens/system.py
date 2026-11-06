@@ -43,6 +43,12 @@ class SystemScreen(WizardScreen):
         self._fill()
         self.call_after_refresh(self._paint_rows)   # the real list width exists then
 
+    def on_screen_resume(self) -> None:
+        # The dependency check can update the system after this page was first
+        # painted; coming back must show the new rows, not the stale ones.
+        self._fill()
+        self.query_one("#summary", Static).update(self._summary())
+
     def on_resize(self, event) -> None:
         self._apply_layout(event.size.width)
         if self.rows:
@@ -173,7 +179,8 @@ class SystemScreen(WizardScreen):
                         self.action_check_refresh, shortcut="ctrl+r")]
 
     async def action_check_refresh(self) -> None:
-        self.app.system = detect(root=self.app.paths.source_root)
+        self.app.system = detect(root=self.app.paths.source_root,
+                                 fallback_root=self.app.paths.sources_root)
         container = self.query_one("#probes", VerticalScroll)
         await container.remove_children()
         self.row = 0

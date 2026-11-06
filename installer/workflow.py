@@ -93,4 +93,5 @@ def identity(mode: str, opts, paths: Paths,
     stage = manager.stage_for(mode, repository)
     return manager.existing(stage, paths) or PreparedSource(
         mode=mode, repository=stage.repository, ref=stage.ref, commit=stage.commit,
-        path=manager.workspace_path(stage, paths), dirty=False, managed=True)
+        path=manager.workspace_path(stage, paths), dirty=False, managed=True,
+        tag=stage.tag)
