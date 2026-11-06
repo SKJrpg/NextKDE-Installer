@@ -9,6 +9,7 @@ what the runner really reported.
 from __future__ import annotations
 
 import asyncio
+import subprocess
 import threading
 import time
 from collections import deque
@@ -24,7 +25,7 @@ from ..backend.models import BackendIncompatible, BackendInfo
 from ..core.askpass import Askpass
 from ..core.events import Event
 from ..core.session import InstallSession
-from ..detect import System, detect
+from ..detect import Probe, System, deps_report, detect
 from ..paths import Paths
 from ..plan import Options, build_plan
 from ..strings import Strings, choose_language
@@ -69,7 +70,8 @@ class KosApp(App, inherit_bindings=False):
         # Only the real interactive entry point opts in; tests and embedders do
         # not get to rewrite the user's remembered choices.
         self._remember = remember
-        self.system = system or detect(root=self.paths.source_root)
+        self.system = system or detect(root=self.paths.source_root,
+                                       fallback_root=self.paths.sources_root)
         self.title = f"{self.strings('title')} · NextKDE"
         self.sub_title = f"v{VERSION}"
 
@@ -84,6 +86,7 @@ class KosApp(App, inherit_bindings=False):
         self.prepared = None            # PreparedSource, once obtained
         self.preparation = None         # the workflow.Preparation it came from
         self.prepare_error = ""
+        self._deps_at_confirm: list[str] = []   # what the confirmation page showed
         self.steps = []
         self.exit_code = 0
         self.cancel_event = threading.Event()
@@ -177,22 +180,81 @@ class KosApp(App, inherit_bindings=False):
         self.log_tail.clear()
         self.log_path = self._new_log_path()
         self._new_askpass()
+        # What the confirmation page showed; a list found only after the clone
+        # still needs its own confirmation on the install page.
+        self._deps_at_confirm = list(self.system.missing_packages)
+        self.steps = []
+        self.push_screen(InstallationScreen(self.strings, (), self.log_path))
         if prepared is not None:
-            self.steps = build_plan(self.system.family, self.opts, self.paths,
-                                    prepared, backend=self.backend,
-                                    deps_missing=bool(self.system.missing_packages))
-            self.push_screen(InstallationScreen(self.strings, self.steps,
-                                                self.log_path))
-            self.install_worker = self._run_install(str(prepared.path))
+            # After the run page is mounted: its Header must exist before the
+            # first stage event, and the check must not race the push.
+            self.call_after_refresh(self._begin_prepared, prepared)
         else:
-            self.steps = []
             # Empty it first: a failure before git starts must not show the
             # previous attempt's successful clone under "see the log".
             self.prepare_log_path.parent.mkdir(parents=True, exist_ok=True)
             self.prepare_log_path.write_text("", encoding="utf-8")
-            self.push_screen(InstallationScreen(self.strings, (),
-                                                self.prepare_log_path))
-            self.prepare_worker = self._run_prepare()
+            self.call_after_refresh(self._begin_prepare)
+
+    def _begin_prepared(self, prepared) -> None:
+        self.install_worker = self._start_prepared(prepared)
+
+    def _begin_prepare(self) -> None:
+        self.prepare_worker = self._run_prepare()
+
+    @work(thread=True, exit_on_error=False)
+    def _start_prepared(self, prepared) -> None:
+        """Check a reused workspace for packages before its plan is built."""
+        try:
+            ran, missing = deps_report(prepared.path)
+        except (OSError, ValueError, subprocess.SubprocessError):
+            ran, missing = False, []
+        self._call(self._prepared_ready, prepared, ran, missing)
+
+    def _prepared_ready(self, prepared, ran: bool, missing: list[str]) -> None:
+        self._set_missing_packages(ran, missing)
+        self.steps = self._plan_for(prepared, missing)
+        if isinstance(self.screen, InstallationScreen):
+            self.screen.start_stages(self.steps, self.log_path)
+        self._start_or_confirm(prepared, missing)
+
+    def _plan_for(self, prepared, missing: list[str]):
+        return build_plan(self.system.family, self.opts, self.paths, prepared,
+                          backend=self.backend, deps_missing=bool(missing),
+                          missing_packages=missing)
+
+    def _set_missing_packages(self, ran: bool, missing: list[str]) -> None:
+        """Keep the checks page and the plan looking at the same package list."""
+        self.system.missing_packages = list(missing)
+        probes = [p for p in self.system.probes if p.key != "probe_packages"]
+        if missing:
+            probes.append(Probe("probe_packages", "WARN", ", ".join(missing),
+                                "The installer adds these before the build, "
+                                "after you confirm."))
+        elif ran:
+            probes.append(Probe("probe_packages", "PASS",
+                                "build dependencies present"))
+        self.system.probes = probes
+
+    def _start_or_confirm(self, prepared, missing: list[str]) -> None:
+        """A list the confirmation page did not show is confirmed here."""
+        if missing and not set(missing).issubset(self._deps_at_confirm):
+            s = self.strings
+            self.push_screen(
+                ConfirmDialog(
+                    s, s("deps_confirm_heading"),
+                    s("deps_confirm_body") % ", ".join(missing),
+                    confirm_label=s("confirm_install"),
+                    cancel_label=s("confirm_back")),
+                callback=lambda confirmed: self._deps_answer(confirmed, prepared))
+            return
+        self.install_worker = self._run_install(str(prepared.path))
+
+    def _deps_answer(self, confirmed, prepared) -> None:
+        if confirmed:
+            self.install_worker = self._run_install(str(prepared.path))
+        else:
+            self._back_to_review()
 
     def _prepared_source(self):
         mode = workflow.MODES.get(self.opts.source)
@@ -326,10 +388,14 @@ class KosApp(App, inherit_bindings=False):
                     detail = session.tail[-1][1] if getattr(session, "tail", None) else ""
                     raise ValueError(detail or self.strings("prepare_failed"))
             prepared = preparation.finish()
+            try:
+                ran, missing = deps_report(prepared.path)
+            except (OSError, ValueError, subprocess.SubprocessError):
+                ran, missing = False, []
         except Exception as error:  # any failure returns to Review with the reason
             self._call(self._prepare_failed, str(error))
             return
-        self._call(self._prepare_ok, preparation, prepared)
+        self._call(self._prepare_ok, preparation, prepared, ran, missing)
 
     @work(thread=True, exit_on_error=False)
     def _run_install(self, root: str) -> None:
@@ -362,20 +428,19 @@ class KosApp(App, inherit_bindings=False):
         if isinstance(self.screen, InstallationScreen):
             self.screen.handle(event)
 
-    def _prepare_ok(self, preparation, prepared) -> None:
+    def _prepare_ok(self, preparation, prepared, ran: bool, missing: list[str]) -> None:
         self.preparation = preparation
         self.prepared = prepared
+        self._set_missing_packages(ran, missing)
         # The prepared workspace is the real backend, not the --root stand-in.
         self._detect_backend(prepared.path)
         if self.backend_error:
             self._prepare_failed(self.strings("backend_incompatible") % self.backend_error)
             return
-        self.steps = build_plan(self.system.family, self.opts, self.paths, prepared,
-                                backend=self.backend,
-                                deps_missing=bool(self.system.missing_packages))
+        self.steps = self._plan_for(prepared, missing)
         if isinstance(self.screen, InstallationScreen):
             self.screen.start_stages(self.steps, self.log_path)
-        self.install_worker = self._run_install(str(prepared.path))
+        self._start_or_confirm(prepared, missing)
 
     def _back_to_review(self) -> None:
         """Pop the run pages; a failure belongs on the plan, not the confirm page."""

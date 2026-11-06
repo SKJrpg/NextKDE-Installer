@@ -68,12 +68,20 @@ class StepRunner:
             self.step.argv,
             cwd=str(self.root),
             env=env,
-            stdin=subprocess.DEVNULL,
+            stdin=subprocess.PIPE if self.step.input else subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             bufsize=0,
             start_new_session=True,
         )
+        if self.step.input and self.proc.stdin is not None:
+            # The user already confirmed in the UI; answer the package manager's
+            # one prompt instead of asking again in a child with no terminal.
+            try:
+                self.proc.stdin.write(self.step.input.encode())
+                self.proc.stdin.close()
+            except (BrokenPipeError, OSError):
+                pass
         assert self.proc.stdout is not None
         self._fd = self.proc.stdout.fileno()
         self._sel.register(self._fd, selectors.EVENT_READ)

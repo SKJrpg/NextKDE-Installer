@@ -40,7 +40,8 @@ The interactive UI is Textual, vendored under `vendor/` and put on `PYTHONPATH` 
 `--root` (or `KOS_ROOT`) names the product checkout; it defaults to
 `~/NextKde`. The installer never changes the product checkout on its own:
 `local` keeps it as it is, `stable`/`main` only fetch when the tree is clean
-and you picked that source.
+and you picked that source. `stable` follows the newest `release/X.Y` branch,
+so a fix on the maintained release branch installs before its tag exists.
 
 Flags: `--check` report only, `--plain` no interactive UI, `--yes`, `--config FILE`,
 `--source stable|main|local`, `--theme system|dark|light`, `--apps [LIST]`,

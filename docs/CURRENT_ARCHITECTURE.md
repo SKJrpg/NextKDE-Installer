@@ -86,17 +86,19 @@ then one backend line: `Backend: probe · N capabilities` or `Backend: contract 
 
 ## 4. The plan
 
-`plan.build_plan()` returns `Step(key, title, argv, env, note)` objects. Nothing else executes
-commands. Today's steps:
+`plan.build_plan()` returns `Step(key, title, argv, env, note, input)` objects. Nothing else
+executes commands. Today's steps:
 
 | Family | Steps |
 |---|---|
 | debian | `install-debian13.sh --dir <root> --spatial … [--repo <origin>] [--local]`, then apps/lockscreen, then `start` |
 | nixos | `kosctl nix install`, then `start` |
-| arch / ubuntu / fedora | `kosctl update <ref>` only when nothing was prepared; `kosctl deps --install` first when the probe found missing packages; then `kosctl install`, `kosctl install apps [--only …]`, `kosctl install lockscreen`, `kosctl start` inside the prepared workspace |
+| arch / ubuntu / fedora | `kosctl update <ref>` only when nothing was prepared; `kosctl deps --install` first when the probe found missing packages and the backend declares it, else on Arch an installer-owned `pacman -S --needed` with the missing list; then `kosctl install`, `kosctl install apps [--only …]`, `kosctl install lockscreen`, `kosctl start` inside the prepared workspace |
 | opensuse / unknown | nothing; the UI reports only |
 
 `KOS_BUILD_SPATIAL=ON|OFF` and the proxy/session variables are placed in each step's env.
+A step's `input` is written once to the child's stdin: the user already confirmed the package
+list in the UI, so this answers the package manager's one prompt without `--noconfirm`.
 `paths.build_root` is defined but deliberately not exported yet: the backend's handling of
 `KOS_BUILD_DIR` / `KOS_APPS_BUILD_DIR` is unverified.
 
@@ -106,12 +108,13 @@ commands. Today's steps:
 
 | Mode | Meaning | Git writes |
 |---|---|---|
-| stable | newest release tag of the configured repository (`NextKde/NextKde`) | clone only |
+| stable | newest `release/X.Y` branch of the configured repository (`NextKde/NextKde`), chosen numerically | clone only |
 | development | the `main` branch of that repository | clone only |
 | local | the checkout chosen on Options (`Options.local_path`), else `--root`, as it is | none: no fetch, checkout, reset or remote edit |
 
 - The ref is resolved with `git ls-remote` **before** anything is cloned; the commit is the
-  identity.
+  identity. `stable` lists `refs/heads/release/*` and takes the highest `X.Y`, so a fix on
+  the maintained release branch installs before its tag exists; no GitHub API is involved.
 - Managed workspaces: `<XDG_DATA_HOME>/nextkde/sources/<repository-id>/<commit>/`, cloned
   `--depth 1` into `<commit>.tmp`, HEAD verified, `source.json` written, then the directory is
   renamed into place. A prepared commit is never rewritten.
@@ -125,6 +128,11 @@ commands. Today's steps:
   for local or a reused workspace, otherwise one streamable clone step); `finish()` verifies,
   records and renames. `plan.build_plan(..., prepared=...)` runs every step inside the prepared
   workspace and emits no `kosctl update`; `--check` resolves the identity read-only.
+- Package state: `detect()` runs `kosctl doctor` on `--root` when it is a product checkout,
+  otherwise on the newest prepared workspace under `sources_root`, and keeps the missing
+  `miss pkg:` names. The Checks page shows the list; the confirmation page repeats it. After a
+  clone, `deps_report(prepared.path)` runs again, and a list the user has not seen is confirmed
+  on the install page before the plan starts.
 
 ## 6. Rendering
 
@@ -189,10 +197,12 @@ modal and never stacks (a request that arrives while the bar is up is asked righ
 is answered). A modal on top (help, a confirmation) hides the screen's bar, so the request
 waits until that closes. So nothing is asked at startup and nothing is asked at all when
 `sudo -n true` already works: a full install asks once for the build packages and once for
-the KWin system plugins after the build, the way running `kosctl` by hand does. The request is the
-only trigger, never the plan starting: dependencies that are already present produce no
-early prompt (exactly one prompt, after the build), and a still-valid sudo timestamp
-produces none at all. Denying cancels the run; the step fails and the result screen says
+the KWin system plugins after the build, the way running `kosctl` by hand does. The first is the
+installer's `packages` step (or the backend's `deps` step when it declares one); its pacman
+prompt is answered from the step's `input`, because the user already confirmed the list on the
+Checks/Confirm pages. The request is the only trigger, never the plan starting: dependencies that
+are already present produce no early prompt (exactly one prompt, after the build), and a
+still-valid sudo timestamp produces none at all. Denying cancels the run; the step fails and the result screen says
 the password was not provided.
 `--plain`/`--yes` have no event loop to answer requests mid-run, so they keep the up-front
 `getpass` (with a tty) or exit 2 before starting (without one), and the password is written
@@ -212,12 +222,13 @@ backend that does not declare it never receives the step (`docs/BACKEND_CONTRACT
 | `source-release.py latest/select` | plan | `latest` yes, `select` yes |
 | `packaging/installer-contract.json`, `kosctl installer-info --json` | backend | **no** (new work) |
 
-Against upstream `main` the dependency probe and the management screens therefore degrade to
-empty. This is a product-side gap, not an installer bug.
+Against upstream `main` the management screens therefore degrade to empty. The dependency probe
+still works: it reads `kosctl doctor`, and on Arch the installer can install the missing packages
+itself when the backend has no `deps` verb. This is a product-side gap, not an installer bug.
 
 ## 9. Verified state
 
-- `PYTHONPATH=$PWD/vendor python3 -m unittest discover -s tests` → 171 tests, offline
+- `PYTHONPATH=$PWD/vendor python3 -m unittest discover -s tests` → 287 tests, offline
   (bare repositories, `file://`); the Textual tests skip when `vendor/` is missing.
 - Host: `./install.sh --root <checkout> --check` and `… --plain --check` →
   `KOS Installer — CachyOS (x86_64)`, exit 0, nothing cloned.
@@ -227,6 +238,11 @@ empty. This is a product-side gap, not an installer bug.
   `--check` and the TUI rendered; `kosctl deps` reported 10 missing packages;
   `kos-state.py list --json` → `{"schema":1,"units":{}}`;
   `source-release.py select main` fetched and detached to `3fa1d70`; a dirty tree was refused.
+- VM `arch-kde` (Arch/Plasma 6.8.2 Wayland): the TUI resolved stable to `release/0.1`
+  (`2ca59a1f`), listed seven missing build packages on Checks and on the confirmation page,
+  installed them after the inline sudo prompt (answering pacman's one prompt from the step's
+  `input`), then `kosctl install` and `kosctl start` both succeeded; `kosctl version` reported
+  `0.1.1`.
 
 ## 10. Known gaps
 
@@ -237,6 +253,6 @@ empty. This is a product-side gap, not an installer bug.
 - No subcommands by design: the interface is flags (`--check`, `--plain`, `--yes`, `--source`, …); product operations stay in `kosctl` and are not wrapped again.
 - No release artefact, self-update or CI; `pyproject.toml` exists and declares the console
   script only.
-- `kosctl deps` and the `kos-state.py` verbs are missing upstream, so the dependency probe
-  and the management screens are empty against `main`.
+- `kosctl deps` and the `kos-state.py` verbs are missing upstream, so the management screens
+  are empty against `main`; the installer's Arch `pacman` step covers build packages meanwhile.
 - `paths.build_root` is still not passed to the backend (`KOS_BUILD_DIR` unverified).

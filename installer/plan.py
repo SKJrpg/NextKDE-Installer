@@ -56,6 +56,7 @@ class Step:
     argv: list[str]
     env: dict[str, str] = field(default_factory=dict)
     note: str = ""
+    input: str = ""   # written to the child's stdin once, for a confirmed prompt
 
 
 def git_state(root: Path) -> tuple[str, bool]:
@@ -228,7 +229,8 @@ def _capable(steps: list[Step], backend: BackendInfo | None) -> list[Step]:
 def build_plan(family: str | None, opts: Options, paths: Paths,
                prepared: PreparedSource | None = None,
                backend: BackendInfo | None = None,
-               deps_missing: bool = False) -> list[Step]:
+               deps_missing: bool = False,
+               missing_packages: list[str] | None = None) -> list[Step]:
     """The steps to run. With a prepared source they run inside its workspace and
     nothing fetches or switches the source any more (design §10.6)."""
     root = Path(prepared.path) if prepared is not None else Path(paths.source_root)
@@ -288,8 +290,16 @@ def build_plan(family: str | None, opts: Options, paths: Paths,
         if deps_missing:
             # Explicit first step: its own log line, its own sudo prompt, and a
             # failure that names dependency installation rather than the build.
-            steps.append(Step("deps", "kosctl deps --install",
-                              [kosctl, "deps", "--install"], env))
+            # The backend's own deps command is preferred; an older checkout has
+            # none, so pacman is driven here after the user confirmed the list.
+            if backend is None or backend.has(SYSTEM_DEPS):
+                steps.append(Step("deps", "kosctl deps --install",
+                                  [kosctl, "deps", "--install"], env, input="y\n"))
+            elif family == "arch" and missing_packages:
+                steps.append(Step(
+                    "packages", "install build packages",
+                    ["sudo", "pacman", "-S", "--needed", *missing_packages],
+                    env, input="y\n"))
         steps.append(Step("core", "kosctl install", [kosctl, "install"], env))
         steps += _component_steps(opts, root, env)
         if opts.start:
