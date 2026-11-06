@@ -234,6 +234,15 @@ class ReviewScreen(WizardScreen):
                     reason="" if not failed else s("cmd_plan_unavailable")),
         ]
 
+    def action_review_scroll(self, step: int) -> None:
+        self.query_one("#review", VerticalScroll).scroll_relative(y=step, animate=False)
+
+    def action_review_top(self) -> None:
+        self.query_one("#review", VerticalScroll).scroll_home(animate=False)
+
+    def action_review_bottom(self) -> None:
+        self.query_one("#review", VerticalScroll).scroll_end(animate=False)
+
     def action_review_details(self) -> None:
         self.details = not self.details
         self.query_one("#steps", Static).update(self._steps())

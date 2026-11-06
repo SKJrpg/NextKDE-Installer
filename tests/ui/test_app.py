@@ -29,11 +29,12 @@ if HAS_TEXTUAL:
     from textual.widgets import Button, Checkbox, RadioButton
 
     from installer import settings
-    from installer.detect import OsInfo, Probe, System
+    from installer.detect import FAMILY_IDS, OsInfo, Probe, System
     from installer.paths import Paths
     from installer.strings import Strings
     from installer.ui.app import KosApp
-    from installer.ui.screens.options import OptionsScreen
+    from installer.ui.screens.options import (DETAILS, LOWER_ROWS, SOURCE_ROWS,
+                                               OptionsScreen)
     from installer.ui.screens.result import ResultScreen
     from installer.ui.screens.system import SystemScreen
     from installer.ui.screens.welcome import WelcomeScreen
@@ -221,7 +222,8 @@ class AppShellTest(unittest.IsolatedAsyncioTestCase):
             await pilot.press("down")
             await pilot.pause()
             detail = str(app.screen.query_one("#probe_detail_text").render())
-            self.assertIn("Why it matters", detail)
+            self.assertIn("Notes", detail)
+            self.assertNotIn("Why it matters", detail)
             self.assertIn(Strings("en")("why_probe_disk"), detail)
             self.assertIn("4.2 GiB free", detail)
             self.assertIn("WARN", detail)
@@ -233,9 +235,18 @@ class AppShellTest(unittest.IsolatedAsyncioTestCase):
             await pilot.press("tab")
             await pilot.pause()
             detail = str(app.screen.query_one("#probe_detail_text").render())
-            self.assertIn(Strings("en")("why_probe_os"), detail)
+            self.assertIn(Strings("en")("os_note_arch"), detail)
+            self.assertNotIn("Picks the install path", detail)
             self.assertNotIn(Strings("en")("check_fixable"), detail)
             self.assertNotIn(Strings("en")("check_remedy"), detail)
+
+    def test_every_detected_family_has_its_own_os_note(self) -> None:
+        for lang in ("zh", "en"):
+            text = Strings(lang)
+            for family in set(FAMILY_IDS.values()) | {None}:
+                key = "os_note_" + (family or "unknown")
+                with self.subTest(lang=lang, family=family):
+                    self.assertNotEqual(text(key), key)
 
     async def test_long_probe_value_is_clipped_to_the_list_width(self) -> None:
         app = self.make_app()
@@ -278,7 +289,8 @@ class AppShellTest(unittest.IsolatedAsyncioTestCase):
             self.assertIsInstance(app.screen, OptionsScreen)
             self.assertTrue(app.screen.query_one("#option_detail").has_class("-wide"))
             detail = str(app.screen.query_one("#option_detail_text").render())
-            self.assertIn(Strings("en")("detail_source"), detail)
+            self.assertIn(Strings("en")("detail_source_stable"), detail)
+            self.assertNotIn(Strings("en")("detail_source_main"), detail)
 
     async def test_wide_options_detail_follows_focus(self) -> None:
         app = self.make_app()
@@ -293,11 +305,29 @@ class AppShellTest(unittest.IsolatedAsyncioTestCase):
 
             app.screen.query_one("#spatial", Checkbox).focus()
             await pilot.pause()
-            self.assertIn(Strings("en")("opt_spatial_hint"), detail())
+            self.assertIn(Strings("en")("detail_spatial"), detail())
+            self.assertNotIn(Strings("en")("detail_app_todo"), detail())
 
             app.screen.query_one("#app_todo", Checkbox).focus()
             await pilot.pause()
-            self.assertIn(Strings("en")("detail_apps"), detail())
+            self.assertIn(Strings("en")("detail_app_todo"), detail())
+            self.assertNotIn(Strings("en")("detail_app_calendar"), detail())
+
+    async def test_every_option_has_its_own_description(self) -> None:
+        app = self.make_app()
+        async with app.run_test(size=(120, 30)) as pilot:
+            await pilot.press("tab")
+            await pilot.pause()
+            await pilot.press("tab")
+            await pilot.pause()
+            self.assertIsInstance(app.screen, OptionsScreen)
+            # core is disabled and never focused, but it still has a description.
+            self.assertEqual(set(DETAILS), set(SOURCE_ROWS + LOWER_ROWS + ("core",)))
+            details = {ident: app.screen._detail(ident).plain for ident in DETAILS}
+            self.assertEqual(len(set(details.values())), len(details))
+            for ident, text in details.items():
+                with self.subTest(ident=ident):
+                    self.assertNotIn(Strings("en")("options_head"), text)
 
 
 class InstallShTest(unittest.TestCase):

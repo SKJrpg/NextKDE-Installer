@@ -100,13 +100,20 @@ class SystemScreen(WizardScreen):
                     style=quiet)
         return text
 
+    def _note(self, probe: Probe) -> str:
+        """The OS note names the detected family and the install path it takes."""
+        if probe.key == "probe_os":
+            family = self.app.system.family or "unknown"
+            return self.strings("os_note_" + family)
+        return self.strings("why_" + probe.key)
+
     def _detail(self, probe: Probe) -> Text:
         s = self.strings
         pairs = [
             (s("check_what"), s(probe.key)),
             (s("check_status"), self._status_word(probe.status)),
             (s("check_result"), probe.detail),
-            (s("check_why"), s("why_" + probe.key)),
+            (s("check_why"), self._note(probe)),
         ]
         if probe.status != "PASS":
             pairs.append((s("check_fixable"),

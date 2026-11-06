@@ -71,6 +71,8 @@
 | `focus.next` | `Tab` | | result / menu / list.* / log.view | `key_focus_next` 下一项 / next field | 隐藏：向导页的 Tab 是换页 |
 | `focus.prev` | `Shift+Tab` | | result / menu / list.* / log.view | `key_focus_prev` 上一项 / previous field | 隐藏 |
 | `review.continue` | `Enter` | | review | `key_continue` 继续 / continue | 进确认页，不执行 |
+| `review.scroll` | `↑` `↓` | `k` `j` | review | `key_scroll` 滚动 / scroll | 页面内容滚动，不是选择 |
+| `review.ends` | `g` `G` | | review | `key_ends` 首末 / first/last | 页面顶部/底部 |
 | `wizard.back` | `Esc` | | menu / list.* / log.view | `key_back` 返回 / back | 无后退就不绑定 |
 | `welcome.language` | `←` `→` | `h` `l` | welcome | `key_language` 语言 / language | 仍然不用 Tab |
 | `check.move` | `↑` `↓` | `k` `j` | checks | `key_select` 选择 / select | |
@@ -123,8 +125,8 @@
 | Checks | 第一行探针 | `↑/↓` 或 `j/k` 选择 · `Tab` 下一步 · `ctrl+r` 重新检测 · `Shift+Tab` 上一步 · `ctrl+p` 命令 · `ctrl+k` · `ctrl+c`×2 退出 | Enter 不做任何事 |
 | Options（来源块） | 当前来源行 | `↑/↓` 或 `j/k` 选来源 · `Enter` 下到下方选项 · `Tab` 下一步 · `Shift+Tab` 上一步 · `ctrl+p` 命令 · `ctrl+k`；本地源码时 `ctrl+e` 路径 | 来源块不越界；`core` 不可选、Tab 不经过；`ctrl+c`×2 退出 |
 | Options（下方块） | 第一个可用行 | `↑/↓` 或 `j/k` 移动 · `Enter` 切换复选框 · `Space` 同上（别名） · `Tab` 下一步 · `Shift+Tab` 上一步 · `ctrl+p` 命令 · `ctrl+k`；本地源码时 `ctrl+e` 路径 | 首行 `↑` 回到当前来源行；末行 `↓` 停住；`ctrl+c`×2 退出 |
-| Review（正常） | 页面本身 | `Enter` 进确认页 · `Tab` 同上（下一页） · `ctrl+e` 命令详情 · `Shift+Tab` 上一步 · `ctrl+p` 命令 · `ctrl+k` · `ctrl+c`×2 退出 | Enter 进的是确认页，不安装 |
-| Review（准备失败） | 页面本身 | `ctrl+r` 重试 · `ctrl+l` 日志 · `Shift+Tab` 上一步 · `ctrl+p` 命令 · `ctrl+k` · `ctrl+c`×2 退出 | `Enter`/`Tab`/`ctrl+e` 在失败页禁用 |
+| Review（正常） | 页面本身 | `↑/↓` 或 `j/k` 滚动 · `g/G` 首末 · `Enter` 进确认页 · `Tab` 同上（下一页） · `ctrl+e` 命令详情 · `Shift+Tab` 上一步 · `ctrl+p` 命令 · `ctrl+k` · `ctrl+c`×2 退出 | Enter 进的是确认页，不安装 |
+| Review（准备失败） | 页面本身 | `↑/↓` 或 `j/k` 滚动 · `g/G` 首末 · `ctrl+r` 重试 · `ctrl+l` 日志 · `Shift+Tab` 上一步 · `ctrl+p` 命令 · `ctrl+k` · `ctrl+c`×2 退出 | `Enter`/`Tab`/`ctrl+e` 在失败页禁用 |
 | Confirm | 页面本身 | `y` 开始安装 · `n` 返回上一步（`Shift+Tab`/`Esc` 同义） · `ctrl+k` | **Enter、Tab、方向键、数字都不响应**，整页保持原样 |
 | Installation | 无（`#cancel` 仅鼠标） | `ctrl+z` 中止（立即） · `ctrl+k` | 导航键全部不绑定：无 Esc、无 Tab、无数字；Ctrl+C 在这里被吞掉，既不中止也不退出 |
 | Result | 失败/取消 →「重试」；成功 →「退出」 | `Enter` 激活聚焦按钮（「退出」也用它） · `Tab`/`Shift+Tab` 换按钮 · `ctrl+r` 重试（非成功） · `ctrl+l` 日志 · `ctrl+p` 命令 · `ctrl+k` | 成功页无 `ctrl+r`；`ctrl+c`×2 也能退出 |
@@ -211,8 +213,8 @@ Management（`ManagementScreen`）是唯一菜单；子页是列表。
 | Options（来源行，本地源码） | `↑/↓ 选择  ⏎ 下方选项  ctrl+e 路径  Tab 下一步  Shift+Tab 上一步  ctrl+p 命令  ctrl+k 帮助` | `↑/↓ select  ⏎ options below  ctrl+e path  Tab next  Shift+Tab back  ctrl+p commands  ctrl+k help` |
 | Options（下方行） | `↑/↓ 移动  ⏎ 确认  space 切换  Tab 下一步  Shift+Tab 上一步  ctrl+p 命令  ctrl+k 帮助` | `↑/↓ move  ⏎ confirm  space toggle  Tab next  Shift+Tab back  ctrl+p commands  ctrl+k help` |
 | Options（下方行，本地源码） | `↑/↓ 移动  ⏎ 确认  space 切换  ctrl+e 路径  Tab 下一步  Shift+Tab 上一步  ctrl+p 命令  ctrl+k 帮助` | `↑/↓ move  ⏎ confirm  space toggle  ctrl+e path  Tab next  Shift+Tab back  ctrl+k help` |
-| Review（正常） | `⏎ 继续  Tab 下一步  ctrl+e 命令详情  Shift+Tab 上一步  ctrl+p 命令  ctrl+k 帮助` | `⏎ continue  Tab next  ctrl+e details  Shift+Tab back  ctrl+p commands  ctrl+k help` |
-| Review（失败） | `ctrl+r 重试  ctrl+l 日志  Shift+Tab 上一步  ctrl+p 命令  ctrl+k 帮助` | `ctrl+r retry  ctrl+l log  Shift+Tab back  ctrl+p commands  ctrl+k help` |
+| Review（正常） | `⏎ 继续  ↑/↓ 滚动  Tab 下一步  ctrl+e 命令详情  Shift+Tab 上一步  ctrl+p 命令  ctrl+k 帮助` | `⏎ continue  ↑/↓ scroll  Tab next  ctrl+e details  Shift+Tab back  ctrl+p commands  ctrl+k help` |
+| Review（失败） | `↑/↓ 滚动  g/G 首末  ctrl+r 重试  ctrl+l 日志  Shift+Tab 上一步  ctrl+p 命令  ctrl+k 帮助` | `↑/↓ scroll  g/G first/last  ctrl+r retry  ctrl+l log  Shift+Tab back  ctrl+p commands  ctrl+k help` |
 | Confirm | `y 确认  n 取消  ctrl+k 帮助` | `y confirm  n cancel  ctrl+k help` |
 | Installation | `ctrl+z 中止  ctrl+k 帮助` | `ctrl+z abort  ctrl+k help` |
 | Result（成功） | `ctrl+l 日志  ctrl+p 命令  ctrl+k 帮助` | `ctrl+l log  ctrl+p commands  ctrl+k help` |
@@ -496,7 +498,7 @@ def resolve(contexts, overrides=None, budget=None) -> list[tuple[str, str, str]]
 
 ### 12.2 Vim 是别名，不是第二套动作
 
-`j/k` 挂在 `check.move`、`option.move`、`option.pick`、`menu.move`、`log.scroll` 上；`h/l` 挂在 `welcome.language`（§19 起也用于命令菜单里的横向选择）；`g/G` 是新动作 `menu.ends` / `log.ends`（列表首末、日志顶部/底部），因为它们没有现成动作可挂。（确认页的两个选项已在 §14 改成 Y/N，`confirm.move` 不复存在。）
+`j/k` 挂在 `check.move`、`option.move`、`option.pick`、`review.scroll`、`menu.move`、`log.scroll` 上；`h/l` 挂在 `welcome.language`（§19 起也用于命令菜单里的横向选择）；`g/G` 是新动作 `review.ends` / `menu.ends` / `log.ends`（页面、列表首末、日志顶部/底部），因为它们没有现成动作可挂。（确认页的两个选项已在 §14 改成 Y/N，`confirm.move` 不复存在。）
 
 `h/l` **不做翻页**：向导的“上一步/下一步”仍然只有 Esc / Enter。原因：`l` 翻页会让一次误触跳过整页，而且与“`h/l` = 左/右”的 Vim 语义打架。向导页不需要横向移动，所以 `h/l` 在 Checks / Options / Review 上没有绑定。
 
@@ -678,8 +680,8 @@ def resolve(contexts, overrides=None, budget=None) -> list[tuple[str, str, str]]
 
 用户的指示：**这个弹窗非常丑！为啥不在原本的地方输入？**
 
-- `PasswordDialog` 删除。每个 `ChromeScreen`/`WizardScreen` 在页脚上方带一条隐藏的 `SudoBar`（`widgets/sudo_bar.py`）：标题 `需要 sudo 密码` 加右侧 `⏎ 继续 · esc 取消`，一行说明（`安装软件包需要 root 权限；密码只用于这次调用，不写入磁盘或日志。`），再一行掩码输入框（占位文字 `sudo 密码：`）。没有外框、没有卡片、不是模态。
+- `PasswordDialog` 删除。每个 `ChromeScreen`/`WizardScreen` 在页脚上方带一条隐藏的 `SudoBar`（`widgets/sudo_bar.py`）：首行说明（`安装软件包和构建环境需要 root`）加右侧 `⏎ 继续 · esc 取消`，下一行掩码输入框（占位文字 `sudo 密码：`）。没有外框、没有卡片、不是模态。
 - 显示时机：`KosApp._poll_askpass` 仍每 150 ms 看一次 `pending()`；有请求时调用当前屏幕的 `show_sudo()`。当前屏幕是模态（帮助、确认框、路径框等）时没有这个方法，请求就等着，模态关掉后的下一次轮询再显示。一次只显示一条，回答后立刻隐藏并清空输入。
 - 键位：输入框自动获得焦点；`Enter` 走原来的 `_password_answer`，`Esc` 在条上拦截并拒绝（不冒泡到页面的 Esc）。焦点在隐藏时交还给之前的控件。原有的“一次运行一个 askpass 通道、回答只给这次调用、拒绝即取消整次运行”都没变；密码仍然只经过 0600 的 answer 文件，不写日志。
-- 布局：输入框 `height: 1`、无边框、`$surface` 底色；整条在 100×30 是 3 行，在 66×20 也是 3 行（说明改短了一版，避免在 `root` 后断行）；日志/列表让位，页脚和 `ctrl+z 中止` 不动。
+- 布局：输入框 `height: 1`、无边框、`$surface` 底色；整条在 100×30 是 2 行，在 66×20 也是 2 行（窄屏隐藏右侧键位提示，说明不折行）；日志/列表让位，页脚和 `ctrl+z 中止` 不动。
 - 测试：`tests/ui/test_sudo.py` 从模态改成条——等待条与输入框、焦点在输入框、Enter 把密码交给 helper、Esc 拒绝并取消、没有 `ModalScreen`、66×20 高度 ≤ 4、回答后条消失且输入清空；新增管理动作上显示、以及帮助模态盖着时等待其关闭。整套 274 项全绿。

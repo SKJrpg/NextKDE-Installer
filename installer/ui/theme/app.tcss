@@ -216,11 +216,15 @@ ProgressBar Bar > .bar--complete {
 #stages_box {
     height: auto;
     max-height: 6;
-    margin-bottom: 1;
 }
 
 #stages {
     height: auto;
+}
+
+/* The bar belongs to the stage list above it, not to the log below. */
+#progress {
+    margin: 0 0 1 0;
 }
 
 #log {
@@ -415,17 +419,20 @@ HelpScreen {
 /* -- the inline sudo bar (never a dialog) ----------------------------- */
 #sudo_bar {
     height: auto;
-    padding: 0 1;
+    padding: 0 2;
+    /* The bar keeps one blank row above the footer, so deleting the title
+       moved the prompt up instead of leaving it glued to the footer. */
+    margin-bottom: 1;
+}
+
+/* The wizard keeps its content beside the 22-cell sidebar; the bar follows
+   the log's left edge instead of starting under the sidebar. */
+WizardScreen #sudo_bar {
+    padding: 0 2 0 24;
 }
 
 #sudo_head {
     height: 1;
-}
-
-#sudo_title {
-    width: 1fr;
-    height: 1;
-    text-style: bold;
 }
 
 #sudo_hint {
@@ -434,7 +441,8 @@ HelpScreen {
 }
 
 #sudo_body {
-    height: auto;
+    width: 1fr;
+    height: 1;
 }
 
 #sudo_input_row {

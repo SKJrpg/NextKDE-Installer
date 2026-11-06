@@ -25,7 +25,7 @@ HAS_TEXTUAL = importlib.util.find_spec("textual") is not None
 
 if HAS_TEXTUAL:
     from textual.screen import ModalScreen
-    from textual.widgets import Input, OptionList
+    from textual.widgets import Input, OptionList, RichLog
 
     from installer import manage, workflow
     from installer.core.events import Event
@@ -405,10 +405,19 @@ class SudoPromptTest(unittest.IsolatedAsyncioTestCase):
             await self.wait_screen(app, InstallationScreen)
             helper = self.ask_sudo(app)
             bar = await self.wait_bar(app, pilot)
-            self.assertEqual(bar.size.height, 3)      # title, reason, field
-            self.assertNotIn("🔒", str(bar.screen.query_one("#sudo_title").render()))
+            self.assertEqual(bar.size.height, 2)      # reason, field
+            self.assertEqual(bar.region.bottom + 1,
+                             bar.screen.query_one("#footer").region.y)
+            body = str(bar.screen.query_one("#sudo_body").render())
+            self.assertEqual(body, Strings("en")("sudo_password_body"))
+            self.assertNotIn("never written", body)
+            self.assertEqual(len(bar.screen.query("#sudo_title")), 0)
+            self.assertFalse(bar.screen.query_one("#sudo_hint").display)
             prompt = str(bar.screen.query_one("#sudo_prompt").render())
             self.assertTrue(prompt.startswith("[sudo] password for "), prompt)
+            log = bar.screen.query_one("#log", RichLog)
+            self.assertEqual(bar.screen.query_one("#sudo_prompt").region.x,
+                             log.region.x)
             field = bar.screen.query_one("#sudo_input", Input)
             self.assertEqual(field.size.height, 1)
             self.assertIs(app.focused, field)

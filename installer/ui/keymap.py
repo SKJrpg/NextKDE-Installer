@@ -112,6 +112,13 @@ ACTIONS: tuple[Action, ...] = (
     # Local checkout only; the screen disables it for the other source modes.
     Action("option.local_path", ("ctrl+e",), "key_path", frozenset({OPTIONS}), 30),
     Action("review.continue", ("enter",), "key_continue", frozenset({REVIEW}), 10),
+    Action("review.scroll", ("up", "down"), "key_scroll", frozenset({REVIEW}), 45,
+           display="↑/↓", aliases=("j", "k"),
+           bind=("review_scroll(-1)", "review_scroll(1)",
+                 "review_scroll(1)", "review_scroll(-1)"),
+           binding_priority=True),
+    Action("review.ends", ("g", "G"), "key_ends", frozenset({REVIEW}), 55,
+           display="g/G", bind=("review_top", "review_bottom")),
     Action("wizard.next", ("tab",), "key_next",
            frozenset({WELCOME, CHECKS, OPTIONS, REVIEW}), 5, display="Tab"),
     Action("review.details", ("ctrl+e",), "key_details", frozenset({REVIEW}), 40),

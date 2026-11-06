@@ -59,10 +59,10 @@ FOOTERS = {
                       "ctrl+p commands  ctrl+k help",
     "options_check": "↑/↓ move  ⏎ confirm  space toggle  Tab next  "
                      "Shift+Tab back  ctrl+p commands  ctrl+k help",
-    "review": "⏎ continue  Tab next  ctrl+e details  Shift+Tab back  "
+    "review": "⏎ continue  ↑/↓ scroll  Tab next  ctrl+e details  Shift+Tab back  "
               "ctrl+p commands  ctrl+k help",
-    "review_failed": "ctrl+r retry  ctrl+l log  Shift+Tab back  "
-                     "ctrl+p commands  ctrl+k help",
+    "review_failed": "↑/↓ scroll  g/G first/last  ctrl+r retry  ctrl+l log  "
+                     "Shift+Tab back  ctrl+p commands  ctrl+k help",
     "confirm": "y confirm  n cancel  ctrl+k help",
     "installation": "ctrl+z abort  ctrl+k help",
     "result_ok": "q Quit  ctrl+l log  ctrl+p commands  ctrl+k help",
@@ -511,6 +511,25 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
             await pilot.press("k")
             await pilot.pause()
             self.assertEqual(app.opts.source, "stable")
+
+    async def test_vim_keys_scroll_the_review_page(self) -> None:
+        app = self.make_app()
+        async with app.run_test(size=(100, 20)) as pilot:
+            await self.to_review(pilot)
+            view = app.screen.query_one("#review")
+            self.assertGreater(view.max_scroll_y, 0)
+            await pilot.press("j")
+            await pilot.pause()
+            self.assertEqual(view.scroll_y, 1)
+            await pilot.press("k")
+            await pilot.pause()
+            self.assertEqual(view.scroll_y, 0)
+            await pilot.press("G")
+            await pilot.pause()
+            self.assertEqual(view.scroll_y, view.max_scroll_y)
+            await pilot.press("g")
+            await pilot.pause()
+            self.assertEqual(view.scroll_y, 0)
 
     async def test_vim_keys_in_the_menu_and_the_log(self) -> None:
         app = self.manage_app()

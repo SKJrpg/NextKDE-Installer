@@ -322,6 +322,10 @@ class WizardTest(unittest.IsolatedAsyncioTestCase):
             log = screen.query_one("#log")
             self.assertTrue(log.wrap)
             self.assertEqual(log.styles.scrollbar_size_horizontal, 0)
+            # The bar sits against the stage list; the log keeps its distance.
+            stages = screen.query_one("#stages_box")
+            self.assertEqual(bar.region.y, stages.region.bottom)
+            self.assertGreater(log.region.y, bar.region.bottom)
 
     async def test_activity_indicator_stops_when_the_run_finishes(self) -> None:
         app = self.make_app()

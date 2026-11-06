@@ -26,9 +26,21 @@ from . import ChoicePasses, EnterPasses, WizardScreen
 SOURCES = ("stable", "main", "local")
 WIDE_AT = 110
 
-# Focused row id -> the description that explains it.
-DETAILS = {"core": "detail_core", "lockscreen": "detail_lockscreen",
-           "spatial": "detail_spatial", "start": "detail_start"}
+# Every selectable row has its own description: sources differ by what they
+# check out, apps by what they are, and the advanced rows by what they change.
+DETAILS = {
+    "source_stable": "detail_source_stable",
+    "source_main": "detail_source_main",
+    "source_local": "detail_source_local",
+    "core": "detail_core",
+    "app_calendar": "detail_app_calendar",
+    "app_todo": "detail_app_todo",
+    "app_weather": "detail_app_weather",
+    "app_calculator": "detail_app_calculator",
+    "lockscreen": "detail_lockscreen",
+    "spatial": "detail_spatial",
+    "start": "detail_start",
+}
 
 SOURCE_ROWS = tuple("source_" + name for name in SOURCES)
 # The disabled core row is deliberately absent: it is not reachable.
@@ -115,21 +127,16 @@ class OptionsScreen(WizardScreen):
     def _detail(self, ident: str) -> Text:
         s = self.strings
         if ident.startswith("source_"):
-            name = ident.removeprefix("source_")
-            heading = s("source_" + name)
-            parts = [s("detail_source"), s("source_" + name + "_note")]
-            if name == "local":
-                parts.append(self._local_detail())
+            heading = s("source_" + ident.removeprefix("source_"))
         elif ident.startswith("app_"):
             heading = s("app_" + ident.removeprefix("app_"))
-            parts = [s("detail_apps"), s("apps_impact")]
         else:
             heading = {"core": s("core_shell"), "lockscreen": s("opt_lockscreen"),
                        "spatial": s("opt_spatial"), "start": s("opt_start")}.get(
                            ident, s("options_head"))
-            parts = [s(DETAILS.get(ident, "detail_apps"))]
-            if ident == "spatial":
-                parts.append(s("opt_spatial_hint"))
+        parts = [s(DETAILS[ident])]
+        if ident == "source_local":
+            parts.append(self._local_detail())
         text = Text(heading, style="bold")
         text.append("\n")
         for index, part in enumerate(parts):
@@ -140,7 +147,7 @@ class OptionsScreen(WizardScreen):
 
     def _show_detail(self, ident: str | None = None) -> None:
         """Show the focused row's explanation; with no row, the chosen source's."""
-        known = bool(ident) and (ident.startswith(("source_", "app_")) or ident in DETAILS)
+        known = bool(ident) and ident in DETAILS
         if not known:
             ident = "source_" + self.app.opts.source
         self.query_one("#option_detail_text", Static).update(self._detail(ident))

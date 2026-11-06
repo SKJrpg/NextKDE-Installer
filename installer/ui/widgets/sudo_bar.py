@@ -62,12 +62,23 @@ class SudoBar(Vertical):
         s = self.strings
         quiet = getattr(self.app, "secondary_style", "dim")
         with Horizontal(id="sudo_head"):
-            yield Static(Text(s("sudo_password_title"), style="bold"), id="sudo_title")
+            yield Static(Text(s("sudo_password_body"), style=quiet), id="sudo_body")
             yield Static(Text(s("sudo_bar_hint"), style=quiet), id="sudo_hint")
-        yield Static(Text(s("sudo_password_body"), style=quiet), id="sudo_body")
         with Horizontal(id="sudo_input_row"):
             yield Static(Text(self._prompt(), style="bold"), id="sudo_prompt")
             yield SudoInput(password=True, id="sudo_input", placeholder="")
+
+    def on_mount(self) -> None:
+        self._fit_hint()
+
+    def on_resize(self, event) -> None:
+        self._fit_hint()
+
+    def _fit_hint(self) -> None:
+        """At 66 columns the reason and the hint cannot share a line."""
+        hints = self.query("#sudo_hint")
+        if hints:
+            hints.first().display = self.app.size.width >= 80
 
     def _prompt(self) -> str:
         """The classic sudo prompt; the lock only when a Nerd Font is around."""
@@ -79,6 +90,7 @@ class SudoBar(Vertical):
         self._previous = self.app.focused
         self._answer = answer
         self.display = True
+        self._fit_hint()
         field = self.query_one("#sudo_input", SudoInput)
         field.can_focus = True
         field.value = ""
