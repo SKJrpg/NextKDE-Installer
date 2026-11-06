@@ -45,7 +45,10 @@ def print_report(system: System, steps: list[Step], strings,
     if source is not None:
         # Which commit would be installed; --check never fetches it.
         print(f"  {strings('label_repo')}: {source.repository}")
-        print(f"  {strings('label_ref')}: {source.ref} "
+        ref = source.ref
+        if getattr(source, "tag", ""):
+            ref = f"{ref} ({source.tag})"
+        print(f"  {strings('label_ref')}: {ref} "
               f"({strings('label_commit')} {source.commit[:8]})")
         print(f"  {strings('label_workspace')}: {source.path}")
     print()

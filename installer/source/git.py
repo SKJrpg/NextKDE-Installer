@@ -64,6 +64,36 @@ def rev_parse(root, ref: str) -> str:
     return result.stdout.strip()
 
 
+def ls_remote_tags(repository: str) -> dict[str, str]:
+    """Every tag in ``repository`` mapped to its commit.
+
+    An annotated tag lists its tag object and a peeled ``^{}`` line; the peeled
+    commit wins, because that is the commit a clone checks out.
+    """
+    result = _check(run(None, "ls-remote", "--tags", repository, timeout=60),
+                    f"ls-remote --tags {repository}")
+    found: dict[str, str] = {}
+    for line in result.stdout.splitlines():
+        sha, _, name = line.partition("\t")
+        name = name.strip()
+        if not name.startswith("refs/tags/"):
+            continue
+        tag = name.removeprefix("refs/tags/")
+        if tag.endswith("^{}"):
+            found[tag[:-3]] = sha.strip()
+        else:
+            found.setdefault(tag, sha.strip())
+    return found
+
+
+def tags_at_head(root) -> list[str]:
+    """Tags pointing at HEAD in a local checkout, or []."""
+    result = run(root, "tag", "--points-at", "HEAD")
+    if result.returncode != 0:
+        return []
+    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+
+
 def ls_remote(repository: str, ref: str) -> str:
     """The commit ``ref`` names in ``repository``, without fetching anything.
 

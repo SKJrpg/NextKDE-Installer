@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import subprocess
 from pathlib import Path
 
 from . import git
@@ -10,6 +11,7 @@ from . import git
 CANONICAL_REPO = "https://github.com/NextKde/NextKde.git"
 
 _RELEASE_BRANCH = re.compile(r"release/([0-9]+)\.([0-9]+)")
+_RELEASE_TAG = re.compile(r"v([0-9]+)\.([0-9]+)\.([0-9]+)")
 _GITHUB_REMOTE = re.compile(
     r"(?:https?://|ssh://git@|git@)(?:www\.)?github\.com[/:]([\w.-]+)/([\w.-]+?)(?:\.git)?/?",
     re.IGNORECASE,
@@ -60,6 +62,34 @@ def latest_release_branch(repository: str) -> str:
     if not found:
         raise ValueError(f"{repository} has no release/X.Y branch")
     return max(found, key=found.get)
+
+
+def _tag_key(tag: str):
+    match = _RELEASE_TAG.fullmatch(tag)
+    if not match:
+        return None
+    return tuple(int(part) for part in match.groups())
+
+
+def tag_at(repository: str, commit: str) -> str:
+    """The release tag pointing at ``commit``, or "" (a branch can be ahead)."""
+    try:
+        tags = git.ls_remote_tags(repository)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return ""
+    matches = [tag for tag, sha in tags.items()
+               if sha == commit and _tag_key(tag) is not None]
+    return max(matches, key=_tag_key) if matches else ""
+
+
+def local_tag(root: Path) -> str:
+    """The release tag at a local checkout's HEAD, or ""."""
+    try:
+        tags = git.tags_at_head(root)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return ""
+    matches = [tag for tag in tags if _tag_key(tag) is not None]
+    return max(matches, key=_tag_key) if matches else ""
 
 
 def resolve(mode: str, repository: str = CANONICAL_REPO, checkout=None,
