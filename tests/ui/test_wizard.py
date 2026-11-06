@@ -272,6 +272,26 @@ class WizardTest(unittest.IsolatedAsyncioTestCase):
             text = str(app.screen.query_one("#result_text").render())
             self.assertIn("finished", head.lower())
             self.assertIn("kosctl install", text)
+            self.assertIn(Strings("en")("next_steps"), text)
+            self.assertIn(Strings("en")("result_started"), text)
+
+    async def test_new_packages_return_to_review_instead_of_a_dialog(self) -> None:
+        app = self.make_app()
+        async with app.run_test(size=(100, 30)) as pilot:
+            await self.to_options(pilot)
+            await pilot.press("tab")     # Review
+            await pilot.pause()
+            with mock.patch("installer.ui.app.deps_report",
+                            return_value=(True, ["cmake"])):
+                await self.start_install(pilot)
+                for _ in range(300):
+                    await asyncio.sleep(0.01)
+                    if isinstance(app.screen, ReviewScreen):
+                        break
+            self.assertIsInstance(app.screen, ReviewScreen)
+            side = str(app.screen.query_one("#side").render())
+            self.assertIn("cmake", side)
+            self.assertNotIn("缺少构建依赖", side)
 
     async def test_ctrl_z_during_install_ends_cancelled(self) -> None:
         app = self.make_app(mode="cancel")

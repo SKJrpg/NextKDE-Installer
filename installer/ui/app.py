@@ -239,24 +239,12 @@ class KosApp(App, inherit_bindings=False):
         self.system.probes = probes
 
     def _start_or_confirm(self, prepared, missing: list[str]) -> None:
-        """A list the confirmation page did not show is confirmed here."""
+        """A list the confirmation page did not show goes back there."""
         if missing and not set(missing).issubset(self._deps_at_confirm):
-            s = self.strings
-            self.push_screen(
-                ConfirmDialog(
-                    s, s("deps_confirm_heading"),
-                    s("deps_confirm_body") % ", ".join(missing),
-                    confirm_label=s("confirm_install"),
-                    cancel_label=s("confirm_back")),
-                callback=lambda confirmed: self._deps_answer(confirmed, prepared))
+            self._back_to_review()
+            self.notify(self.strings("review_deps_changed"), severity="warning")
             return
         self.install_worker = self._run_install(str(prepared.path))
-
-    def _deps_answer(self, confirmed, prepared) -> None:
-        if confirmed:
-            self.install_worker = self._run_install(str(prepared.path))
-        else:
-            self._back_to_review()
 
     def _prepared_source(self):
         mode = workflow.MODES.get(self.opts.source)

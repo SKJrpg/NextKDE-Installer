@@ -10,6 +10,7 @@ from __future__ import annotations
 from rich.cells import cell_len
 from rich.text import Text
 from textual.app import ComposeResult
+from textual.containers import VerticalScroll
 from textual.widgets import Static
 
 from . import WizardScreen
@@ -25,7 +26,8 @@ class ConfirmScreen(WizardScreen):
         self.steps = steps
 
     def body(self) -> ComposeResult:
-        yield Static(self._summary(), id="confirm_page")
+        with VerticalScroll(id="confirm_scroll", can_focus=False):
+            yield Static(self._summary(), id="confirm_page")
         yield Static(self._prompt(), id="confirm_prompt")
 
     # -- drawing -----------------------------------------------------------

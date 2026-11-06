@@ -10,6 +10,11 @@ from . import git
 
 CANONICAL_REPO = "https://github.com/NextKde/NextKde.git"
 
+# Sealed channels: the code and tests remain, but the UI and CLI do not offer
+# them. Re-enable by removing the name from this set.
+DISABLED_SOURCES = frozenset({"stable"})
+DEFAULT_SOURCE = "main"
+
 _RELEASE_BRANCH = re.compile(r"release/([0-9]+)\.([0-9]+)")
 _RELEASE_TAG = re.compile(r"v([0-9]+)\.([0-9]+)\.([0-9]+)")
 _GITHUB_REMOTE = re.compile(

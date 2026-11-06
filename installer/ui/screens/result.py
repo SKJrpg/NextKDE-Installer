@@ -66,7 +66,15 @@ class ResultScreen(WizardScreen):
                     title = s("key_deps") if step.key == "packages" else step.title
                     text.append(f"✔ {title}\n", style="green")
             text.append("\n")
+            # The same takeaway `kosctl install` prints at the end: how to
+            # apply it now, and what still waits for the next login.
             text.append(s("next_steps") + "\n", style="yellow")
+            started = any(step.key == "start" and step.argv for step in self.steps)
+            if started:
+                text.append(s("result_started") + "\n", style=quiet)
+            else:
+                text.append(s("result_apply_now") + "\n", style="yellow")
+                text.append(s("result_login_note") + "\n", style=quiet)
         elif self.result == "cancelled":
             text.append(s("result_cancelled") + "\n", style="yellow")
             if self.failed_title:

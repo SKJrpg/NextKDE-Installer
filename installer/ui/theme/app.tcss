@@ -85,6 +85,15 @@ ToggleButton.-on > .toggle--button {
     color: ansi_green;
 }
 
+/* Unavailable rows are visibly quiet, never colour-only: the label also says
+   why (a capability reason or "temporarily unavailable"). */
+SourceRow:disabled,
+SourceRow:disabled > .toggle--label,
+SourceRow:disabled > .toggle--button {
+    color: ansi_bright_black;
+    text-style: dim;
+}
+
 #log, #action_log, #log_view, #manage_list {
     background: transparent;
     color: ansi_default;
@@ -178,14 +187,18 @@ ProgressBar Bar > .bar--complete {
 }
 
 /* Options scrolls as one column; the panes keep their own height. */
-#options, #review {
+#options, #review, #confirm_scroll {
     height: 1fr;
     width: 1fr;
 }
 
 #options_head, #status, #steps, #side, #hint,
-#install_head, #log_path, #local_state {
+#install_head, #log_path, #local_state, #confirm_page, #confirm_prompt {
     height: auto;
+}
+
+#confirm_prompt {
+    padding-top: 1;
 }
 
 #install_head {

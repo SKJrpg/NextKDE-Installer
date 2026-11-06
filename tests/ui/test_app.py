@@ -33,6 +33,7 @@ if HAS_TEXTUAL:
     from installer.paths import Paths
     from installer.strings import Strings
     from installer.ui.app import KosApp
+    from installer.ui.screens.confirm import ConfirmScreen
     from installer.ui.screens.options import (DETAILS, LOWER_ROWS, SOURCE_ROWS,
                                                OptionsScreen)
     from installer.ui.screens.result import ResultScreen
@@ -54,6 +55,8 @@ def fake_system() -> "System":
         probes=[Probe("probe_os", "PASS", "CachyOS"),
                 Probe("probe_disk", "WARN", "4.2 GiB free",
                       "At least 6 GiB is needed for the build tree."),
+                Probe("probe_qt", "PASS",
+                      "6.12.0 " + "extra-cmake-modules, wayland-devel, qt6-qtbase-devel, " * 3),
                 Probe("probe_packages", "WARN",
                       "10 missing: quickshell, cmake, ninja, gcc, qt6-wayland, go +4",
                       "kosctl install adds these with the package manager.")],
@@ -144,12 +147,12 @@ class AppShellTest(unittest.IsolatedAsyncioTestCase):
         async with app.run_test(size=(100, 30)) as pilot:
             app.push_screen(OptionsScreen(Strings("en")))
             await pilot.pause()
-            app.screen.query_one("#source_main", RadioButton).value = True
+            app.screen.query_one("#source_local", RadioButton).value = True
             await pilot.pause()
             await app.set_language("zh")
             await pilot.pause()
 
-        self.assertEqual(settings.load(paths), {"lang": "zh", "source": "main"})
+        self.assertEqual(settings.load(paths), {"lang": "zh", "source": "local"})
 
     async def test_language_switch_rewrites_the_page_and_the_footer(self) -> None:
         app = self.make_app(lang="zh")
@@ -184,6 +187,16 @@ class AppShellTest(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertTrue(quit_button.styles.text_style.reverse)
             self.assertTrue(quit_button.styles.text_style.bold)
+
+    async def test_result_without_start_offers_kosctl_start(self) -> None:
+        app = self.make_app()
+        async with app.run_test(size=(100, 30)) as pilot:
+            app.push_screen(ResultScreen(Strings("en"), "ok"))
+            await pilot.pause()
+            text = str(app.screen.query_one("#result_text").render())
+            self.assertIn(Strings("en")("result_apply_now"), text)
+            self.assertIn(Strings("en")("result_login_note"), text)
+            self.assertNotIn(Strings("en")("result_started"), text)
 
     async def test_screen_uses_the_terminal_background(self) -> None:
         app = self.make_app()
@@ -229,6 +242,29 @@ class AppShellTest(unittest.IsolatedAsyncioTestCase):
             self.assertIn("WARN", detail)
             self.assertIn(Strings("en")("check_fixable"), detail)
 
+    async def test_checks_does_not_list_build_packages(self) -> None:
+        app = self.make_app()
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.press("tab")
+            await pilot.pause()
+            rows = " ".join(str(row.render())
+                            for row in app.screen.query_one("#probes").children)
+            self.assertNotIn("Build packages", rows)
+            self.assertNotIn("10 missing", rows)
+
+    async def test_confirm_shows_missing_build_packages(self) -> None:
+        system = fake_system()
+        system.missing_packages = ["cmake", "ninja"]
+        app = KosApp(lang="en", system=system,
+                     paths=Paths.resolve(source_root=ROOT))
+        async with app.run_test(size=(100, 30)) as pilot:
+            app.push_screen(ConfirmScreen(Strings("en"), 2))
+            await pilot.pause()
+            summary = str(app.screen.query_one("#confirm_page").render())
+            self.assertIn("cmake, ninja", summary)
+            prompt = str(app.screen.query_one("#confirm_prompt").render())
+            self.assertIn("Y", prompt)
+
     async def test_pass_detail_has_no_fix_or_remedy_line(self) -> None:
         app = self.make_app()
         async with app.run_test(size=(118, 36)) as pilot:
@@ -261,9 +297,9 @@ class AppShellTest(unittest.IsolatedAsyncioTestCase):
                 self.assertNotIn("\n", plain)
                 self.assertLessEqual(cell_len(plain), width)
             long_row = str(list_box.children[2].render())
-            self.assertIn("10 missing", long_row)
+            self.assertIn("6.12.0", long_row)
             self.assertTrue(long_row.endswith("…"))
-            self.assertNotIn("qt6-wayland, go +4", long_row)
+            self.assertNotIn("qt6-qtbase-devel", long_row)
 
     async def test_probe_detail_is_reachable_on_a_small_terminal(self) -> None:
         app = self.make_app()
@@ -289,8 +325,11 @@ class AppShellTest(unittest.IsolatedAsyncioTestCase):
             self.assertIsInstance(app.screen, OptionsScreen)
             self.assertTrue(app.screen.query_one("#option_detail").has_class("-wide"))
             detail = str(app.screen.query_one("#option_detail_text").render())
-            self.assertIn(Strings("en")("detail_source_stable"), detail)
-            self.assertNotIn(Strings("en")("detail_source_main"), detail)
+            self.assertIn(Strings("en")("detail_source_main"), detail)
+            self.assertNotIn(Strings("en")("detail_source_stable"), detail)
+            stable = app.screen.query_one("#source_stable", RadioButton)
+            self.assertTrue(stable.disabled)
+            self.assertIn(Strings("en")("source_unavailable"), stable.label.plain)
 
     async def test_wide_options_detail_follows_focus(self) -> None:
         app = self.make_app()

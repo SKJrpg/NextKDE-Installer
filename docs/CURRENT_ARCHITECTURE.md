@@ -101,7 +101,7 @@ the failing step's status, 130 when cancelled.
 | `probe_quickshell` | `qs` / `quickshell` version | PASS for 0.3.x; WARN otherwise |
 | `probe_qt` | `qmake6` / `qtpaths6` / `pkg-config Qt6Core` | PASS at 6.6 or newer; WARN otherwise |
 | `probe_disk` | `shutil.disk_usage($HOME)` | PASS at 6 GiB free |
-| `probe_packages` | `kosctl doctor` on `--root` or the newest prepared workspace | WARN with the missing package list; PASS when none are missing |
+| `probe_packages` | `kosctl doctor` on `--root` or the newest prepared workspace | WARN with the missing package list; PASS when none are missing. Kept for Confirm/plan; not listed on Checks. |
 
 `System.blocked` is true when any probe is FAIL. The Checks screen shows
 PASS/WARN/FAIL as words and glyphs, never colour alone. Its detail column has
@@ -113,8 +113,11 @@ the required version.
 ## 5. Options, settings and source preparation
 
 `Options` is the single wizard state object: `source`, `apps`, `app_set`,
-`lockscreen`, `spatial`, `start`, `proxy`, `local_path`. The source is one of
-`stable`, `main`, `local`.
+`lockscreen`, `spatial`, `start`, `proxy`, `local_path`. The available sources
+are `main` and `local`; `stable` is in `resolver.DISABLED_SOURCES` while its
+release branch has a known bug. The Options row is disabled with a
+“temporarily unavailable” suffix, `--source stable` is rejected, and a
+remembered `stable` falls back to `DEFAULT_SOURCE` (`main`).
 
 Settings are separate from installation state: `settings.load()` reads
 `<state_root>/settings.json` and accepts only `lang` in `zh|en` and `source` in
@@ -128,7 +131,7 @@ workspace:
 
 | Mode | Meaning | Git writes |
 |---|---|---|
-| stable | newest `release/X.Y` branch of the configured repository (`NextKde/NextKde`), chosen numerically | clone only |
+| stable | **temporarily sealed** (`DISABLED_SOURCES`); the code still resolves the newest `release/X.Y` branch when re-enabled | clone only |
 | development | the `main` branch of that repository | clone only |
 | local | the checkout chosen on Options, else `--root`, as it is | none: no fetch, checkout, reset or remote edit |
 
@@ -156,10 +159,15 @@ workspace:
   branch installs before its next tag.
 - Package state: `detect()` runs `kosctl doctor` on `--root` when it is a
   product checkout, otherwise on the newest prepared workspace under
-  `sources_root`, and keeps the missing `miss pkg:` names. Checks shows the
-  list; Confirm repeats it. After a clone, `deps_report(prepared.path)` runs
-  again, and a list the user has not seen is confirmed on the install page
+  `sources_root`, and keeps the missing `miss pkg:` names. Confirm shows the
+  list; Checks does not. After a clone, `deps_report(prepared.path)` runs again;
+  a list the user has not seen returns to Review, so the next Confirm shows it
   before the plan starts.
+- Stable caveat (for when the channel is re-enabled): the `release/X.Y`
+  branch's `kosctl install` does not install build dependencies. The installer
+  adds a separate `kosctl deps --install` step when the backend declares it, or
+  drives `pacman -S --needed` on Arch; users installing from `stable` must
+  still verify the build packages themselves.
 
 ## 6. The plan
 
@@ -232,20 +240,25 @@ The bar sits above the footer and is never a modal. It has two rows: the reason
 no-echo input row. Its content starts at the same column as the main content
 (the log's left edge on wizard pages); the hint is hidden below 80 columns so
 the reason stays on one line. `Esc` denies; `Enter` submits; one request is
-shown at a time. The package list confirmed on Checks/Confirm is written to the
+shown at a time. The package list confirmed on Confirm is written to the
 package step's `input`, so pacman's one prompt is answered without a second
 question.
 
-### 7.6 Installation, Review and Result
+### 7.6 Confirm, Installation, Review and Result
 
+- Confirm: the source/path summary, the missing build packages and the Y/N
+  prompt. The summary is scrollable; the prompt stays visible. A package list
+  discovered after the clone returns to Review so the next Confirm shows it.
 - Installation: stage list (done/current/waiting/failed/skipped), a progress bar
   directly under the stages, one blank row before the log, and the live wrapping
   log. `ctrl+z` aborts immediately; there is no log-pause key.
 - Review: summary, the real plan, `ctrl+e` to expand commands, and a “提示”
   section. The page is scrollable with `↑/↓`, `j/k` and `g/G`. On a failed
   preparation it swaps to `ctrl+r` retry / `ctrl+l` log.
-- Result: `q` quits, `ctrl+r` retries when the run did not succeed, `ctrl+l`
-  opens the log.
+- Result: the success body repeats the `kosctl install` close-out — log out and
+  back in (or reboot), `kosctl start` to apply now when the start step did not
+  run, and the next-login note for KWin effects/takeover. `q` quits, `ctrl+r`
+  retries when the run did not succeed, `ctrl+l` opens the log.
 
 ## 8. Process execution and sudo
 
@@ -314,7 +327,7 @@ Verified on real machines:
   list --json` returned an empty ledger; a dirty tree was refused.
 - VM `arch-kde` (Arch/Plasma 6.8.2 Wayland): the TUI resolved stable to
   `release/0.1` (`v0.1.1`, `2ca59a1f`), showed seven missing build packages on
-  Checks and Confirm, installed them after the inline sudo prompt, then
+  Confirm, installed them after the inline sudo prompt, then
   `kosctl install` and `kosctl start` both succeeded; `kosctl version` reported
   `0.1.1`.
 
@@ -324,6 +337,9 @@ Known gaps:
   ships neither `packaging/installer-contract.json` nor
   `kosctl installer-info`, so `--check` reports `Backend: probe · N
   capabilities`.
+- `stable` is temporarily sealed off because of a release-branch bug: the
+  Options row is disabled, `--source stable` is rejected, and a remembered
+  value falls back to `main`.
 - Installer commands are not in Textual's palette yet; the management area has
   no wizard key until they are.
 - `kosctl deps` / `deps --install` and `tools/kos-state.py` are missing

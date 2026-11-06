@@ -7,8 +7,8 @@ the desktop: that stays in the product checkout's `tools/kosctl`,
 
 The installer is independent of the product repository. The product checkout is
 an input (`--root` / `KOS_ROOT`, default `~/NextKde`), never inferred from the
-installer's own location. `stable` and `main` fetch their own managed workspace;
-only `local` installs from that checkout.
+installer's own location. `main` fetches a managed workspace; `local` installs
+from that checkout. `stable` is temporarily sealed off (see below).
 
 ## Requirements
 
@@ -16,6 +16,9 @@ only `local` installs from that checkout.
 - Python 3.10+ — the runtime is the standard library plus the vendored Textual
   tree; there is nothing to `pip install`
 - Git
+- The build dependencies for the chosen source. When `stable` is re-enabled,
+  its `kosctl install` still does not install them: check them yourself (see
+  [Sources](#sources-and-workspaces)).
 
 The interactive UI is Textual, vendored under `vendor/`. Without `vendor/` the
 same plan still runs, but the wizard falls back to the plain renderer.
@@ -57,12 +60,12 @@ Welcome -> Checks -> Options -> Review -> Confirm -> Installation -> Result
 | Screen | What it shows | Primary keys |
 |---|---|---|
 | Welcome | Product name, detected distribution/architecture/session, language | `←/→` or `h/l` language, `Tab` next |
-| Checks | 9 environment probes plus build packages when a checkout is available; PASS/WARN/FAIL text, the detected value and a per-check explanation | `↑/↓` or `j/k` select, `ctrl+r` re-check, `Tab` next |
-| Options | Source (`stable` / `main` / `local`), required core, optional apps, lock screen, depth wallpaper, start after install | `↑/↓` or `j/k` move, `Enter` down/activate, `Space` toggle, `ctrl+e` local path, `Tab` next |
+| Checks | 9 environment probes; PASS/WARN/FAIL text, the detected value and a per-check explanation | `↑/↓` or `j/k` select, `ctrl+r` re-check, `Tab` next |
+| Options | Source (`main` / `local`; `stable` is shown disabled as temporarily unavailable), required core, optional apps, lock screen, depth wallpaper, start after install | `↑/↓` or `j/k` move, `Enter` down/activate, `Space` toggle, `ctrl+e` local path, `Tab` next |
 | Review | Summary, the real plan, the full command toggle and notes | `↑/↓` or `j/k` scroll, `g/G` top/bottom, `Enter` continue, `ctrl+e` commands, `ctrl+l` log on failure |
-| Confirm | The final install gate | `y` install, `n` back; everything else is inert |
+| Confirm | The summary, missing build packages and the final install gate | `y` install, `n` back; everything else is inert |
 | Installation | Stage list, progress and the live log | `ctrl+z` abort, `ctrl+k` help |
-| Result | Success/failure, one-line next step | `q` quit, `ctrl+r` retry, `ctrl+l` log |
+| Result | Success/failure, the `kosctl install` close-out reminders and the log path | `q` quit, `ctrl+r` retry, `ctrl+l` log |
 
 Global keys: `Tab` / `Shift+Tab` page forward/back through the wizard, `Esc`
 goes back, `ctrl+k` opens help, and `ctrl+c` twice quits (the first press only
@@ -73,7 +76,7 @@ and Maximize/Minimize where a focusable widget allows it). The installer's own
 commands are not injected into that palette yet; the management screens can
 currently only be opened by code/tests, not by a wizard key.
 
-### Checks, Options and Review details
+### Details and the confirmation page
 
 - The Checks detail column follows the selected row. Its “说明 / Notes” line is
   written per check: the OS note names the detected family and install path
@@ -81,11 +84,15 @@ currently only be opened by code/tests, not by a wizard key.
   version and “or newer”, while Quickshell states the required 0.3.x series.
 - Every source and every optional app has its own description; the right column
   never repeats a generic “stable vs main vs local” block.
-- Missing build packages are shown on Checks and repeated on Confirm; a list
-  first discovered after the clone is confirmed on the installation page before
-  anything runs.
+- Missing build packages are shown on Confirm, not on Checks. If the list
+  changes after the source clone, the wizard returns to Review so the updated
+  Confirm page shows the new list before anything is installed.
 - Review's notes section is titled “提示 / Notes”. On a failed preparation,
   `ctrl+r` retries, `ctrl+l` opens the log, and the page keeps its scroll keys.
+- The success page keeps the close-out lines `kosctl install` prints: log out
+  and back in (or reboot), how to apply now with `kosctl start` when the start
+  step did not run, and the note that KWin effects and the takeover wait for the
+  next login.
 
 ## Command line
 
@@ -101,7 +108,7 @@ the distribution path and checks the backend; everything after that is
 | `--yes` | Non-interactive: accept the plan |
 | `--config FILE` | JSON options file |
 | `--lang zh\|en` | UI language |
-| `--source stable\|main\|local` | Source channel |
+| `--source main\|local` | Source channel; `stable` is temporarily unavailable |
 | `--theme system\|dark\|light` | Terminal appearance; dark is the default |
 | `--apps [LIST]` | Also install the optional apps; `calendar,todo,weather,calculator` narrows the set |
 | `--lockscreen` | Also install the lock screen theme |
@@ -121,7 +128,7 @@ incompatible backend, `130` cancelled.
 Examples:
 
 ```sh
-./install.sh --source stable --apps todo --start
+./install.sh --source main --apps todo --start
 ./install.sh --check --root ~/NextKde
 ./install.sh --plain --yes --source local
 ```
@@ -130,13 +137,21 @@ Examples:
 
 | Channel | Ref | What is written |
 |---|---|---|
-| `stable` | newest `release/X.Y` branch of the product repository | a managed clone |
+| `stable` | **temporarily unavailable**; the `release/X.Y` channel is sealed pending a bug fix | — |
 | `main` | tip of the product's `main` branch | a managed clone |
 | `local` | the checkout chosen on Options, else `--root` / `KOS_ROOT` | nothing: no fetch, checkout or reset |
 
-`stable` follows the maintained `release/X.Y` branch tip, so a fix on that
-branch is installable before its tag exists. When the resolved commit already
-has a release tag, Review and Confirm show it beside the ref.
+> **Stable is temporarily sealed off.** It has a known bug, so the wizard shows
+> the row disabled with “temporarily unavailable” and `--source stable` exits
+> with an error. A remembered `stable` choice falls back to `main`; use `main`
+> or `local` until the channel is re-enabled.
+
+`stable` normally follows the maintained `release/X.Y` branch tip, so a fix on
+that branch is installable before its tag exists. When the channel is
+re-enabled, remember that its `kosctl install` does not put dependency
+installation into the core step: verify the build packages yourself (the
+installer adds a separate package step only when its probe reports them
+missing).
 
 Managed workspaces live under
 `$XDG_DATA_HOME/nextkde/sources/<repository-id>/<commit>/`. A prepared commit is
@@ -154,10 +169,11 @@ Language and source are remembered between interactive runs:
 ~/.local/state/nextkde-installer/settings.json
 ```
 
-Only `zh`/`en` and `stable`/`main`/`local` are stored. A CLI flag or the config
-file overrides the remembered value; `--plain`, tests and embedders do not
-write the file. Logs go to `~/.local/state/nextkde-installer/logs/`; managed
-sources go to `~/.local/share/nextkde/sources/`.
+Only `zh`/`en` and `stable`/`main`/`local` are stored. A remembered `stable`
+falls back to `main` while the channel is sealed. A CLI flag or the config file
+overrides the remembered value; `--plain`, tests and embedders do not write the
+file. Logs go to `~/.local/state/nextkde-installer/logs/`; managed sources go
+to `~/.local/share/nextkde/sources/`.
 
 Appearance is dark by default. `--theme system` follows the terminal's reported
 background; `--theme light` overrides a terminal that does not report it. The
@@ -218,6 +234,9 @@ Docs map:
 
 - The Textual wizard is the interactive entry point; the curses UI is gone and
   `--plain` covers non-TTY and missing-Textual runs.
+- `stable` is temporarily sealed off because of a release-branch bug. The
+  Options row is disabled with “temporarily unavailable”, `--source stable`
+  errors, and a remembered `stable` falls back to `main`.
 - The backend contract is implemented on the installer side. The product still
   does not ship `packaging/installer-contract.json` or
   `kosctl installer-info --json`, so a checkout reports a probed capability set.

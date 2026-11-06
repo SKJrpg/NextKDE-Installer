@@ -24,6 +24,7 @@ from .detect import deps_report, detect
 from .paths import Paths
 from .plan import ALL_APPS, Options, build_plan, unsupported
 from .render import plain
+from .source import DEFAULT_SOURCE, DISABLED_SOURCES
 from .strings import Strings, choose_language
 
 CONFIG_KEYS = ("source", "apps", "lockscreen", "start", "all", "proxy", "spatial",
@@ -134,6 +135,12 @@ def main(argv: list[str] | None = None) -> int:
     unknown = opts.app_set - set(ALL_APPS)
     if unknown:
         parser.error("unknown apps: " + ", ".join(sorted(unknown)))
+    if opts.source in DISABLED_SOURCES:
+        if args.source or "source" in config:
+            parser.error(strings("source_unavailable_cli")
+                         % (opts.source, DEFAULT_SOURCE))
+        # A remembered channel may have been sealed since it was saved.
+        opts.source = DEFAULT_SOURCE
 
     system = detect(root=paths.source_root, fallback_root=paths.sources_root)
     steps = build_plan(system.family, opts, paths,

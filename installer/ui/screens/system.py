@@ -16,7 +16,7 @@ GLYPHS = {"PASS": "✔", "WARN": "⚠", "FAIL": "✖"}
 ASCII_GLYPHS = {"PASS": "+", "WARN": "!", "FAIL": "x"}
 
 # The install steps themselves resolve these; everything else is the user's.
-FIXABLE = ("probe_packages", "probe_quickshell")
+FIXABLE = ("probe_quickshell",)
 
 WIDE_AT = 110
 POINTER = ("›", ">")
@@ -65,8 +65,13 @@ class SystemScreen(WizardScreen):
     def _glyph(self, status: str) -> str:
         return (ASCII_GLYPHS if self.strings.ascii else GLYPHS).get(status, "?")
 
+    def _probes(self) -> list[Probe]:
+        """Build packages are confirmed on the next page, not listed here."""
+        return [probe for probe in self.app.system.probes
+                if probe.key != "probe_packages"]
+
     def _summary(self) -> Text:
-        probes = self.app.system.probes
+        probes = self._probes()
         counts = tuple(sum(1 for p in probes if p.status == status)
                        for status in ("PASS", "WARN", "FAIL"))
         text = Text(self.strings("system_head"), style="bold")
@@ -75,7 +80,7 @@ class SystemScreen(WizardScreen):
         return text
 
     def _name_width(self) -> int:
-        probes = self.app.system.probes
+        probes = self._probes()
         return min(20, max([cell_len(self.strings(p.key)) for p in probes] or [4]) + 2)
 
     def _list_width(self) -> int:
@@ -140,7 +145,7 @@ class SystemScreen(WizardScreen):
         return text
 
     def _fill(self) -> None:
-        probes = self.app.system.probes
+        probes = self._probes()
         container = self.query_one("#probes", VerticalScroll)
         container.remove_children()
         self.row = min(self.row, max(0, len(probes) - 1))
@@ -151,18 +156,18 @@ class SystemScreen(WizardScreen):
         self._show_detail()
 
     def _paint_rows(self) -> None:
-        probes = self.app.system.probes
+        probes = self._probes()
         for index, row in enumerate(self.rows):
             row.update(self._row_text(probes[index], index))
 
     def _show_detail(self) -> None:
-        probes = self.app.system.probes
+        probes = self._probes()
         text = self._detail(probes[self.row]) if probes else Text(
             self.strings("check_none"), style=self.app.secondary_style)
         self.query_one("#probe_detail_text", Static).update(text)
 
     def action_checks_move(self, step: int) -> None:
-        probes = self.app.system.probes
+        probes = self._probes()
         if not probes:
             return
         # A short probe list is a ring: down past the last row returns to the
@@ -185,7 +190,7 @@ class SystemScreen(WizardScreen):
         await container.remove_children()
         self.row = 0
         self.rows = [Static(self._row_text(probe, index))
-                     for index, probe in enumerate(self.app.system.probes)]
+                     for index, probe in enumerate(self._probes())]
         await container.mount_all(self.rows)
         self.query_one("#summary", Static).update(self._summary())
         self._show_detail()

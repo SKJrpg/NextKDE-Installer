@@ -2,6 +2,7 @@
 
 from .manager import prepare
 from .models import PreparedSource
-from .resolver import CANONICAL_REPO
+from .resolver import CANONICAL_REPO, DEFAULT_SOURCE, DISABLED_SOURCES
 
-__all__ = ["CANONICAL_REPO", "PreparedSource", "prepare"]
+__all__ = ["CANONICAL_REPO", "DEFAULT_SOURCE", "DISABLED_SOURCES",
+           "PreparedSource", "prepare"]

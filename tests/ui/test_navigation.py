@@ -501,16 +501,16 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(app.screen.row, 0)
             await pilot.press("tab")            # Options
             await pilot.pause()
-            self.assertEqual(app.opts.source, "stable")
+            self.assertEqual(app.opts.source, "main")
             await pilot.press("j")
             await pilot.pause()
-            self.assertEqual(app.opts.source, "main")
+            self.assertEqual(app.opts.source, "local")
             await pilot.press("space")          # no longer a selection key
             await pilot.pause()
-            self.assertEqual(app.opts.source, "main")
+            self.assertEqual(app.opts.source, "local")
             await pilot.press("k")
             await pilot.pause()
-            self.assertEqual(app.opts.source, "stable")
+            self.assertEqual(app.opts.source, "main")
 
     async def test_vim_keys_scroll_the_review_page(self) -> None:
         app = self.make_app()
@@ -617,14 +617,11 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
             await pilot.press("tab")             # Options
             await pilot.pause()
             self.assertIsInstance(app.screen, OptionsScreen)
-            self.assertEqual(app.focused.id, "source_stable")
-            await pilot.press("down")
-            await pilot.pause()
             self.assertEqual(app.focused.id, "source_main")
-            self.assertEqual(app.opts.source, "main")      # moving selects it
             await pilot.press("down")
             await pilot.pause()
             self.assertEqual(app.focused.id, "source_local")
+            self.assertEqual(app.opts.source, "local")      # moving selects it
             await pilot.press("down")                      # stays in the block
             await pilot.pause()
             self.assertEqual(app.focused.id, "source_local")
@@ -638,8 +635,6 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
         async with app.run_test(size=(100, 30)) as pilot:
             await pilot.press("tab")
             await pilot.press("tab")
-            await pilot.pause()
-            await pilot.press("down")            # main
             await pilot.pause()
             await pilot.press("enter")           # down into the options
             await pilot.pause()
@@ -662,7 +657,7 @@ class KeySchemeTest(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             await pilot.press("space")           # on a source row: nothing
             await pilot.pause()
-            self.assertEqual(app.opts.source, "stable")
+            self.assertEqual(app.opts.source, "main")
             await pilot.press("enter")           # step down into the options
             await pilot.pause()
             self.assertTrue(app.focused.id.startswith("app_"))

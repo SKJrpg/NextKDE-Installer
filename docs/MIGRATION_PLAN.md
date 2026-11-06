@@ -13,12 +13,15 @@ original proposal is `design.md`, kept as history.
   UI is gone.
 - The wizard covers Welcome → Checks → Options → Review → Confirm → Installation
   → Result, with the management area, help, about and local-path dialogs.
-- Source resolution: `stable` (newest `release/X.Y` branch), `main`, `local`;
-  managed workspaces under `$XDG_DATA_HOME/nextkde/sources/`; a local checkout
-  is read, never written. A release tag on the resolved commit is shown beside
-  the ref in Review/Confirm/`--check`.
-- Missing build packages are shown on Checks and Confirm; a list first found
-  after the clone is confirmed on the installation page before the plan runs.
+- Source resolution: `main` and `local` are available; `stable` (newest
+  `release/X.Y` branch) is temporarily sealed in `resolver.DISABLED_SOURCES`
+  because of a release-branch bug. Managed workspaces live under
+  `$XDG_DATA_HOME/nextkde/sources/`; a local checkout is read, never written.
+  A release tag on the resolved commit is shown beside the ref in
+  Review/Confirm/`--check`.
+- Missing build packages are shown on Confirm, not on Checks; a list first found
+  after the clone returns to Review so the updated Confirm page shows it before
+  the plan runs.
 - The plan is capability-filtered from the backend contract; the installer side
   of the contract (`installer/backend/`) is complete and tested.
 - Settings remember `lang` and `source`; CLI/config override them; tests and
@@ -52,8 +55,16 @@ is not blocking anything.
    vendored pins.
 4. **Product-side backend tools.** `kosctl deps` / `deps --install` and
    `tools/kos-state.py` are absent from the product's `main`; the dependency
-   probe and the management actions are empty there.
-5. **Optional layout split.** Move `plan.py`, `detect.py` and `runner.py` under
+   probe and the management actions are empty there. The stable `release/X.Y`
+   branch also does not fold dependency installation into `kosctl install`;
+   until it does, the README warns stable users to check the build packages
+   themselves, and the installer keeps its separate package step.
+5. **Stable channel bug.** `stable` is sealed while its `release/X.Y` branch
+   has a known bug: the UI row is disabled, `--source stable` errors, and a
+   remembered value falls back to `main`. Fix the branch, then remove `stable`
+   from `resolver.DISABLED_SOURCES`; when it returns, its `kosctl install`
+   still does not install build dependencies, so keep the README warning.
+6. **Optional layout split.** Move `plan.py`, `detect.py` and `runner.py` under
    `core/`/`system/` only if the churn buys something; the current layout is
    coherent.
 

@@ -110,8 +110,7 @@ class LocalSourceTest(unittest.IsolatedAsyncioTestCase):
         await self.settle(pilot, lambda: not app.screen._detecting)
 
     async def to_local(self, pilot) -> None:
-        await pilot.press("down")     # main
-        await pilot.press("down")     # local
+        await pilot.press("down")     # main -> local; stable is sealed
         await pilot.pause()
 
     # -- detection -------------------------------------------------------

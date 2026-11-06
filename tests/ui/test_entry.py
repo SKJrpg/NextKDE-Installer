@@ -131,6 +131,36 @@ class EntryTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(captured["opts"].source, "local")
 
+    def test_stable_is_temporarily_unavailable(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(SystemExit) as caught:
+                main(["--root", directory, "--source", "stable"])
+        self.assertEqual(caught.exception.code, 2)
+
+    @unittest.skipUnless(HAS_TEXTUAL, "textual is not vendored (run tools/vendor.py)")
+    def test_a_remembered_stable_source_falls_back_to_main(self) -> None:
+        captured = {}
+
+        class FakeApp:
+            def __init__(self, **kwargs):
+                captured.update(kwargs)
+
+            def run(self) -> int:
+                return 0
+
+        with tempfile.TemporaryDirectory() as directory, \
+                mock.patch.object(sys, "stdout", Tty()), \
+                mock.patch.object(sys, "stdin", Tty()), \
+                mock.patch("installer.__main__.settings.load",
+                           return_value={"source": "stable"}), \
+                mock.patch("installer.__main__.detect", return_value=fake_system()), \
+                mock.patch("installer.__main__.build_plan", return_value=fake_plan()), \
+                mock.patch("installer.ui.app.KosApp", FakeApp):
+            code = main(["--root", directory])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(captured["opts"].source, "main")
+
     @unittest.skipUnless(HAS_TEXTUAL, "textual is not vendored (run tools/vendor.py)")
     def test_config_keys_are_applied_before_the_app_starts(self) -> None:
         seen = {}

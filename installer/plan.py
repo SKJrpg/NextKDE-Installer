@@ -18,7 +18,7 @@ from .backend.models import (ACTIVATION_START, INSTALL_APPS, INSTALL_CORE,
                              SOURCE_UPDATE, SYSTEM_DEPS, BackendInfo)
 from .paths import Paths
 from .source.models import PreparedSource
-from .source.resolver import CANONICAL_REPO
+from .source.resolver import CANONICAL_REPO, DEFAULT_SOURCE
 
 
 ALL_APPS = ("calendar", "todo", "weather", "calculator")
@@ -38,7 +38,7 @@ STEP_CAPABILITY = {
 
 @dataclass
 class Options:
-    source: str = "stable"
+    source: str = DEFAULT_SOURCE
     apps: bool = False
     lockscreen: bool = False
     start: bool = True      # the desktop is started after a successful install

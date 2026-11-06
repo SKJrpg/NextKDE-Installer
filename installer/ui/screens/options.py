@@ -18,7 +18,7 @@ from textual.widgets import Checkbox, RadioButton, Static
 
 from ...backend.models import ACTIVATION_START, INSTALL_APPS, INSTALL_LOCKSCREEN
 from ...plan import ALL_APPS
-from ...source import manager
+from ...source import DEFAULT_SOURCE, DISABLED_SOURCES, manager
 from ..widgets.commands import Command
 from ..widgets.local_path import LocalPathDialog
 from . import ChoicePasses, EnterPasses, WizardScreen
@@ -83,6 +83,8 @@ class OptionsScreen(WizardScreen):
     def body(self) -> ComposeResult:
         s = self.strings
         opts = self.app.opts
+        if opts.source in DISABLED_SOURCES:
+            opts.source = DEFAULT_SOURCE
         self._labels = {}
 
         def row(label: str, ident: str, value: bool, *,
@@ -105,8 +107,12 @@ class OptionsScreen(WizardScreen):
                 yield Static(s("group_source"), classes="group")
                 with Container(id="sources"):
                     for name in SOURCES:
-                        yield row(s("source_" + name), "source_" + name,
-                                  name == opts.source, radio=True)
+                        label = s("source_" + name)
+                        if name in DISABLED_SOURCES:
+                            label += s("source_unavailable")
+                        yield row(label, "source_" + name,
+                                  name == opts.source, radio=True,
+                                  disabled=name in DISABLED_SOURCES)
                     yield Static(id="local_state")
                 yield Static(s("group_core"), classes="group")
                 yield row(f"{s('core_shell')} · {s('label_required')}", "core",
@@ -145,11 +151,15 @@ class OptionsScreen(WizardScreen):
             text.append(part, style=self.app.secondary_style)
         return text
 
+    def _current_source(self) -> str:
+        source = self.app.opts.source
+        return source if source not in DISABLED_SOURCES else DEFAULT_SOURCE
+
     def _show_detail(self, ident: str | None = None) -> None:
         """Show the focused row's explanation; with no row, the chosen source's."""
         known = bool(ident) and ident in DETAILS
         if not known:
-            ident = "source_" + self.app.opts.source
+            ident = "source_" + self._current_source()
         self.query_one("#option_detail_text", Static).update(self._detail(ident))
 
     def _apply_layout(self, width: int, height: int) -> None:
@@ -182,6 +192,8 @@ class OptionsScreen(WizardScreen):
 
     def on_mount(self) -> None:
         self._apply_layout(self.app.size.width, self.app.size.height)
+        if self.app.opts.source in DISABLED_SOURCES:
+            self.app.opts.source = DEFAULT_SOURCE
         first = self.query_one("#source_" + self.app.opts.source, RadioButton)
         first.value = True
         self._show_detail("source_" + self.app.opts.source)
@@ -205,6 +217,8 @@ class OptionsScreen(WizardScreen):
             self._select_source(row.id.removeprefix("source_"))
 
     def _select_source(self, source: str) -> None:
+        if source in DISABLED_SOURCES:
+            return
         ident = "source_" + source
         for row in self.query(SourceRow):
             if row.value != (row.id == ident):
@@ -342,7 +356,7 @@ class OptionsScreen(WizardScreen):
         return self._rows(LOWER_ROWS)
 
     def _selected_source(self) -> RadioButton:
-        return self.query_one("#source_" + self.app.opts.source, RadioButton)
+        return self.query_one("#source_" + self._current_source(), RadioButton)
 
     def action_option_pick(self, step: int) -> None:
         """Inside 安装来源 the arrows only change the source; no crossing."""
