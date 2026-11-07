@@ -142,7 +142,18 @@ def main(argv: list[str] | None = None) -> int:
         # A remembered channel may have been sealed since it was saved.
         opts.source = DEFAULT_SOURCE
 
-    system = detect(root=paths.source_root, fallback_root=paths.sources_root)
+    interactive = sys.stdout.isatty() and sys.stdin.isatty() and not args.plain and not args.yes
+    if interactive and importlib.util.find_spec("textual") is None:
+        # The vendored UI is optional (tools/vendor.py builds it): without it the
+        # same plan still runs, it just cannot be shown interactively.
+        print(strings("note_no_textual"), file=sys.stderr)
+        interactive = False
+
+    # The package probe shells out to kosctl doctor, one pacman call per package
+    # (~6s here). The UI needs it only for the Review preview, so do not make the
+    # wizard wait for it: KosApp checks in a worker once it is on screen.
+    system = detect(root=paths.source_root, fallback_root=paths.sources_root,
+                    check_packages=not interactive)
     steps = build_plan(system.family, opts, paths,
                        deps_missing=bool(system.missing_packages),
                        missing_packages=system.missing_packages)
@@ -195,12 +206,6 @@ def main(argv: list[str] | None = None) -> int:
         print(strings("review_blocked"), file=sys.stderr)
         return 2
 
-    interactive = sys.stdout.isatty() and sys.stdin.isatty() and not args.plain and not args.yes
-    if interactive and importlib.util.find_spec("textual") is None:
-        # The vendored UI is optional (tools/vendor.py builds it): without it the
-        # same plan still runs, it just cannot be shown interactively.
-        print(strings("note_no_textual"), file=sys.stderr)
-        interactive = False
     if not interactive:
         # Redirected to a file or a pipe, stdout is block-buffered: a long
         # install would show nothing until it ends.
@@ -268,7 +273,7 @@ def main(argv: list[str] | None = None) -> int:
     # `--source local --apps todo` is already selected when it opens. The theme
     # defaults to dark; the flag wins over the config, both over KOS_THEME.
     return int(KosApp(opts=opts, paths=paths, lang=lang, system=system,
-                      remember=True,
+                      remember=True, check_packages=True,
                       mode=args.theme or config.get("theme")).run() or 0)
 
 

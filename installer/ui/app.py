@@ -25,7 +25,7 @@ from ..backend.models import BackendIncompatible, BackendInfo
 from ..core.askpass import Askpass
 from ..core.events import Event
 from ..core.session import InstallSession
-from ..detect import Probe, System, deps_report, detect
+from ..detect import Probe, System, deps_report, detect, product_checkout
 from ..paths import Paths
 from ..plan import Options, build_plan
 from ..strings import Strings, choose_language
@@ -53,7 +53,8 @@ class KosApp(App, inherit_bindings=False):
                  paths: Paths | None = None, *, opts: Options | None = None,
                  backend: BackendInfo | None = None,
                  prepare=None, session_factory=None, mode: str | None = None,
-                 remember: bool = False, **kwargs) -> None:
+                 remember: bool = False, check_packages: bool = False,
+                 **kwargs) -> None:
         # Native ANSI so the terminal's own background and palette show through
         # instead of Textual painting its theme's colours over them.
         super().__init__(ansi_color=True, **kwargs)
@@ -109,6 +110,9 @@ class KosApp(App, inherit_bindings=False):
         # Injected by tests: preparation and the object that runs a plan.
         self._prepare_fn = prepare or workflow.begin
         self._session_factory = session_factory
+        # The package probe costs seconds (one package-manager call per package),
+        # so the entry point leaves it to a worker after the first screen.
+        self._check_packages = check_packages
 
     def action_help_quit(self) -> None:
         """Ctrl+C twice quits; the first press only says so.
@@ -129,6 +133,8 @@ class KosApp(App, inherit_bindings=False):
         self.push_screen(WelcomeScreen(self.strings))
         # A sudo call may block at any point in a run; this answers its request.
         self.set_interval(0.15, self._poll_askpass)
+        if self._check_packages:
+            self._start_package_check()
 
     # -- wizard state ----------------------------------------------------
     def _detect_backend(self, root) -> None:
@@ -237,6 +243,21 @@ class KosApp(App, inherit_bindings=False):
             probes.append(Probe("probe_packages", "PASS",
                                 "build dependencies present"))
         self.system.probes = probes
+
+    @work(thread=True, exit_on_error=False)
+    def _start_package_check(self) -> None:
+        """`kosctl doctor` spawns one package-manager call per package: seconds."""
+        try:
+            ran, missing = deps_report(
+                product_checkout(self.paths.source_root, self.paths.sources_root))
+        except (OSError, ValueError, subprocess.SubprocessError):
+            return
+        self._call(self._packages_ready, ran, missing)
+
+    def _packages_ready(self, ran: bool, missing: list[str]) -> None:
+        self._set_missing_packages(ran, missing)
+        if isinstance(self.screen, ReviewScreen):
+            self.screen.reload()
 
     def _start_or_confirm(self, prepared, missing: list[str]) -> None:
         """A list the confirmation page did not show goes back there."""

@@ -192,6 +192,16 @@ def deps_report(root: Path | None) -> tuple[bool, list[str]]:
     return True, parse_missing_packages(output)
 
 
+def product_checkout(root: Path | None, fallback_root: Path | None) -> Path | None:
+    """The checkout whose build packages matter: --root, else the newest workspace."""
+    product = Path(root) if root is not None else None
+    if product is None or not (product / "tools" / "kosctl").is_file():
+        product = latest_workspace(fallback_root)
+    if product is None or not (product / "tools" / "kosctl").is_file():
+        return None
+    return product
+
+
 def missing_packages(root: Path | None) -> list[str]:
     """The build packages ``kosctl doctor`` reports missing, or []."""
     return deps_report(root)[1]
@@ -203,7 +213,8 @@ def _probe(key: str, ok: bool, detail: str, remedy: str = "", warn: bool = False
 
 
 def detect(fixed_os_release: str | None = None, root: Path | None = None,
-           fallback_root: Path | None = None) -> System:
+           fallback_root: Path | None = None,
+           check_packages: bool = True) -> System:
     text = fixed_os_release
     if text is None:
         try:
@@ -285,10 +296,8 @@ def detect(fixed_os_release: str | None = None, root: Path | None = None,
     system.probes.append(_probe("probe_disk", free_gb >= 6.0, f"{free_gb:.1f} GiB free",
                                 "At least 6 GiB is needed for the build tree."))
 
-    product = Path(root) if root is not None else None
-    if product is None or not (product / "tools" / "kosctl").is_file():
-        product = latest_workspace(fallback_root)
-    if product is not None and (product / "tools" / "kosctl").is_file():
+    product = product_checkout(root, fallback_root) if check_packages else None
+    if product is not None:
         ran, missing = deps_report(product)
         system.missing_packages = missing
         if missing:
